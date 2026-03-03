@@ -62,6 +62,13 @@ router.post('/', auth, async (req, res) => {
   try {
     const { item, qty, dateNeeded, purpose, costEstimate, projectId, urgency } = req.body;
     
+    if (!item || !item.trim()) {
+      return res.status(400).json({ msg: 'Item name is required' });
+    }
+    if (qty === undefined || qty === null || Number(qty) <= 0) {
+      return res.status(400).json({ msg: 'Quantity must be a positive number' });
+    }
+    
     const request = new Request({
       item,
       qty,

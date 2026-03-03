@@ -157,4 +157,9 @@ projectSchema.pre('save', function (next) {
   next();
 });
 
+projectSchema.pre('findOneAndUpdate', function (next) {
+  this.set({ updatedAt: new Date() });
+  next();
+});
+
 module.exports = mongoose.model('Project', projectSchema);

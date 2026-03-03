@@ -14,4 +14,14 @@ const uploadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-module.exports = { uploadLimiter };
+// Rate limiter for auth endpoints (login, register)
+// Max 10 attempts per IP per 15-minute window
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { msg: 'Too many attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+module.exports = { uploadLimiter, authLimiter };

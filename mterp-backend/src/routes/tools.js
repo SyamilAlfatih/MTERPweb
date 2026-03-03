@@ -25,14 +25,13 @@ router.get('/dashboard', auth, async (req, res) => {
       query.projectId = projectId;
     }
     
-    // Get tools
-    const tools = await Tool.find(query)
+    // Get ALL tools first for stats, then filter for display
+    const allTools = await Tool.find()
       .populate('assignedTo', 'fullName')
       .populate('projectId', 'nama')
       .sort({ nama: 1 });
     
-    // Calculate stats
-    const allTools = await Tool.find();
+    // Calculate stats from full set
     const stats = {
       total: allTools.length,
       available: allTools.filter(t => t.kondisi === 'Baik' && !t.assignedTo).length,
@@ -40,6 +39,21 @@ router.get('/dashboard', auth, async (req, res) => {
       maintenance: allTools.filter(t => t.kondisi === 'Maintenance').length,
       other: allTools.filter(t => t.kondisi === 'Rusak').length,
     };
+    
+    // Apply search/project filters for the display list
+    let tools = allTools;
+    if (search || projectId) {
+      const searchLower = search ? search.toLowerCase() : '';
+      tools = allTools.filter(t => {
+        if (projectId && (!t.projectId || t.projectId._id.toString() !== projectId)) return false;
+        if (search) {
+          return (t.nama && t.nama.toLowerCase().includes(searchLower)) ||
+                 (t.kategori && t.kategori.toLowerCase().includes(searchLower)) ||
+                 (t.lokasi && t.lokasi.toLowerCase().includes(searchLower));
+        }
+        return true;
+      });
+    }
     
     res.json({ tools, stats });
   } catch (error) {
@@ -138,9 +152,17 @@ router.post('/', auth, authorize('owner', 'director', 'asset_admin'), async (req
 // PUT /api/tools/:id - Update tool
 router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (req, res) => {
   try {
+    const allowedFields = ['nama', 'kategori', 'stok', 'satuan', 'kondisi', 'lokasi', 'qrCode', 'notes'];
+    const updateData = { updatedAt: new Date() };
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
+
     const tool = await Tool.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
+      { $set: updateData },
       { new: true }
     );
     
@@ -192,15 +214,14 @@ router.put('/:id/return', auth, authorize('owner', 'director', 'asset_admin', 's
     const tool = await Tool.findByIdAndUpdate(
       req.params.id,
       { 
-        $set: { 
-          assignedTo: undefined,
-          projectId: undefined,
-          lokasi: 'Warehouse',
-          lastChecked: new Date(),
-        },
         $unset: {
           assignedTo: 1,
           projectId: 1,
+        },
+        $set: {
+          lokasi: 'Warehouse',
+          lastChecked: new Date(),
+          updatedAt: new Date(),
         }
       },
       { new: true }

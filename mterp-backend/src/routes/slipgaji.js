@@ -198,7 +198,7 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor'), asy
         // Calculate kasbon deductions for this date range
         const kasbonRecords = await Kasbon.find({
             userId: workerId,
-            status: 'approved',
+            status: 'Approved',
             createdAt: { $gte: periodStart, $lte: periodEnd },
         });
         const kasbonDeduction = kasbonRecords.reduce((sum, k) => sum + (k.amount || 0), 0);
@@ -313,17 +313,6 @@ router.delete('/:id', auth, authorize('owner', 'director', 'supervisor'), async 
         res.json({ msg: 'Slip deleted' });
     } catch (error) {
         console.error('Delete slip error:', error);
-        res.status(500).json({ msg: 'Server error' });
-    }
-});
-
-// DELETE /api/slipgaji/cleanup/all — Emergency: delete ALL slips (use with caution)
-router.delete('/cleanup/all', auth, authorize('owner'), async (req, res) => {
-    try {
-        const result = await SlipGaji.deleteMany({});
-        res.json({ msg: `Deleted ${result.deletedCount} slip(s)` });
-    } catch (error) {
-        console.error('Cleanup error:', error);
         res.status(500).json({ msg: 'Server error' });
     }
 });

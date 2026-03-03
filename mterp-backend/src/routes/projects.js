@@ -96,9 +96,17 @@ router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
 // PUT /api/projects/:id - Update project
 router.put('/:id', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
   try {
+    const allowedFields = ['nama', 'lokasi', 'description', 'totalBudget', 'status', 'startDate', 'endDate'];
+    const updateData = { updatedAt: new Date() };
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
+
     const project = await Project.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
+      { $set: updateData },
       { new: true }
     );
     

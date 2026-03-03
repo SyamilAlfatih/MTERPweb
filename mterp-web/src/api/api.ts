@@ -50,26 +50,8 @@ export const assignToolToProject = async (data: {
   return response.data;
 };
 
-export const tagToolUsage = async (data: {
-  projectToolId: string;
-  usedByWorker: string;
-  workItem: string;
-  notes?: string;
-}) => {
-  const response = await api.post('/inventory/usage', data);
-  return response.data;
-};
-
-export const getProjectTools = async (projectId: string) => {
-  const response = await api.get(`/inventory/project/${projectId}`);
-  return response.data;
-};
-
-export const returnToolToWarehouse = async (data: {
-  projectToolId: string;
-  quantity: number;
-}) => {
-  const response = await api.post('/inventory/return-warehouse', data);
+export const returnToolToWarehouse = async (toolId: string) => {
+  const response = await api.put(`/tools/${toolId}/return`);
   return response.data;
 };
 

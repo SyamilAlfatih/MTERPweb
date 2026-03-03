@@ -12,6 +12,14 @@ export default function AppLayout() {
   const { t } = useTranslation();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
 
+  // Dynamic greeting based on time of day
+  const getGreetingKey = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'home.greeting.morning';
+    if (hour < 17) return 'home.greeting.afternoon';
+    return 'home.greeting.evening';
+  };
+
   if (isLoading) {
     return (
       <div className="app-loading">
@@ -35,7 +43,7 @@ export default function AppLayout() {
       <div className="app-main">
         <header className="app-header">
           <div className="app-header-left">
-            <span className="app-greeting">{t('home.greeting.morning')}</span>
+            <span className="app-greeting">{t(getGreetingKey())}</span>
             <span className="app-username">{user?.fullName || 'User'}</span>
             <Badge 
               label={user?.role?.toUpperCase() || 'STAFF'} 

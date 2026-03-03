@@ -6,6 +6,19 @@ const { uploadLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
+// Timezone-safe helper: get start of today in the configured timezone
+// Default UTC+7 (WIB - Indonesia Western Time)
+const TZ_OFFSET_HOURS = parseInt(process.env.TZ_OFFSET_HOURS || '7', 10);
+
+function getTodayStart() {
+  const now = new Date();
+  // Shift to target timezone, then truncate to midnight, then shift back to UTC
+  const localMs = now.getTime() + (TZ_OFFSET_HOURS * 60 * 60 * 1000);
+  const localDay = new Date(localMs);
+  localDay.setUTCHours(0, 0, 0, 0);
+  return new Date(localDay.getTime() - (TZ_OFFSET_HOURS * 60 * 60 * 1000));
+}
+
 // GET /api/attendance - Get attendance records
 router.get('/', auth, async (req, res) => {
   try {
@@ -45,8 +58,7 @@ router.get('/', auth, async (req, res) => {
 // GET /api/attendance/today - Get today's attendance for current user
 router.get('/today', auth, async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = getTodayStart();
     
     const attendance = await Attendance.findOne({
       userId: req.user._id,
@@ -155,8 +167,7 @@ router.post('/checkin', auth, async (req, res) => {
       return res.status(400).json({ msg: 'Please select a project to check in' });
     }
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = getTodayStart();
     
     // Check if already checked in today
     let attendance = await Attendance.findOne({
@@ -207,8 +218,7 @@ router.post('/permit', auth, uploadLimiter, upload.single('evidence'), async (re
       return res.status(400).json({ msg: 'Reason and evidence photo are required' });
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = getTodayStart();
 
     // Check if record exists
     let attendance = await Attendance.findOne({
@@ -252,8 +262,7 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
   try {
     const { lat, lng } = req.body;
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = getTodayStart();
     
     const attendance = await Attendance.findOne({
       userId: req.user._id,
@@ -371,8 +380,7 @@ router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) =
   try {
     const { wageType, projectId, lat, lng } = req.body;
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = getTodayStart();
     
     let attendance = await Attendance.findOne({
       userId: req.user._id,

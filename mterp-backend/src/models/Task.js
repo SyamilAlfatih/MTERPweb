@@ -51,6 +51,11 @@ taskSchema.pre('save', function(next) {
   next();
 });
 
+taskSchema.pre('findOneAndUpdate', function(next) {
+  this.set({ updatedAt: new Date() });
+  next();
+});
+
 // Index for querying tasks by project and user
 taskSchema.index({ projectId: 1, assignedTo: 1 });
 taskSchema.index({ assignedTo: 1, status: 1 });

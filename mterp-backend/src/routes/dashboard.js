@@ -4,6 +4,19 @@ const { auth, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Timezone-safe helper (matches attendance.js)
+const TZ_OFFSET_HOURS = parseInt(process.env.TZ_OFFSET_HOURS || '7', 10);
+
+function getTodayRange() {
+  const now = new Date();
+  const localMs = now.getTime() + (TZ_OFFSET_HOURS * 60 * 60 * 1000);
+  const localDay = new Date(localMs);
+  localDay.setUTCHours(0, 0, 0, 0);
+  const todayStart = new Date(localDay.getTime() - (TZ_OFFSET_HOURS * 60 * 60 * 1000));
+  const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+  return { todayStart, todayEnd };
+}
+
 // GET /api/dashboard?projectId=<optional>
 router.get('/', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
     try {
@@ -46,11 +59,8 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor'), async (req, 
         const taskStatusCounts = { pending: 0, in_progress: 0, completed: 0, cancelled: 0 };
         tasks.forEach(t => { taskStatusCounts[t.status] = (taskStatusCounts[t.status] || 0) + 1; });
 
-        // --- Attendance today ---
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date();
-        todayEnd.setHours(23, 59, 59, 999);
+        // --- Use timezone-safe today range ---
+        const { todayStart, todayEnd } = getTodayRange();
 
         const attendanceQuery = { date: { $gte: todayStart, $lte: todayEnd } };
         if (projectId) attendanceQuery.projectId = projectId;

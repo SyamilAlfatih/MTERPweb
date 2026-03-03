@@ -51,6 +51,11 @@ toolSchema.pre('save', function(next) {
   next();
 });
 
+toolSchema.pre('findOneAndUpdate', function(next) {
+  this.set({ updatedAt: new Date() });
+  next();
+});
+
 // Text search index
 toolSchema.index({ nama: 'text', kategori: 'text', lokasi: 'text' });
 

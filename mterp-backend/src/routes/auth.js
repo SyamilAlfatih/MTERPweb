@@ -80,11 +80,8 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    // For development, return OTP in response
     res.status(201).json({
       msg: 'Registration successful. Check your email for OTP.',
-      // Remove in production:
-      devOtp: otp,
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -147,10 +144,10 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ msg: 'Invalid credentials' });
     }
 
-    // Check if verified (optional - can skip in dev)
-    // if (!user.isVerified) {
-    //   return res.status(401).json({ msg: 'Please verify your email first' });
-    // }
+    // Check if email is verified
+    if (!user.isVerified) {
+      return res.status(401).json({ msg: 'Please verify your email first' });
+    }
 
     // Generate token
     const token = generateToken(user._id);

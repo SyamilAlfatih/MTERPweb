@@ -7,8 +7,9 @@ const requestSchema = new mongoose.Schema({
     trim: true,
   },
   qty: {
-    type: String,
+    type: Number,
     required: true,
+    min: 0,
   },
   dateNeeded: String,
   purpose: String,
@@ -49,6 +50,11 @@ const requestSchema = new mongoose.Schema({
 
 requestSchema.pre('save', function(next) {
   this.updatedAt = new Date();
+  next();
+});
+
+requestSchema.pre('findOneAndUpdate', function(next) {
+  this.set({ updatedAt: new Date() });
   next();
 });
 
