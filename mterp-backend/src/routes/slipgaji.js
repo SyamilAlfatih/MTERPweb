@@ -54,7 +54,7 @@ const getCurrentWeekRange = () => {
 };
 
 // GET /api/slipgaji — List all slips (admin)
-router.get('/', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
     try {
         const { workerId, startDate, endDate, status } = req.query;
         const query = {};
@@ -79,7 +79,7 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor'), async (req, 
 });
 
 // GET /api/slipgaji/workers — Get workers list for slip generation
-router.get('/workers', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.get('/workers', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
     try {
         const workers = await User.find({ role: 'worker', isVerified: true })
             .select('fullName role paymentInfo')
@@ -119,7 +119,7 @@ router.get('/week', auth, (req, res) => {
 });
 
 // GET /api/slipgaji/:id — Get single slip
-router.get('/:id', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.get('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
     try {
         const slip = await SlipGaji.findById(req.params.id)
             .populate('workerId', 'fullName role paymentInfo email phone')
@@ -134,7 +134,7 @@ router.get('/:id', auth, authorize('owner', 'director', 'supervisor'), async (re
 });
 
 // POST /api/slipgaji/generate — Generate a draft slip from attendance data
-router.post('/generate', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
     try {
         const { workerId, startDate, endDate, bonus, deductions, notes } = req.body;
 
@@ -303,7 +303,7 @@ router.post('/:id/authorize', auth, authorize('owner', 'director'), async (req, 
 });
 
 // DELETE /api/slipgaji/:id — Delete a draft slip
-router.delete('/:id', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.delete('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
     try {
         const slip = await SlipGaji.findById(req.params.id);
         if (!slip) return res.status(404).json({ msg: 'Slip not found' });

@@ -18,7 +18,7 @@ function getTodayRange() {
 }
 
 // GET /api/dashboard?projectId=<optional>
-router.get('/', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
     try {
         const { projectId } = req.query;
 

@@ -57,7 +57,7 @@ export default function Tasks() {
     dueDate: '',
   });
 
-  const canManageTasks = user?.role && ['owner', 'director', 'supervisor'].includes(user.role);
+  const canManageTasks = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
 
   useEffect(() => {
     fetchTasks();

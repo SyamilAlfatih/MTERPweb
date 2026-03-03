@@ -83,7 +83,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // POST /api/tasks - Create task (owner, director, supervisor)
-router.post('/', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.post('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const { title, description, projectId, assignedTo, priority, dueDate } = req.body;
     
@@ -180,7 +180,7 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // PUT /api/tasks/:id/assign - Assign task to user
-router.put('/:id/assign', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.put('/:id/assign', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const { assignedTo } = req.body;
     
@@ -251,7 +251,7 @@ router.put('/:id/status', auth, async (req, res) => {
 });
 
 // DELETE /api/tasks/:id - Delete task
-router.delete('/:id', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.delete('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const task = await Task.findByIdAndDelete(req.params.id);
     
@@ -267,7 +267,7 @@ router.delete('/:id', auth, authorize('owner', 'director', 'supervisor'), async 
 });
 
 // GET /api/tasks/users/list - Get list of users for assignment
-router.get('/users/list', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.get('/users/list', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const users = await User.find({ isVerified: true })
       .select('_id fullName role username')

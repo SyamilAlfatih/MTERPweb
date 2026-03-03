@@ -139,17 +139,6 @@ export default function Projects() {
               <span className="project-progress-label">{project.progress || 0}% {t('projects.status.complete')}</span>
 
               <div className="project-footer">
-                {userRole === 'supervisor' && (
-                  <Button
-                    title={t('projects.actions.update')}
-                    onClick={(e: any) => {
-                      e.stopPropagation();
-                      openUpdateModal(project);
-                    }}
-                    variant="outline"
-                    size="small"
-                  />
-                )}
                 {userRole === 'owner' && (
                   <Button
                     title=""

@@ -132,7 +132,7 @@ router.get('/recap', auth, async (req, res) => {
 });
 
 // GET /api/attendance/users - Get list of users for filtering (supervisors+)
-router.get('/users', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.get('/users', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const users = await User.find({ isVerified: true })
       .select('_id fullName role')
@@ -298,7 +298,7 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
 });
 
 // PUT /api/attendance/:id/rate - Update rate/wage (supervisor only)
-router.put('/:id/rate', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.put('/:id/rate', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const { dailyRate, wageType, overtimePay } = req.body;
     
@@ -350,7 +350,7 @@ router.put('/:id/rate', auth, authorize('owner', 'director', 'supervisor'), asyn
 });
 
 // POST /api/attendance/pay - Mark records as Paid (supervisor only)
-router.post('/pay', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.post('/pay', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const { attendanceIds } = req.body; // Array of IDs
     

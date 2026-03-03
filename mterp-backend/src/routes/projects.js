@@ -113,7 +113,7 @@ router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
 );
 
 // PUT /api/projects/:id - Update project
-router.put('/:id', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.put('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const allowedFields = ['nama', 'lokasi', 'description', 'totalBudget', 'status', 'startDate', 'endDate'];
     const updateData = { updatedAt: new Date() };
@@ -141,7 +141,7 @@ router.put('/:id', auth, authorize('owner', 'director', 'supervisor'), async (re
 });
 
 // PUT /api/projects/:id/progress - Update project progress
-router.put('/:id/progress', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.put('/:id/progress', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const { progress } = req.body;
     
@@ -168,7 +168,7 @@ router.put('/:id/progress', auth, authorize('owner', 'director', 'supervisor'), 
 });
 
 // POST /api/projects/:id/daily-report - Add daily report with per-item progress
-router.post('/:id/daily-report', auth, authorize('supervisor', 'owner', 'director'), async (req, res) => {
+router.post('/:id/daily-report', auth, authorize('supervisor', 'asset_admin', 'owner', 'director'), async (req, res) => {
   try {
     const { workItemUpdates, supplyUpdates, weather, materials, workforce, notes, date } = req.body;
     
@@ -277,7 +277,7 @@ router.delete('/:id', auth, authorize('owner'), async (req, res) => {
 });
 
 // PUT /api/projects/:id/work-items/:itemId/progress - Update individual work item progress
-router.put('/:id/work-items/:itemId/progress', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.put('/:id/work-items/:itemId/progress', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const { progress, actualCost } = req.body;
     
@@ -333,7 +333,7 @@ router.get('/:id/supplies', auth, async (req, res) => {
 });
 
 // POST /api/projects/:id/supplies - Add a supply
-router.post('/:id/supplies', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.post('/:id/supplies', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const { item, qty, unit, cost, startDate, endDate, status } = req.body;
 
@@ -369,7 +369,7 @@ router.post('/:id/supplies', auth, authorize('owner', 'director', 'supervisor'),
 });
 
 // PUT /api/projects/:id/supplies/:supplyId - Update a supply
-router.put('/:id/supplies/:supplyId', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.put('/:id/supplies/:supplyId', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const supply = await Supply.findOne({ _id: req.params.supplyId, projectId: req.params.id });
     if (!supply) {
@@ -406,7 +406,7 @@ router.put('/:id/supplies/:supplyId', auth, authorize('owner', 'director', 'supe
 });
 
 // DELETE /api/projects/:id/supplies/:supplyId - Delete a supply
-router.delete('/:id/supplies/:supplyId', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+router.delete('/:id/supplies/:supplyId', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const supply = await Supply.findOneAndDelete({ _id: req.params.supplyId, projectId: req.params.id });
     if (!supply) {
@@ -430,7 +430,7 @@ router.delete('/:id/supplies/:supplyId', auth, authorize('owner', 'director', 's
 // ===== Material Usage Logs =====
 
 // POST /api/projects/:id/material-logs - Log material usage
-router.post('/:id/material-logs', auth, authorize('supervisor', 'owner', 'director', 'admin'), async (req, res) => {
+router.post('/:id/material-logs', auth, authorize('supervisor', 'asset_admin', 'owner', 'director', 'admin'), async (req, res) => {
   try {
     const { supplyId, qtyUsed, notes, date } = req.body;
 

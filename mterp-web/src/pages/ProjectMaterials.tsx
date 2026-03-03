@@ -52,7 +52,7 @@ export default function ProjectMaterials() {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
 
-  const canManage = user?.role && ['owner', 'director', 'supervisor'].includes(user.role);
+  const canManage = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
 
   useEffect(() => {
     fetchData();

@@ -21,7 +21,7 @@ router.get('/', auth, async (req, res) => {
     }
     
     // Non-admin users only see their own requests
-    if (['worker', 'supervisor'].includes(req.user.role)) {
+    if (['worker', 'supervisor', 'asset_admin'].includes(req.user.role)) {
       query.requestedBy = req.user._id;
     }
     

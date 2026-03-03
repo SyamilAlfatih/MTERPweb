@@ -154,7 +154,7 @@ export default function ProjectDetail() {
   const tableRef = useRef<HTMLDivElement>(null);
 
   const userRole = user?.role?.toLowerCase() || 'worker';
-  const canSeeFinancials = ['owner', 'director', 'supervisor'].includes(userRole);
+  const canSeeFinancials = ['owner', 'director', 'supervisor', 'asset_admin'].includes(userRole);
 
   useEffect(() => {
     fetchProject();

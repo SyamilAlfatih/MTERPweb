@@ -115,7 +115,7 @@ export default function SlipGaji() {
     const role = user?.role?.toLowerCase() || '';
 
     // Access guard
-    if (!['owner', 'director', 'supervisor'].includes(role)) {
+    if (!['owner', 'director', 'supervisor', 'asset_admin'].includes(role)) {
         navigate('/home');
         return null;
     }

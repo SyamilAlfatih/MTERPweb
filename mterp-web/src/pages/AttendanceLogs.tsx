@@ -84,7 +84,7 @@ export default function AttendanceLogs() {
   const [submitting, setSubmitting] = useState(false);
   const [paying, setPaying] = useState(false);
 
-  const isSupervisor = user?.role && ['owner', 'director', 'supervisor'].includes(user.role);
+  const isSupervisor = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
 
   useEffect(() => {
     const now = new Date();
