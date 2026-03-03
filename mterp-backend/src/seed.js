@@ -1,7 +1,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const { User, Project, Tool, Request } = require('./models');
+const { User, Project, Tool, Request, Supply } = require('./models');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/mterp';
 
@@ -15,6 +15,7 @@ const seedData = async () => {
     await Project.deleteMany({});
     await Tool.deleteMany({});
     await Request.deleteMany({});
+    await Supply.deleteMany({});
     console.log('Cleared existing data');
 
     // Create users
@@ -62,7 +63,7 @@ const seedData = async () => {
     ]);
     console.log(`Created ${users.length} users`);
 
-    // Create projects
+    // Create projects (without embedded supplies — supplies are now in their own collection)
     const projects = await Project.create([
       {
         nama: 'Gedung Kantor Pusat',
@@ -113,33 +114,6 @@ const seedData = async () => {
             startDate: new Date('2025-03-01'), endDate: new Date('2025-06-30'),
           },
         ],
-        supplies: [
-          {
-            item: 'Besi 16mm', qty: 5000, unit: 'btg',
-            cost: 500000000, actualCost: 480000000, status: 'Delivered',
-            startDate: new Date('2024-01-15'), endDate: new Date('2024-03-15'),
-          },
-          {
-            item: 'Semen 50kg', qty: 10000, unit: 'sak',
-            cost: 200000000, actualCost: 150000000, status: 'Ordered',
-            startDate: new Date('2024-03-01'), endDate: new Date('2024-08-31'),
-          },
-          {
-            item: 'Keramik 60x60', qty: 2000, unit: 'M2',
-            cost: 150000000, actualCost: 0, status: 'Pending',
-            startDate: new Date('2025-02-01'), endDate: new Date('2025-05-31'),
-          },
-          {
-            item: 'Besi 12mm', qty: 3000, unit: 'btg',
-            cost: 300000000, actualCost: 290000000, status: 'Delivered',
-            startDate: new Date('2024-02-01'), endDate: new Date('2024-05-31'),
-          },
-          {
-            item: 'Cat Interior & Eksterior', qty: 500, unit: 'ltr',
-            cost: 100000000, actualCost: 0, status: 'Pending',
-            startDate: new Date('2025-04-01'), endDate: new Date('2025-06-30'),
-          },
-        ],
       },
       {
         nama: 'Jembatan Penyeberangan',
@@ -188,6 +162,41 @@ const seedData = async () => {
     ]);
     console.log(`Created ${projects.length} projects`);
 
+    // Create supplies in separate collection
+    const supplies = await Supply.create([
+      {
+        projectId: projects[0]._id,
+        item: 'Besi 16mm', qty: 5000, unit: 'btg',
+        cost: 500000000, actualCost: 480000000, status: 'Delivered',
+        startDate: new Date('2024-01-15'), endDate: new Date('2024-03-15'),
+      },
+      {
+        projectId: projects[0]._id,
+        item: 'Semen 50kg', qty: 10000, unit: 'sak',
+        cost: 200000000, actualCost: 150000000, status: 'Ordered',
+        startDate: new Date('2024-03-01'), endDate: new Date('2024-08-31'),
+      },
+      {
+        projectId: projects[0]._id,
+        item: 'Keramik 60x60', qty: 2000, unit: 'M2',
+        cost: 150000000, actualCost: 0, status: 'Pending',
+        startDate: new Date('2025-02-01'), endDate: new Date('2025-05-31'),
+      },
+      {
+        projectId: projects[0]._id,
+        item: 'Besi 12mm', qty: 3000, unit: 'btg',
+        cost: 300000000, actualCost: 290000000, status: 'Delivered',
+        startDate: new Date('2024-02-01'), endDate: new Date('2024-05-31'),
+      },
+      {
+        projectId: projects[0]._id,
+        item: 'Cat Interior & Eksterior', qty: 500, unit: 'ltr',
+        cost: 100000000, actualCost: 0, status: 'Pending',
+        startDate: new Date('2025-04-01'), endDate: new Date('2025-06-30'),
+      },
+    ]);
+    console.log(`Created ${supplies.length} supplies`);
+
     // Create tools
     const tools = await Tool.create([
       { nama: 'Excavator CAT 320', kategori: 'Heavy Equipment', stok: 2, satuan: 'unit', kondisi: 'Baik', lokasi: 'Gudang Pusat' },
@@ -201,11 +210,11 @@ const seedData = async () => {
     ]);
     console.log(`Created ${tools.length} tools`);
 
-    // Create material requests
+    // Create material requests (qty is now Number)
     const requests = await Request.create([
       {
         item: 'Besi Beton D16',
-        qty: '200 batang',
+        qty: 200,
         dateNeeded: '2025-02-15',
         purpose: 'Untuk kolom lantai 5-6',
         costEstimate: 50000000,
@@ -216,7 +225,7 @@ const seedData = async () => {
       },
       {
         item: 'Semen Portland 50kg',
-        qty: '500 sak',
+        qty: 500,
         dateNeeded: '2025-02-10',
         purpose: 'Pengecoran plat lantai 4',
         costEstimate: 75000000,
@@ -228,7 +237,7 @@ const seedData = async () => {
       },
       {
         item: 'Cat Dinding Interior',
-        qty: '100 kaleng',
+        qty: 100,
         dateNeeded: '2025-03-01',
         purpose: 'Finishing lantai 1-3',
         costEstimate: 30000000,

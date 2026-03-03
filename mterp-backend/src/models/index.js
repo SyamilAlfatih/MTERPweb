@@ -6,6 +6,8 @@ const Attendance = require('./Attendance');
 const Kasbon = require('./Kasbon');
 const Task = require('./Task');
 const SlipGaji = require('./SlipGaji');
+const DailyReport = require('./DailyReport');
+const Supply = require('./Supply');
 
 module.exports = {
   User,
@@ -16,4 +18,6 @@ module.exports = {
   Kasbon,
   Task,
   SlipGaji,
+  DailyReport,
+  Supply,
 };

@@ -60,9 +60,12 @@ export default function ProjectMaterials() {
 
   const fetchData = async () => {
     try {
-      const res = await api.get(`/projects/${projectId}`);
-      setProject(res.data);
-      setSupplies(res.data.supplies || []);
+      const [projectRes, suppliesRes] = await Promise.all([
+        api.get(`/projects/${projectId}`),
+        api.get(`/projects/${projectId}/supplies`),
+      ]);
+      setProject(projectRes.data);
+      setSupplies(suppliesRes.data || []);
     } catch (err: any) {
       console.error('Failed to fetch project materials', err);
     } finally {

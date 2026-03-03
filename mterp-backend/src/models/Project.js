@@ -12,48 +12,6 @@ const workItemSchema = new mongoose.Schema({
   endDate: Date,
 });
 
-const supplySchema = new mongoose.Schema({
-  item: { type: String, required: true },
-  qty: { type: Number, default: 0 },
-  unit: { type: String, default: 'pcs' },
-  cost: { type: Number, default: 0 },
-  actualCost: { type: Number, default: 0 },
-  status: {
-    type: String,
-    enum: ['Pending', 'Ordered', 'Delivered'],
-    default: 'Pending',
-  },
-  deliveryDate: Date,
-  startDate: Date,
-  endDate: Date,
-});
-
-const dailyReportSchema = new mongoose.Schema({
-  date: { type: Date, required: true },
-  progressPercent: { type: Number, default: 0 },
-  workItemUpdates: [{
-    workItemId: { type: mongoose.Schema.Types.ObjectId },
-    name: String,
-    previousProgress: { type: Number, default: 0 },
-    newProgress: { type: Number, default: 0 },
-    actualCost: { type: Number, default: 0 },
-  }],
-  supplyUpdates: [{
-    supplyId: { type: mongoose.Schema.Types.ObjectId },
-    item: String,
-    previousStatus: String,
-    newStatus: String,
-    actualCost: { type: Number, default: 0 },
-  }],
-  weather: { type: String, default: 'Cerah' },
-  materials: String,
-  workforce: String,
-  notes: String,
-  photos: [String],
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  createdAt: { type: Date, default: Date.now },
-});
-
 const projectSchema = new mongoose.Schema({
   nama: {
     type: String,
@@ -92,9 +50,8 @@ const projectSchema = new mongoose.Schema({
     materialList: String,
   },
 
+  // Work items stay embedded (bounded, always loaded with project)
   workItems: [workItemSchema],
-  supplies: [supplySchema],
-  dailyReports: [dailyReportSchema],
 
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -115,12 +72,13 @@ const projectSchema = new mongoose.Schema({
   },
 });
 
-// Update progress based on work items + supplies (cost-weighted)
-projectSchema.methods.calculateProgress = function () {
+// Calculate progress from work items + supplies (passed as parameter)
+// supplies are now in a separate collection, so they must be passed in
+projectSchema.methods.calculateProgress = function (supplies) {
   const workItems = this.workItems || [];
-  const supplies = this.supplies || [];
+  const supplyList = supplies || [];
 
-  if (workItems.length === 0 && supplies.length === 0) return 0;
+  if (workItems.length === 0 && supplyList.length === 0) return 0;
 
   // Map supply status to progress percentage
   const supplyStatusProgress = { 'Pending': 0, 'Ordered': 50, 'Delivered': 100 };
@@ -131,7 +89,7 @@ projectSchema.methods.calculateProgress = function () {
   for (const item of workItems) {
     allItems.push({ cost: item.cost || 0, progress: item.progress || 0 });
   }
-  for (const supply of supplies) {
+  for (const supply of supplyList) {
     allItems.push({ cost: supply.cost || 0, progress: supplyStatusProgress[supply.status] || 0 });
   }
 

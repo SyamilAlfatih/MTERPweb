@@ -168,8 +168,13 @@ export default function ProjectDetail() {
 
   const fetchProject = async () => {
     try {
-      const response = await api.get(`/projects/${id}`);
-      setProject(response.data);
+      const [projectRes, suppliesRes] = await Promise.all([
+        api.get(`/projects/${id}`),
+        api.get(`/projects/${id}/supplies`),
+      ]);
+      const data = projectRes.data;
+      data.supplies = suppliesRes.data || [];
+      setProject(data);
     } catch (err) {
       console.error('Failed to fetch project', err);
     } finally {

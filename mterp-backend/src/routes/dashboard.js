@@ -1,5 +1,5 @@
 const express = require('express');
-const { Project, Task, Attendance, Request, User } = require('../models');
+const { Project, Task, Attendance, Request, User, Supply, DailyReport } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 
 const router = express.Router();
@@ -24,7 +24,7 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor'), async (req, 
 
         // --- Projects ---
         const allProjects = await Project.find()
-            .select('_id nama status progress totalBudget workItems supplies dailyReports startDate endDate')
+            .select('_id nama status progress totalBudget workItems startDate endDate')
             .sort({ createdAt: -1 })
             .lean();
 
@@ -39,14 +39,17 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor'), async (req, 
         const statusCounts = { Planning: 0, 'In Progress': 0, Completed: 0, 'On Hold': 0 };
         projects.forEach(p => { statusCounts[p.status] = (statusCounts[p.status] || 0) + 1; });
 
-        // Budget
+        // Budget — work item actuals from Project, supply actuals from Supply collection
         let totalBudget = 0;
         let actualSpend = 0;
+        const projectIds = projects.map(p => p._id);
         projects.forEach(p => {
             totalBudget += p.totalBudget || 0;
             (p.workItems || []).forEach(w => { actualSpend += w.actualCost || 0; });
-            (p.supplies || []).forEach(s => { actualSpend += s.actualCost || 0; });
         });
+        // Add supply actuals from separate collection
+        const allSupplies = await Supply.find({ projectId: { $in: projectIds } }).select('actualCost').lean();
+        allSupplies.forEach(s => { actualSpend += s.actualCost || 0; });
 
         // Average progress
         const avgProgress = projects.length
@@ -170,29 +173,28 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor'), async (req, 
         if (projectId) reqQuery.projectId = projectId;
         const pendingRequests = await Request.countDocuments(reqQuery);
 
-        // --- Progress timeline (from daily reports, last 30 entries) ---
+        // --- Progress timeline (from DailyReport collection, last 30 entries) ---
         let progressTimeline = [];
         if (projectId && projects.length === 1) {
-            const reports = (projects[0].dailyReports || [])
-                .sort((a, b) => new Date(a.date) - new Date(b.date))
-                .slice(-30);
+            const reports = await DailyReport.find({ projectId })
+                .sort({ date: 1 })
+                .select('date progressPercent')
+                .limit(30)
+                .lean();
             progressTimeline = reports.map(r => ({
                 date: r.date,
                 progress: r.progressPercent || 0,
             }));
         } else {
-            const latestReports = [];
-            projects.forEach(p => {
-                const sorted = (p.dailyReports || []).sort((a, b) => new Date(a.date) - new Date(b.date));
-                sorted.slice(-30).forEach(r => {
-                    latestReports.push({ date: r.date, progress: r.progressPercent || 0 });
-                });
-            });
+            const reports = await DailyReport.find({ projectId: { $in: projectIds } })
+                .sort({ date: 1 })
+                .select('date progressPercent')
+                .lean();
             const dateMap = {};
-            latestReports.forEach(r => {
+            reports.forEach(r => {
                 const key = new Date(r.date).toISOString().split('T')[0];
                 if (!dateMap[key]) dateMap[key] = { total: 0, count: 0 };
-                dateMap[key].total += r.progress;
+                dateMap[key].total += r.progressPercent || 0;
                 dateMap[key].count += 1;
             });
             progressTimeline = Object.keys(dateMap)

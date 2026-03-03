@@ -97,8 +97,12 @@ export default function DailyReport() {
   const fetchProjectData = async (pid: string) => {
     setLoadingProject(true);
     try {
-      const res = await api.get(`/projects/${pid}`);
-      const project = res.data;
+      const [projectRes, suppliesRes] = await Promise.all([
+        api.get(`/projects/${pid}`),
+        api.get(`/projects/${pid}/supplies`),
+      ]);
+      const project = projectRes.data;
+      const suppliesData = suppliesRes.data;
       setSelectedProjectName(project.nama || project.name || '');
       
       const items: WorkItemUpdate[] = (project.workItems || []).map((item: any) => ({
@@ -113,7 +117,7 @@ export default function DailyReport() {
       }));
       setWorkItemUpdates(items);
 
-      const supplies: SupplyUpdate[] = (project.supplies || []).map((s: any) => ({
+      const supplies: SupplyUpdate[] = (suppliesData || []).map((s: any) => ({
         supplyId: s._id,
         item: s.item,
         qty: s.qty || 0,
