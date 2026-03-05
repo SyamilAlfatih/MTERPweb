@@ -1109,8 +1109,50 @@ export default function DailyReport() {
       {/* Report Details: Date & Weather */}
       <Card className="report-card">
         <h3 className="card-title">
-          <Calendar size={18} /> Tanggal Laporan (Date)
+          <Calendar size={18} /> {t('dailyReport.date.title')}
         </h3>
+        <p style={{ fontSize: '0.8rem', color: '#64748B', margin: '0 0 12px', lineHeight: 1.4 }}>
+          {t('dailyReport.date.hint')}
+        </p>
+
+        {/* Quick date buttons */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+          {(() => {
+            const today = new Date();
+            const fmtLocal = (d: Date) => { const dd = new Date(d); dd.setMinutes(dd.getMinutes() - dd.getTimezoneOffset()); return dd.toISOString().split('T')[0]; };
+            const dayLabels = [
+              { label: t('dailyReport.date.today'), offset: 0 },
+              { label: t('dailyReport.date.yesterday'), offset: 1 },
+              { label: t('dailyReport.date.daysAgo', { count: 2 }), offset: 2 },
+              { label: t('dailyReport.date.daysAgo', { count: 3 }), offset: 3 },
+            ];
+            return dayLabels.map(({ label, offset }) => {
+              const d = new Date(today);
+              d.setDate(today.getDate() - offset);
+              const val = fmtLocal(d);
+              return (
+                <button
+                  key={offset}
+                  onClick={() => setSelectedDate(val)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    border: selectedDate === val ? '2px solid #312E59' : '1px solid #E2E8F0',
+                    background: selectedDate === val ? '#312E59' : '#F8FAFC',
+                    color: selectedDate === val ? '#fff' : '#475569',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            });
+          })()}
+        </div>
+
         <div className="report-form-group" style={{ marginBottom: 20 }}>
           <div className="report-input-wrapper" style={{ display: 'flex', alignItems: 'center', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 12px' }}>
             <Calendar size={18} color="#64748B" style={{ marginRight: 10 }} />

@@ -722,6 +722,13 @@
       "actualCost": "Biaya Aktual (Rp)"
     },
     "emptyProject": "Proyek ini belum memiliki item pekerjaan atau suplai.",
+    "date": {
+      "title": "Tanggal Laporan",
+      "hint": "Pilih tanggal untuk laporan ini. Anda dapat membuat laporan mundur jika diperlukan (misal: pemeliharaan sistem).",
+      "today": "Hari Ini",
+      "yesterday": "Kemarin",
+      "daysAgo": "{{count}} hari lalu"
+    },
     "weather": {
       "title": "Kondisi Cuaca",
       "options": {

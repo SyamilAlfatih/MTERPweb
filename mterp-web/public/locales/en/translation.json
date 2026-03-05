@@ -722,6 +722,13 @@
       "actualCost": "Actual Cost (Rp)"
     },
     "emptyProject": "This project has no work items or supplies yet.",
+    "date": {
+      "title": "Report Date",
+      "hint": "Select the date for this report. You can backdate entries if needed (e.g. system maintenance).",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "daysAgo": "{{count}} days ago"
+    },
     "weather": {
       "title": "Weather Condition",
       "options": {
