@@ -215,6 +215,16 @@
         "na": "N/A"
       }
     },
+    "gantt": {
+      "title": "Gantt Chart",
+      "subtitle": "Timeline pekerjaan & suplai",
+      "workItems": "Pekerjaan",
+      "supplies": "Suplai",
+      "progress": "Progres",
+      "cost": "Biaya",
+      "noData": "Tidak ada item terjadwal",
+      "today": "Hari Ini"
+    },
     "workItems": {
       "title": "Item Pekerjaan",
       "items": "item",

@@ -148,6 +148,7 @@ export default function ProjectDetail() {
   const { user } = useAuth();
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [vizMode, setVizMode] = useState<'scurve' | 'gantt'>('scurve');
 
   const chartRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
@@ -463,148 +464,320 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* S-Curve Chart — Time-based */}
-      {canSeeFinancials && scurveData.length > 1 && (
+      {/* Data Visualization: S-Curve / Gantt Chart */}
+      {canSeeFinancials && (scurveData.length > 1 || workItems.length > 0 || supplies.length > 0) && (
         <div ref={chartRef}>
           <Card className="scurve-card">
-            <div className="scurve-header">
+            {/* ── Viz Tab Switcher ── */}
+            <div className="viz-tab-header">
               <div>
-                <h3 className="scurve-title">{t('projectDetail.scurve.title')}</h3>
-                <p className="scurve-subtitle">{t('projectDetail.scurve.subtitle')}</p>
+                <h3 className="scurve-title">
+                  {vizMode === 'scurve' ? t('projectDetail.scurve.title') : t('projectDetail.gantt.title')}
+                </h3>
+                <p className="scurve-subtitle">
+                  {vizMode === 'scurve' ? t('projectDetail.scurve.subtitle') : t('projectDetail.gantt.subtitle')}
+                </p>
               </div>
-              <div className="scurve-legend">
-                <span className="legend-item">
-                  <span className="legend-dot planned" /> {t('projectDetail.scurve.planned')}
-                </span>
-                <span className="legend-item">
-                  <span className="legend-dot actual" /> {t('projectDetail.scurve.actual')}
-                </span>
-                {hasTodayOnChart && (
-                  <span className="legend-item">
-                    <span className="legend-dot today" /> {t('projectDetail.scurve.today')}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="scurve-chart-wrapper">
-              <ResponsiveContainer width="100%" height={320}>
-                <AreaChart data={scurveData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
-                  <defs>
-                    <linearGradient id="plannedGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366F1" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#6366F1" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="actualGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                    tickLine={false}
-                    axisLine={{ stroke: 'var(--border)' }}
-                    interval={scurveData.length > 12 ? Math.floor(scurveData.length / 8) : 0}
-                    angle={-30}
-                    textAnchor="end"
-                    height={60}
-                  />
-                  <YAxis
-                    domain={[0, 100]}
-                    tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                    tickLine={false}
-                    axisLine={{ stroke: 'var(--border)' }}
-                    tickFormatter={(v) => `${v}%`}
-                  />
-                  <Tooltip content={<SCurveTooltip />} />
-                  <ReferenceLine y={50} stroke="var(--border)" strokeDasharray="5 5" opacity={0.4} />
-                  {/* Today marker line */}
-                  {hasTodayOnChart && (
-                    <ReferenceLine
-                      x={todayLabel}
-                      stroke="#F59E0B"
-                      strokeWidth={2}
-                      strokeDasharray="6 4"
-                      label={{ value: t('projectDetail.scurve.today'), position: 'top', fill: '#F59E0B', fontSize: 11, fontWeight: 700 }}
-                    />
-                  )}
-                  <Area
-                    type="monotone"
-                    dataKey="planned"
-                    stroke="#6366F1"
-                    strokeWidth={3}
-                    fill="url(#plannedGradient)"
-                    dot={{ r: 4, fill: '#6366F1', strokeWidth: 2, stroke: '#fff' }}
-                    activeDot={{ r: 6, fill: '#6366F1', stroke: '#fff', strokeWidth: 2 }}
-                    animationDuration={0}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="actual"
-                    stroke="#10B981"
-                    strokeWidth={3}
-                    fill="url(#actualGradient)"
-                    dot={{ r: 4, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }}
-                    activeDot={{ r: 6, fill: '#10B981', stroke: '#fff', strokeWidth: 2 }}
-                    animationDuration={0}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Performance Summary below chart */}
-            <div className="scurve-performance">
-              <div className={`perf-card ${isAheadOfSchedule ? 'perf-good' : 'perf-bad'}`}>
-                <div className="perf-icon">
-                  {isAheadOfSchedule ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
-                </div>
-                <div className="perf-info">
-                  <span className="perf-label">{t('projectDetail.scurve.performance.schedule')}</span>
-                  <span className="perf-value">
-                    {Math.abs(scheduleDeviation).toFixed(1)}% {isAheadOfSchedule ? t('projectDetail.scurve.performance.ahead') : t('projectDetail.scurve.performance.behind')}
-                  </span>
-                </div>
-              </div>
-
-              <div className={`perf-card ${isUnderBudget ? 'perf-good' : 'perf-bad'}`}>
-                <div className="perf-icon">
-                  {isUnderBudget ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
-                </div>
-                <div className="perf-info">
-                  <span className="perf-label">{t('projectDetail.scurve.performance.costVariance')}</span>
-                  <span className="perf-value">
-                    {costVariance >= 0 ? '+' : ''}{costVariance.toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-
-              <div className="perf-card perf-neutral">
-                <div className="perf-icon"><Target size={18} /></div>
-                <div className="perf-info">
-                  <span className="perf-label">{t('projectDetail.scurve.performance.cpi')}</span>
-                  <span className="perf-value">{cpi > 0 ? cpi.toFixed(2) : t('projectDetail.scurve.performance.na')}</span>
-                </div>
-              </div>
-
-              <div className="perf-card perf-neutral">
-                <div className="perf-icon"><Clock size={18} /></div>
-                <div className="perf-info">
-                  <span className="perf-label">{t('projectDetail.scurve.performance.elapsed')}</span>
-                  <span className="perf-value">
-                    {(() => {
-                      const gs = project.startDate || (project.globalDates as any)?.planned?.start;
-                      const ge = project.endDate || (project.globalDates as any)?.planned?.end;
-                      if (!gs || !ge) return t('projectDetail.scurve.performance.na');
-                      const total = new Date(ge).getTime() - new Date(gs).getTime();
-                      const elapsed = Date.now() - new Date(gs).getTime();
-                      const pct = Math.min(100, Math.max(0, (elapsed / total) * 100));
-                      return `${pct.toFixed(0)}%`;
-                    })()}
-                  </span>
-                </div>
+              <div className="viz-tabs">
+                <button
+                  className={`viz-tab${vizMode === 'scurve' ? ' active' : ''}`}
+                  onClick={() => setVizMode('scurve')}
+                >
+                  <TrendingUp size={14} />
+                  S-Curve
+                </button>
+                <button
+                  className={`viz-tab${vizMode === 'gantt' ? ' active' : ''}`}
+                  onClick={() => setVizMode('gantt')}
+                >
+                  <BarChart3 size={14} />
+                  Gantt
+                </button>
               </div>
             </div>
+
+            {/* ── S-Curve View ── */}
+            {vizMode === 'scurve' && scurveData.length > 1 && (
+              <>
+                <div className="scurve-header" style={{ marginTop: 0 }}>
+                  <div />
+                  <div className="scurve-legend">
+                    <span className="legend-item">
+                      <span className="legend-dot planned" /> {t('projectDetail.scurve.planned')}
+                    </span>
+                    <span className="legend-item">
+                      <span className="legend-dot actual" /> {t('projectDetail.scurve.actual')}
+                    </span>
+                    {hasTodayOnChart && (
+                      <span className="legend-item">
+                        <span className="legend-dot today" /> {t('projectDetail.scurve.today')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="scurve-chart-wrapper">
+                  <ResponsiveContainer width="100%" height={320}>
+                    <AreaChart data={scurveData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                      <defs>
+                        <linearGradient id="plannedGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#6366F1" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#6366F1" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="actualGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                        tickLine={false}
+                        axisLine={{ stroke: 'var(--border)' }}
+                        interval={scurveData.length > 12 ? Math.floor(scurveData.length / 8) : 0}
+                        angle={-30}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis
+                        domain={[0, 100]}
+                        tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                        tickLine={false}
+                        axisLine={{ stroke: 'var(--border)' }}
+                        tickFormatter={(v) => `${v}%`}
+                      />
+                      <Tooltip content={<SCurveTooltip />} />
+                      <ReferenceLine y={50} stroke="var(--border)" strokeDasharray="5 5" opacity={0.4} />
+                      {hasTodayOnChart && (
+                        <ReferenceLine
+                          x={todayLabel}
+                          stroke="#F59E0B"
+                          strokeWidth={2}
+                          strokeDasharray="6 4"
+                          label={{ value: t('projectDetail.scurve.today'), position: 'top', fill: '#F59E0B', fontSize: 11, fontWeight: 700 }}
+                        />
+                      )}
+                      <Area type="monotone" dataKey="planned" stroke="#6366F1" strokeWidth={3} fill="url(#plannedGradient)" dot={{ r: 4, fill: '#6366F1', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, fill: '#6366F1', stroke: '#fff', strokeWidth: 2 }} animationDuration={0} />
+                      <Area type="monotone" dataKey="actual" stroke="#10B981" strokeWidth={3} fill="url(#actualGradient)" dot={{ r: 4, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, fill: '#10B981', stroke: '#fff', strokeWidth: 2 }} animationDuration={0} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Performance Summary */}
+                <div className="scurve-performance">
+                  <div className={`perf-card ${isAheadOfSchedule ? 'perf-good' : 'perf-bad'}`}>
+                    <div className="perf-icon">{isAheadOfSchedule ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}</div>
+                    <div className="perf-info">
+                      <span className="perf-label">{t('projectDetail.scurve.performance.schedule')}</span>
+                      <span className="perf-value">
+                        {Math.abs(scheduleDeviation).toFixed(1)}% {isAheadOfSchedule ? t('projectDetail.scurve.performance.ahead') : t('projectDetail.scurve.performance.behind')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`perf-card ${isUnderBudget ? 'perf-good' : 'perf-bad'}`}>
+                    <div className="perf-icon">{isUnderBudget ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}</div>
+                    <div className="perf-info">
+                      <span className="perf-label">{t('projectDetail.scurve.performance.costVariance')}</span>
+                      <span className="perf-value">{costVariance >= 0 ? '+' : ''}{costVariance.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                  <div className="perf-card perf-neutral">
+                    <div className="perf-icon"><Target size={18} /></div>
+                    <div className="perf-info">
+                      <span className="perf-label">{t('projectDetail.scurve.performance.cpi')}</span>
+                      <span className="perf-value">{cpi > 0 ? cpi.toFixed(2) : t('projectDetail.scurve.performance.na')}</span>
+                    </div>
+                  </div>
+                  <div className="perf-card perf-neutral">
+                    <div className="perf-icon"><Clock size={18} /></div>
+                    <div className="perf-info">
+                      <span className="perf-label">{t('projectDetail.scurve.performance.elapsed')}</span>
+                      <span className="perf-value">
+                        {(() => {
+                          const gs = project.startDate || (project.globalDates as any)?.planned?.start;
+                          const ge = project.endDate || (project.globalDates as any)?.planned?.end;
+                          if (!gs || !ge) return t('projectDetail.scurve.performance.na');
+                          const total = new Date(ge).getTime() - new Date(gs).getTime();
+                          const elapsed = Date.now() - new Date(gs).getTime();
+                          const pct = Math.min(100, Math.max(0, (elapsed / total) * 100));
+                          return `${pct.toFixed(0)}%`;
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── Gantt Chart View ── */}
+            {vizMode === 'gantt' && (() => {
+              const globalStart = project.startDate || (project.globalDates as any)?.planned?.start;
+              const globalEnd = project.endDate || (project.globalDates as any)?.planned?.end;
+              if (!globalStart || !globalEnd) return <p className="gantt-no-data">{t('projectDetail.gantt.noData')}</p>;
+
+              const projStart = new Date(globalStart);
+              const projEnd = new Date(globalEnd);
+              const months = monthRange(projStart, projEnd);
+              if (months.length === 0) return <p className="gantt-no-data">{t('projectDetail.gantt.noData')}</p>;
+
+              const totalMs = projEnd.getTime() - projStart.getTime();
+              if (totalMs <= 0) return <p className="gantt-no-data">{t('projectDetail.gantt.noData')}</p>;
+
+              const toPercent = (d: Date) => {
+                const pct = ((d.getTime() - projStart.getTime()) / totalMs) * 100;
+                return Math.max(0, Math.min(100, pct));
+              };
+
+              const now = new Date();
+              const todayPct = toPercent(now);
+              const showToday = todayPct > 0 && todayPct < 100;
+
+              // Build gantt items
+              interface GanttItem {
+                name: string;
+                type: 'work' | 'supply';
+                startDate: Date;
+                endDate: Date;
+                progress: number;
+                cost: number;
+                status?: string;
+              }
+              const ganttItems: GanttItem[] = [];
+
+              for (const wi of workItems) {
+                const wiAny = wi as any;
+                const s = wiAny.startDate || wiAny.dates?.plannedStart;
+                const e = wiAny.endDate || wiAny.dates?.plannedEnd;
+                if (s && e) {
+                  ganttItems.push({
+                    name: wi.name,
+                    type: 'work',
+                    startDate: new Date(s),
+                    endDate: new Date(e),
+                    progress: wiAny.progress || 0,
+                    cost: wi.cost || 0,
+                  });
+                }
+              }
+
+              for (const sup of supplies as any[]) {
+                const s = sup.startDate || sup.deadline;
+                const e = sup.endDate || sup.deadline;
+                if (s && e) {
+                  ganttItems.push({
+                    name: sup.item || sup.name,
+                    type: 'supply',
+                    startDate: new Date(s),
+                    endDate: new Date(e),
+                    progress: sup.status === 'Delivered' ? 100 : sup.status === 'Ordered' ? 50 : 0,
+                    cost: sup.cost || 0,
+                    status: sup.status,
+                  });
+                }
+              }
+
+              if (ganttItems.length === 0) return <p className="gantt-no-data">{t('projectDetail.gantt.noData')}</p>;
+
+              return (
+                <div className="gantt-container">
+                  {/* Legend */}
+                  <div className="gantt-legend">
+                    <span className="legend-item"><span className="legend-dot" style={{ background: '#6366F1' }} /> {t('projectDetail.gantt.workItems')}</span>
+                    <span className="legend-item"><span className="legend-dot" style={{ background: '#F59E0B' }} /> {t('projectDetail.gantt.supplies')}</span>
+                    {showToday && <span className="legend-item"><span className="legend-dot today" /> {t('projectDetail.gantt.today')}</span>}
+                  </div>
+
+                  <div className="gantt-scroll">
+                    <div className="gantt-chart" style={{ minWidth: Math.max(600, months.length * 80) }}>
+                      {/* Month header */}
+                      <div className="gantt-header-row">
+                        <div className="gantt-label-col">&nbsp;</div>
+                        <div className="gantt-timeline-col">
+                          {months.map((m, i) => (
+                            <div
+                              key={i}
+                              className="gantt-month"
+                              style={{
+                                left: `${toPercent(m)}%`,
+                                width: `${i < months.length - 1 ? toPercent(months[i + 1]) - toPercent(m) : 100 - toPercent(m)}%`,
+                              }}
+                            >
+                              {fmtShort(m)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Rows */}
+                      {ganttItems.map((item, idx) => {
+                        const left = toPercent(item.startDate);
+                        const right = toPercent(item.endDate);
+                        const width = Math.max(right - left, 1);
+                        const isWork = item.type === 'work';
+                        const barColor = isWork ? '#6366F1' : '#F59E0B';
+                        const fillColor = isWork ? '#818CF8' : '#FCD34D';
+
+                        return (
+                          <div key={idx} className="gantt-row">
+                            <div className="gantt-label-col" title={item.name}>
+                              <span className="gantt-item-dot" style={{ background: barColor }} />
+                              <span className="gantt-item-name">{item.name}</span>
+                            </div>
+                            <div className="gantt-timeline-col">
+                              {/* Grid lines */}
+                              {months.map((m, i) => (
+                                <div key={i} className="gantt-grid-line" style={{ left: `${toPercent(m)}%` }} />
+                              ))}
+                              {/* Today marker */}
+                              {showToday && <div className="gantt-today-line" style={{ left: `${todayPct}%` }} />}
+                              {/* Bar */}
+                              <div
+                                className="gantt-bar"
+                                style={{ left: `${left}%`, width: `${width}%`, background: `${barColor}22`, border: `1.5px solid ${barColor}` }}
+                              >
+                                <div className="gantt-bar-fill" style={{ width: `${item.progress}%`, background: fillColor }} />
+                                {width > 8 && (
+                                  <span className="gantt-bar-label" style={{ color: item.progress > 50 ? '#fff' : barColor }}>
+                                    {item.progress}%
+                                  </span>
+                                )}
+                                {/* Tooltip */}
+                                <div className="gantt-tooltip">
+                                  <div className="gantt-tooltip-title">
+                                    <span className="gantt-tooltip-dot" style={{ background: barColor }} />
+                                    {item.name}
+                                  </div>
+                                  <div className="gantt-tooltip-divider" />
+                                  <div className="gantt-tooltip-row">
+                                    <span>{fmtDate(item.startDate)} → {fmtDate(item.endDate)}</span>
+                                  </div>
+                                  <div className="gantt-tooltip-row">
+                                    <span>{t('projectDetail.gantt.progress')}</span>
+                                    <strong>{item.progress}%</strong>
+                                  </div>
+                                  {canSeeFinancials && (
+                                    <div className="gantt-tooltip-row">
+                                      <span>{t('projectDetail.gantt.cost')}</span>
+                                      <strong>{formatRupiah(item.cost)}</strong>
+                                    </div>
+                                  )}
+                                  {item.status && (
+                                    <div className="gantt-tooltip-row">
+                                      <span>Status</span>
+                                      <strong>{item.status}</strong>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </Card>
         </div>
       )}

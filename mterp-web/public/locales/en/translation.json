@@ -215,6 +215,16 @@
         "na": "N/A"
       }
     },
+    "gantt": {
+      "title": "Gantt Chart",
+      "subtitle": "Work items & supplies timeline",
+      "workItems": "Work Items",
+      "supplies": "Supplies",
+      "progress": "Progress",
+      "cost": "Cost",
+      "noData": "No scheduled items to display",
+      "today": "Today"
+    },
     "workItems": {
       "title": "Work Items",
       "items": "items",

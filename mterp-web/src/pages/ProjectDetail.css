@@ -44,7 +44,11 @@
 .progress-card {
   padding: var(--space-6);
   margin-bottom: var(--space-4);
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    var(--primary) 0%,
+    var(--primary-light) 100%
+  ) !important;
   color: white;
   border: none !important;
 }
@@ -162,11 +166,11 @@
 }
 
 .legend-dot.planned {
-  background-color: #6366F1;
+  background-color: #6366f1;
 }
 
 .legend-dot.actual {
-  background-color: #10B981;
+  background-color: #10b981;
 }
 
 .scurve-chart-wrapper {
@@ -215,11 +219,11 @@
 }
 
 .scurve-tooltip-dot.planned {
-  background-color: #6366F1;
+  background-color: #6366f1;
 }
 
 .scurve-tooltip-dot.actual {
-  background-color: #10B981;
+  background-color: #10b981;
 }
 
 .scurve-tooltip-value {
@@ -242,7 +246,7 @@
   padding: 1px 6px;
   font-size: 9px;
   font-weight: 800;
-  color: #F59E0B;
+  color: #f59e0b;
   background: rgba(245, 158, 11, 0.12);
   border-radius: var(--radius-full);
   letter-spacing: 0.5px;
@@ -250,7 +254,7 @@
 }
 
 .legend-dot.today {
-  background-color: #F59E0B;
+  background-color: #f59e0b;
 }
 
 /* ========== Performance Summary ========== */
@@ -270,7 +274,9 @@
   padding: var(--space-3);
   border-radius: var(--radius-lg);
   background: var(--bg-secondary);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .perf-card:hover {
@@ -290,17 +296,17 @@
 
 .perf-good .perf-icon {
   background: rgba(16, 185, 129, 0.12);
-  color: #10B981;
+  color: #10b981;
 }
 
 .perf-bad .perf-icon {
   background: rgba(239, 68, 68, 0.12);
-  color: #EF4444;
+  color: #ef4444;
 }
 
 .perf-neutral .perf-icon {
   background: rgba(99, 102, 241, 0.12);
-  color: #6366F1;
+  color: #6366f1;
 }
 
 .perf-info {
@@ -324,11 +330,306 @@
 }
 
 .perf-good .perf-value {
-  color: #10B981;
+  color: #10b981;
 }
 
 .perf-bad .perf-value {
-  color: #EF4444;
+  color: #ef4444;
+}
+
+/* ========== Viz Tab Switcher ========== */
+.viz-tab-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-4);
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.viz-tabs {
+  display: flex;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: 3px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.viz-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.viz-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+.viz-tab.active {
+  background: var(--bg-primary);
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* ========== Gantt Chart ========== */
+.gantt-container {
+  margin-top: var(--space-2);
+}
+
+.gantt-legend {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  margin-bottom: var(--space-3);
+  justify-content: flex-end;
+}
+
+.gantt-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: var(--space-2);
+  -webkit-overflow-scrolling: touch;
+}
+
+.gantt-chart {
+  position: relative;
+}
+
+.gantt-header-row,
+.gantt-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 36px;
+}
+
+.gantt-header-row {
+  border-bottom: 2px solid var(--border);
+  margin-bottom: var(--space-1);
+}
+
+.gantt-label-col {
+  width: 160px;
+  min-width: 160px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.gantt-item-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.gantt-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gantt-timeline-col {
+  flex: 1;
+  position: relative;
+  min-height: 32px;
+}
+
+.gantt-month {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-left: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+.gantt-grid-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.gantt-today-line {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #f59e0b;
+  z-index: 3;
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.gantt-today-line::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  background: #f59e0b;
+  border-radius: 50%;
+}
+
+.gantt-row {
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition-fast);
+}
+
+.gantt-row:last-child {
+  border-bottom: none;
+}
+
+.gantt-row:hover {
+  background: var(--bg-secondary);
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+}
+
+.gantt-bar:hover {
+  transform: scaleY(1.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 5;
+}
+
+.gantt-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  border-radius: var(--radius-md);
+  transition: width 0.3s ease;
+}
+
+.gantt-bar-label {
+  position: relative;
+  z-index: 2;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 0 6px;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
+/* Gantt Tooltip */
+.gantt-tooltip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  min-width: 200px;
+  backdrop-filter: blur(12px);
+  z-index: 20;
+  pointer-events: none;
+}
+
+.gantt-bar:hover .gantt-tooltip {
+  display: block;
+  animation: ganttTooltipIn 0.15s ease;
+}
+
+@keyframes ganttTooltipIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.gantt-tooltip-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.gantt-tooltip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.gantt-tooltip-divider {
+  height: 1px;
+  background: var(--border);
+  margin: var(--space-2) 0;
+}
+
+.gantt-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+
+.gantt-tooltip-row strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.gantt-no-data {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  padding: var(--space-6) 0;
 }
 
 /* ========== Data Tables ========== */
@@ -410,7 +711,7 @@
 }
 
 .table-cost {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: var(--font-size-xs);
   font-weight: 600;
 }
@@ -499,6 +800,11 @@
     flex-direction: column;
     gap: var(--space-2);
   }
+
+  .viz-tab-header {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
 }
 
 /* ========== Mobile (≤640px) ========== */
@@ -531,6 +837,18 @@
 
   .scurve-legend {
     gap: var(--space-2);
+  }
+
+  .gantt-label-col {
+    width: 100px;
+    min-width: 100px;
+    font-size: 10px;
+  }
+
+  .gantt-legend {
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .detail-table-header {
