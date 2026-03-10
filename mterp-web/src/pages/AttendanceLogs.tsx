@@ -9,7 +9,6 @@ import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, CostInput } from '../components/shared';
-import './AttendanceLogs.css';
 
 interface UserOption {
   _id: string;
@@ -242,50 +241,50 @@ export default function AttendanceLogs() {
   const permitRecords = records.filter(r => r.status === 'Permit');
 
   return (
-    <div className="logs-container">
+    <div className="p-6 max-w-[900px] mx-auto max-lg:p-4 max-sm:p-3">
       {/* Header */}
-      <div className="logs-header">
-        <button className="logs-back-btn" onClick={() => navigate(-1)}>
+      <div className="flex items-center gap-3 mb-6 max-sm:flex-wrap">
+        <button className="w-9 h-9 border border-border bg-bg-white rounded-md cursor-pointer flex items-center justify-center text-text-primary transition-all duration-150 shrink-0 hover:bg-bg-secondary hover:border-primary hover:text-primary" onClick={() => navigate(-1)}>
           <ArrowLeft size={18} />
         </button>
-        <div className="logs-header-icon">
+        <div className="w-[42px] h-[42px] rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-400 flex items-center justify-center shadow-[0_4px_12px_rgba(99,102,241,0.3)] shrink-0">
           <Users size={20} color="white" />
         </div>
         <div>
-          <h1 className="logs-title">{t('attendanceLogs.title')}</h1>
-          <p className="logs-subtitle">{t('attendanceLogs.subtitle')}</p>
+          <h1 className="text-xl font-bold text-text-primary m-0 max-sm:text-lg">{t('attendanceLogs.title')}</h1>
+          <p className="text-xs text-text-muted m-0">{t('attendanceLogs.subtitle')}</p>
         </div>
       </div>
 
       {/* View Mode Toggle */}
-      <div className="logs-view-toggle">
+      <div className="flex gap-2 mb-4 bg-bg-secondary rounded-lg p-1">
         <button
-          className={`logs-view-btn ${viewMode === 'attendance' ? 'active' : ''}`}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 border-none bg-transparent rounded-md text-sm font-semibold text-text-muted cursor-pointer transition-all duration-200 hover:text-text-primary ${viewMode === 'attendance' ? 'bg-bg-white text-text-primary shadow-[0_1px_3px_rgba(0,0,0,0.1)]' : ''}`}
           onClick={() => setViewMode('attendance')}
         >
           <Users size={16} />
           {t('attendanceLogs.viewMode.attendance')}
         </button>
         <button
-          className={`logs-view-btn ${viewMode === 'permits' ? 'active' : ''}`}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 border-none bg-transparent rounded-md text-sm font-semibold text-text-muted cursor-pointer transition-all duration-200 hover:text-text-primary ${viewMode === 'permits' ? 'bg-bg-white text-text-primary shadow-[0_1px_3px_rgba(0,0,0,0.1)]' : ''}`}
           onClick={() => setViewMode('permits')}
         >
           <CalendarOff size={16} />
           {t('attendanceLogs.viewMode.permits')}
-          {permitRecords.length > 0 && <span className="logs-view-count">{permitRecords.length}</span>}
+          {permitRecords.length > 0 && <span className="inline-flex items-center justify-center min-w-[20px] h-[20px] px-[6px] rounded-full bg-purple-600 text-white text-[10px] font-bold">{permitRecords.length}</span>}
         </button>
       </div>
 
       {/* Filters */}
-      <Card className="logs-filters-card">
-        <div className="logs-filter-row">
-          <div className="logs-filter-group">
-            <label className="logs-filter-label">{t('attendanceLogs.filters.dateRange')}</label>
-            <div className="logs-tabs">
+      <Card className="mb-5 p-5">
+        <div className="mb-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-semibold text-text-muted uppercase tracking-[0.3px]">{t('attendanceLogs.filters.dateRange')}</label>
+            <div className="flex gap-2 max-sm:flex-wrap">
               {(['week', 'month', 'custom'] as const).map(r => (
                 <button
                   key={r}
-                  className={`logs-tab ${dateRange === r ? 'active' : ''}`}
+                  className={`px-4 py-2 border border-border bg-bg-white rounded-full text-sm font-semibold text-text-secondary cursor-pointer transition-all duration-150 hover:border-primary hover:text-primary focus:outline-none ${dateRange === r ? '!bg-primary !border-primary !text-white shadow-[0_2px_8px_rgba(99,102,241,0.3)]' : ''}`}
                   onClick={() => handleDateRangeChange(r)}
                 >
                   {r === 'week' ? t('attendanceLogs.filters.tabs.week') : r === 'month' ? t('attendanceLogs.filters.tabs.month') : t('attendanceLogs.filters.tabs.custom')}
@@ -296,44 +295,44 @@ export default function AttendanceLogs() {
         </div>
 
         {dateRange === 'custom' && (
-          <div className="logs-custom-dates">
-            <div className="logs-date-field">
-              <label>{t('attendanceLogs.filters.customStart')}</label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="logs-date-input" />
+          <div className="flex gap-4 mb-4 max-sm:flex-col">
+            <div className="flex-1 flex flex-col gap-1">
+              <label className="text-xs text-text-muted font-medium">{t('attendanceLogs.filters.customStart')}</label>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-3 py-2 border border-border rounded-md text-sm bg-bg-white" />
             </div>
-            <div className="logs-date-field">
-              <label>{t('attendanceLogs.filters.customEnd')}</label>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="logs-date-input" />
+            <div className="flex-1 flex flex-col gap-1">
+              <label className="text-xs text-text-muted font-medium">{t('attendanceLogs.filters.customEnd')}</label>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-2 border border-border rounded-md text-sm bg-bg-white" />
             </div>
           </div>
         )}
 
-        <div className="logs-selects-row">
+        <div className="flex gap-4 max-sm:flex-col">
           {users.length > 0 && (
-            <div className="logs-select-group">
-              <label className="logs-filter-label">{t('attendanceLogs.filters.worker')}</label>
-              <div className="logs-select-wrapper">
-                <User size={14} className="logs-select-pre" />
-                <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="logs-select">
+            <div className="flex-1 flex flex-col gap-2">
+              <label className="text-xs font-semibold text-text-muted uppercase tracking-[0.3px]">{t('attendanceLogs.filters.worker')}</label>
+              <div className="relative flex items-center">
+                <User size={14} className="absolute left-3 text-text-muted pointer-events-none z-10" />
+                <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="w-full py-2 px-9 border border-border rounded-md text-sm font-medium text-text-primary bg-bg-white appearance-none cursor-pointer transition-colors duration-150 focus:outline-none focus:border-primary">
                   <option value="">{t('attendanceLogs.filters.allWorkers')}</option>
                   {users.map(u => <option key={u._id} value={u._id}>{u.fullName} ({u.role})</option>)}
                 </select>
-                <ChevronDown size={14} className="logs-select-icon" />
+                <ChevronDown size={14} className="absolute right-3 text-text-muted pointer-events-none" />
               </div>
             </div>
           )}
 
           {viewMode === 'attendance' && (
-            <div className="logs-select-group">
-              <label className="logs-filter-label">{t('attendanceLogs.filters.payment')}</label>
-              <div className="logs-select-wrapper">
-                <Wallet size={14} className="logs-select-pre" />
-                <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as any)} className="logs-select">
+            <div className="flex-1 flex flex-col gap-2">
+              <label className="text-xs font-semibold text-text-muted uppercase tracking-[0.3px]">{t('attendanceLogs.filters.payment')}</label>
+              <div className="relative flex items-center">
+                <Wallet size={14} className="absolute left-3 text-text-muted pointer-events-none z-10" />
+                <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as any)} className="w-full py-2 px-9 border border-border rounded-md text-sm font-medium text-text-primary bg-bg-white appearance-none cursor-pointer transition-colors duration-150 focus:outline-none focus:border-primary">
                   <option value="Unpaid">{t('attendanceLogs.filters.paymentOptions.unpaid')}</option>
                   <option value="Paid">{t('attendanceLogs.filters.paymentOptions.paid')}</option>
                   <option value="All">{t('attendanceLogs.filters.paymentOptions.all')}</option>
                 </select>
-                <ChevronDown size={14} className="logs-select-icon" />
+                <ChevronDown size={14} className="absolute right-3 text-text-muted pointer-events-none" />
               </div>
             </div>
           )}
@@ -342,33 +341,33 @@ export default function AttendanceLogs() {
 
       {/* Summary - only in attendance mode */}
       {viewMode === 'attendance' && summary && (
-        <div className="logs-summary-grid">
-          <Card className="logs-summary-item">
+        <div className="grid grid-cols-4 gap-3 mb-5 max-lg:grid-cols-2 max-sm:grid-cols-2">
+          <Card className="flex flex-col items-center gap-[6px] p-4 text-center transition-transform duration-150 hover:-translate-y-[2px]">
             <Calendar size={16} color="#6366F1" />
-            <span className="logs-sum-val">{summary.total}</span>
-            <span className="logs-sum-label">{t('attendanceLogs.summary.totalDays')}</span>
+            <span className="text-xl font-extrabold text-text-primary leading-[1.1]">{summary.total}</span>
+            <span className="text-xs text-text-muted font-medium">{t('attendanceLogs.summary.totalDays')}</span>
           </Card>
-          <Card className="logs-summary-item logs-sum-green">
+          <Card className="flex flex-col items-center gap-[6px] p-4 text-center transition-transform duration-150 hover:-translate-y-[2px]">
             <Check size={16} color="#059669" />
-            <span className="logs-sum-val">{summary.present}</span>
-            <span className="logs-sum-label">{t('attendanceLogs.summary.present')}</span>
+            <span className="text-xl font-extrabold text-text-primary leading-[1.1]">{summary.present}</span>
+            <span className="text-xs text-text-muted font-medium">{t('attendanceLogs.summary.present')}</span>
           </Card>
-          <Card className="logs-summary-item logs-sum-amber">
+          <Card className="flex flex-col items-center gap-[6px] p-4 text-center transition-transform duration-150 hover:-translate-y-[2px]">
             <Clock size={16} color="#D97706" />
-            <span className="logs-sum-val">{summary.totalHours.toFixed(1)}h</span>
-            <span className="logs-sum-label">{t('attendanceLogs.summary.totalHours')}</span>
+            <span className="text-xl font-extrabold text-text-primary leading-[1.1]">{summary.totalHours.toFixed(1)}h</span>
+            <span className="text-xs text-text-muted font-medium">{t('attendanceLogs.summary.totalHours')}</span>
           </Card>
-          <Card className="logs-summary-item logs-sum-primary">
+          <Card className="flex flex-col items-center gap-[6px] p-4 text-center transition-transform duration-150 hover:-translate-y-[2px]">
             <DollarSign size={16} color="var(--primary)" />
-            <span className="logs-sum-val logs-sum-highlight">{formatRp(summary.totalPayment || 0)}</span>
-            <span className="logs-sum-label">{t('attendanceLogs.summary.totalPayment')}</span>
+            <span className="text-xl font-extrabold text-text-primary leading-[1.1] !text-base !text-primary">{formatRp(summary.totalPayment || 0)}</span>
+            <span className="text-xs text-text-muted font-medium">{t('attendanceLogs.summary.totalPayment')}</span>
           </Card>
         </div>
       )}
 
       {/* Pay All button - only in attendance mode */}
       {viewMode === 'attendance' && isSupervisor && paymentStatus === 'Unpaid' && (summary?.totalPayment || 0) > 0 && (
-        <div className="logs-pay-row">
+        <div className="mb-5">
           <Button
             title={t('attendanceLogs.actions.markAllPaid', { amount: formatRp(summary?.totalPayment || 0) })}
             icon={Check}
@@ -384,8 +383,8 @@ export default function AttendanceLogs() {
       {viewMode === 'attendance' && (
         <>
           {loading ? (
-            <div className="logs-loading">
-              <Loader size={24} className="dashboard-spinner" />
+            <div className="flex flex-col items-center justify-center p-10 gap-3 text-text-muted text-sm">
+              <Loader size={24} className="animate-spin text-primary" />
               <span>{t('attendanceLogs.loading')}</span>
             </div>
           ) : records.length === 0 ? (
@@ -395,20 +394,20 @@ export default function AttendanceLogs() {
               description={t('attendanceLogs.empty.desc')}
             />
           ) : (
-            <div className="logs-records">
+            <div className="flex flex-col gap-3">
               {records.map((record) => {
                 const statusStyle = STATUS_STYLES[record.status] || STATUS_STYLES.Present;
                 const totalPay = (record.dailyRate || 0) + (record.overtimePay || 0);
                 return (
-                  <Card key={record._id} className="logs-record">
+                  <Card key={record._id} className="p-4 transition-all duration-150 hover:-translate-y-[1px] hover:shadow-md">
                     {/* Top row: Date + Status + Wage badge */}
-                    <div className="logs-rec-top">
-                      <div className="logs-rec-date">
+                    <div className="flex justify-between items-center mb-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
                         <Calendar size={14} />
                         <span>{formatDate(record.date)}</span>
                       </div>
-                      <div className="logs-rec-badges">
-                        <span className="logs-rec-status" style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-bold px-2 py-[2px] rounded-full whitespace-nowrap" style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}>
                           {record.status}
                         </span>
                         <Badge label={getWageLabel(record.wageType)} variant={record.wageType === 'daily' ? 'neutral' : record.wageType === 'overtime_1.5' ? 'warning' : 'danger'} size="small" />
@@ -416,34 +415,34 @@ export default function AttendanceLogs() {
                     </div>
 
                     {/* Worker info */}
-                    <div className="logs-rec-worker">
-                      <div className="logs-rec-avatar" style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}>
+                    <div className="flex items-center gap-3 pb-3 border-b border-border-light mb-3">
+                      <div className="w-[34px] h-[34px] rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}>
                         {record.userId.fullName.charAt(0).toUpperCase()}
                       </div>
-                      <div className="logs-rec-worker-info">
-                        <span className="logs-rec-name">{record.userId.fullName}</span>
-                        <span className="logs-rec-role">{record.userId.role}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{record.userId.fullName}</span>
+                        <span className="block text-[10px] text-text-muted capitalize">{record.userId.role}</span>
                       </div>
-                      <div className="logs-rec-times">
-                        <span className="logs-rec-time">{record.checkIn?.time ? formatTime(record.checkIn.time) : '--:--'}</span>
-                        <span className="logs-rec-sep">→</span>
-                        <span className="logs-rec-time">{record.checkOut?.time ? formatTime(record.checkOut.time) : '--:--'}</span>
+                      <div className="flex items-center gap-1 shrink-0 max-sm:hidden">
+                        <span className="text-sm font-semibold text-text-secondary tabular-nums">{record.checkIn?.time ? formatTime(record.checkIn.time) : '--:--'}</span>
+                        <span className="text-[10px] text-text-muted">→</span>
+                        <span className="text-sm font-semibold text-text-secondary tabular-nums">{record.checkOut?.time ? formatTime(record.checkOut.time) : '--:--'}</span>
                       </div>
                     </div>
 
                     {/* Financials row */}
-                    <div className="logs-rec-finance">
-                      <div className="logs-rec-fin-item">
-                        <span className="logs-rec-fin-label">{t('attendanceLogs.record.daily')}</span>
-                        <span className="logs-rec-fin-val">{formatRp(record.dailyRate || 0)}</span>
+                    <div className="flex items-center gap-4 mb-3 max-sm:flex-wrap max-sm:gap-2">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('attendanceLogs.record.daily')}</span>
+                        <span className="text-sm font-semibold text-text-primary">{formatRp(record.dailyRate || 0)}</span>
                       </div>
                       {record.overtimePay > 0 && (
-                        <div className="logs-rec-fin-item">
-                          <span className="logs-rec-fin-label">{t('attendanceLogs.record.overtime')}</span>
-                          <span className="logs-rec-fin-val">{formatRp(record.overtimePay)}</span>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('attendanceLogs.record.overtime')}</span>
+                          <span className="text-sm font-semibold text-text-primary">{formatRp(record.overtimePay)}</span>
                         </div>
                       )}
-                      <div className="logs-rec-fin-total">
+                      <div className="ml-auto flex items-center gap-2 text-sm font-bold text-primary">
                         <span>{formatRp(totalPay)}</span>
                         <Badge
                           label={record.paymentStatus === 'Paid' ? t('attendanceLogs.filters.paymentOptions.paid') : t('attendanceLogs.filters.paymentOptions.unpaid')}
@@ -454,9 +453,9 @@ export default function AttendanceLogs() {
                     </div>
 
                     {/* Project + Action */}
-                    <div className="logs-rec-bottom">
+                    <div className="flex items-center justify-between max-sm:flex-col max-sm:items-start max-sm:gap-2 [&>button]:max-sm:w-full">
                       {record.projectId && (
-                        <div className="logs-rec-project">
+                        <div className="flex items-center gap-1 text-xs text-text-muted">
                           <Building size={12} />
                           <span>{record.projectId.nama}</span>
                         </div>
@@ -483,8 +482,8 @@ export default function AttendanceLogs() {
       {viewMode === 'permits' && (
         <>
           {loading ? (
-            <div className="logs-loading">
-              <Loader size={24} className="dashboard-spinner" />
+            <div className="flex flex-col items-center justify-center p-10 gap-3 text-text-muted text-sm">
+              <Loader size={24} className="animate-spin text-primary" />
               <span>{t('attendanceLogs.loading')}</span>
             </div>
           ) : permitRecords.length === 0 ? (
@@ -494,17 +493,17 @@ export default function AttendanceLogs() {
               description={t('attendanceLogs.permit.emptyDesc')}
             />
           ) : (
-            <div className="logs-records">
+            <div className="flex flex-col gap-3">
               {permitRecords.map((record) => (
-                <Card key={record._id} className="logs-record logs-permit-card">
+                <Card key={record._id} className="p-4 transition-all duration-150 hover:-translate-y-[1px] hover:shadow-md border-l-[3px] border-l-purple-600">
                   {/* Top row */}
-                  <div className="logs-rec-top">
-                    <div className="logs-rec-date">
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
                       <Calendar size={14} />
                       <span>{formatDate(record.date)}</span>
                     </div>
                     <span
-                      className="logs-rec-status"
+                      className="text-[9px] font-bold px-2 py-[2px] rounded-full whitespace-nowrap"
                       style={{
                         backgroundColor: record.permit?.status === 'Approved' ? '#D1FAE5' : record.permit?.status === 'Rejected' ? '#FEE2E2' : '#FEF3C7',
                         color: record.permit?.status === 'Approved' ? '#059669' : record.permit?.status === 'Rejected' ? '#DC2626' : '#D97706',
@@ -515,20 +514,20 @@ export default function AttendanceLogs() {
                   </div>
 
                   {/* Worker */}
-                  <div className="logs-rec-worker">
-                    <div className="logs-rec-avatar" style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
+                  <div className="flex items-center gap-3 pb-3 border-b border-border-light mb-3">
+                    <div className="w-[34px] h-[34px] rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
                       {record.userId.fullName.charAt(0).toUpperCase()}
                     </div>
-                    <div className="logs-rec-worker-info">
-                      <span className="logs-rec-name">{record.userId.fullName}</span>
-                      <span className="logs-rec-role">{record.userId.role}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="block text-sm font-semibold text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{record.userId.fullName}</span>
+                      <span className="block text-[10px] text-text-muted capitalize">{record.userId.role}</span>
                     </div>
                   </div>
 
                   {/* Permit reason */}
                   {record.permit?.reason && (
-                    <div className="logs-permit-reason">
-                      <FileText size={14} />
+                    <div className="flex items-start gap-2 p-3 bg-purple-50 rounded-md mt-3 text-sm text-text-secondary leading-[1.5]">
+                      <FileText size={14} className="shrink-0 mt-[2px] text-purple-600" />
                       <span>{record.permit.reason}</span>
                     </div>
                   )}
@@ -536,15 +535,15 @@ export default function AttendanceLogs() {
                   {/* Evidence */}
                   {record.permit?.evidence && (
                     <div
-                      className="logs-permit-evidence"
+                      className="relative mt-3 rounded-md overflow-hidden cursor-pointer max-h-[180px] group"
                       onClick={() => setEvidenceModal({ open: true, url: getImageUrl(record.permit?.evidence), worker: record.userId.fullName })}
                     >
                       <img
                         src={getImageUrl(record.permit?.evidence)}
                         alt="Evidence"
-                        className="logs-permit-thumb"
+                        className="w-full h-[180px] object-cover block rounded-md transition-transform duration-300 group-hover:scale-105"
                       />
-                      <div className="logs-permit-evidence-overlay">
+                      <div className="absolute inset-0 bg-black/35 flex flex-col items-center justify-center gap-1 text-white text-xs font-semibold opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                         <Eye size={16} />
                         <span>{t('attendanceLogs.permit.viewEvidence')}</span>
                       </div>
@@ -559,45 +558,45 @@ export default function AttendanceLogs() {
 
       {/* Evidence Photo Modal */}
       {evidenceModal.open && (
-        <div className="modal-overlay" onClick={() => setEvidenceModal({ open: false, url: '', worker: '' })}>
-          <div className="logs-evidence-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="logs-evidence-modal-header">
-              <h3>{t('attendanceLogs.permit.evidenceTitle', { name: evidenceModal.worker })}</h3>
-              <button className="logs-evidence-close" onClick={() => setEvidenceModal({ open: false, url: '', worker: '' })}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 backdrop-blur-[4px]" onClick={() => setEvidenceModal({ open: false, url: '', worker: '' })}>
+          <div className="bg-bg-white rounded-2xl max-w-[500px] w-full shadow-[0_20px_60px_rgba(0,0,0,0.2)] overflow-hidden animate-[evidence-modal-in_0.25s_ease-out]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between py-4 px-5 border-b border-border-light">
+              <h3 className="text-base font-bold text-text-primary m-0">{t('attendanceLogs.permit.evidenceTitle', { name: evidenceModal.worker })}</h3>
+              <button className="border-none bg-transparent cursor-pointer text-text-muted p-1 rounded-sm transition-colors duration-200 hover:text-text-primary" onClick={() => setEvidenceModal({ open: false, url: '', worker: '' })}>
                 <X size={20} />
               </button>
             </div>
-            <img src={evidenceModal.url} alt="Permit Evidence" className="logs-evidence-img" />
+            <img src={evidenceModal.url} alt="Permit Evidence" className="w-full block max-h-[70vh] object-contain bg-[#f3f3f3]" />
           </div>
         </div>
       )}
 
       {/* Wage Modal */}
       {wageModal && selectedRecord && (
-        <div className="modal-overlay" onClick={() => setWageModal(false)}>
-          <div className="att-modal" onClick={e => e.stopPropagation()}>
-            <div className="att-modal-title-row">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 backdrop-blur-[4px]" onClick={() => setWageModal(false)}>
+          <div className="bg-bg-white rounded-xl w-full max-w-[420px] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1">
               <DollarSign size={20} color="#F59E0B" />
-              <h3>{t('attendanceLogs.wageModal.title')}</h3>
+              <h3 className="text-lg font-bold text-text-primary m-0">{t('attendanceLogs.wageModal.title')}</h3>
             </div>
 
-            <div className="logs-wage-info">
+            <div className="flex items-center gap-2 p-3 bg-bg-secondary rounded-md my-4 text-sm text-text-secondary">
               <User size={14} />
               <span>{selectedRecord.userId.fullName}</span>
-              <span className="logs-wage-sep">•</span>
+              <span className="text-text-muted">•</span>
               <span>{formatDate(selectedRecord.date)}</span>
             </div>
 
-            <div className="logs-wage-options">
+            <div className="flex flex-col gap-2">
               {WAGE_OPTIONS_TRANSLATED.map(opt => (
                 <button
                   key={opt.value}
-                  className={`logs-wage-opt ${newWageType === opt.value ? 'active' : ''}`}
+                  className={`flex items-center gap-3 p-3 border border-border bg-bg-white rounded-md cursor-pointer transition-all duration-150 hover:border-primary ${newWageType === opt.value ? 'border-primary bg-primary-bg' : ''}`}
                   onClick={() => handleTypeChange(opt.value)}
                 >
                   {newWageType === opt.value && <Check size={16} />}
-                  <span className="logs-wage-opt-label">{opt.label}</span>
-                  <span className="logs-wage-opt-mult">{opt.multiplier}x</span>
+                  <span className="flex-1 font-medium text-text-primary text-sm text-left">{opt.label}</span>
+                  <span className="text-sm text-text-muted font-semibold">{opt.multiplier}x</span>
                 </button>
               ))}
             </div>
@@ -619,18 +618,18 @@ export default function AttendanceLogs() {
                     placeholder={t('attendanceLogs.wageModal.overtimePlaceholder')}
                   />
                   {selectedRecord.checkIn?.time && selectedRecord.checkOut?.time && (
-                    <p className="logs-helper">
+                    <p className="text-xs text-text-muted mt-1 mb-0">
                       {t('attendanceLogs.wageModal.duration', { hours: ((new Date(selectedRecord.checkOut.time).getTime() - new Date(selectedRecord.checkIn.time).getTime()) / (1000 * 60 * 60)).toFixed(2) })}
                     </p>
                   )}
                 </div>
               )}
-              <p className="logs-helper" style={{ marginTop: 12 }}>
+              <p className="text-xs text-text-muted mt-1 mb-0" style={{ marginTop: 12 }}>
                 {t('attendanceLogs.wageModal.helper')}
               </p>
             </div>
 
-            <div className="att-modal-actions">
+            <div className="flex gap-3 mt-5 justify-end max-sm:flex-col [&>button]:max-sm:w-full">
               <Button title={t('attendanceLogs.actions.cancel')} onClick={() => setWageModal(false)} variant="outline" />
               <Button title={t('attendanceLogs.actions.save')} onClick={handleSaveWage} loading={submitting} variant="primary" />
             </div>

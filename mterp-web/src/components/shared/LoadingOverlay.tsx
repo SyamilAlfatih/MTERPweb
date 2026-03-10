@@ -1,5 +1,4 @@
 import React from 'react';
-import './LoadingOverlay.css';
 
 interface LoadingOverlayProps {
   visible: boolean;
@@ -13,10 +12,10 @@ export default function LoadingOverlay({
   if (!visible) return null;
 
   return (
-    <div className="loading-overlay">
-      <div className="loading-content">
-        <div className="loading-spinner"></div>
-        <span className="loading-text">{text}</span>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1100] animate-fade-in">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+        <span className="text-white text-base font-semibold">{text}</span>
       </div>
     </div>
   );

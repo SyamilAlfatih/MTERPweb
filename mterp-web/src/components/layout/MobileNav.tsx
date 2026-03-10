@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
-import './MobileNav.css';
 
 interface NavItem {
   id: string;
@@ -177,13 +176,19 @@ export default function MobileNav() {
     <>
       {/* Overlay */}
       <div
-        className={`mobile-nav-overlay ${isOpen ? 'open' : ''}`}
+        className={`fixed inset-0 bg-black/50 backdrop-blur-sm transition-all duration-300 z-[998] lg:hidden ${
+          isOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
+        }`}
         onClick={() => setIsOpen(false)}
       />
 
       {/* Menu Items */}
-      <div className={`mobile-nav-menu ${isOpen ? 'open' : ''}`}>
-        <div className="mobile-nav-items">
+      <div 
+        className={`fixed bottom-24 right-6 transition-all duration-300 z-[999] lg:hidden ${
+          isOpen ? 'opacity-100 visible translate-y-0 scale-100' : 'opacity-0 invisible translate-y-5 scale-95'
+        }`}
+      >
+        <div className="flex flex-col gap-2 p-2 bg-bg-white rounded-[20px] shadow-[0_4px_20px_rgba(0,0,0,0.1),0_8px_32px_rgba(0,0,0,0.05)] max-h-[70vh] overflow-y-auto w-64">
           {filteredItems.map((item, index) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.route ||
@@ -192,44 +197,58 @@ export default function MobileNav() {
             return (
               <button
                 key={item.id}
-                className={`mobile-nav-item ${isActive ? 'active' : ''}`}
+                className={`flex items-center gap-3 py-3 pr-4 pl-3 rounded-[14px] min-w-[180px] transition-all duration-300 transform ${
+                  isOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-5'
+                } ${
+                  isActive ? 'bg-primary-bg' : 'bg-bg-secondary hover:bg-bg-white hover:-translate-x-1 active:scale-95'
+                }`}
                 onClick={() => handleNavigation(item.route)}
                 style={{
-                  animationDelay: `${index * 50}ms`,
-                  '--item-color': item.color,
-                  '--item-bg': item.bg,
-                } as React.CSSProperties}
+                  transitionDelay: `${isOpen ? index * 40 : 0}ms`,
+                }}
               >
-                <div className="mobile-nav-item-icon" style={{ backgroundColor: item.bg }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: item.bg }}>
                   <Icon size={20} color={item.color} />
                 </div>
-                <span className="mobile-nav-item-label">{item.label.includes('sidebar.') ? t(item.label) : item.label}</span>
+                <span className={`text-[15px] whitespace-nowrap ${isActive ? 'text-primary font-semibold' : 'text-text-primary font-medium'}`}>
+                  {item.label.includes('sidebar.') ? t(item.label) : item.label}
+                </span>
               </button>
             );
           })}
 
           {/* Logout Button */}
           <button
-            className="mobile-nav-item logout"
+            className={`flex items-center gap-3 py-3 pr-4 pl-3 bg-bg-secondary rounded-[14px] min-w-[180px] transition-all duration-300 transform mt-1 border-t border-border-light pt-4 hover:bg-red-50 hover:-translate-x-1 active:scale-95 ${
+              isOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-5'
+            }`}
             onClick={handleLogout}
-            style={{ animationDelay: `${filteredItems.length * 50}ms` }}
+            style={{ transitionDelay: `${isOpen ? filteredItems.length * 40 : 0}ms` }}
           >
-            <div className="mobile-nav-item-icon" style={{ backgroundColor: '#FEE2E2' }}>
-              <LogOut size={20} color="#EF4444" />
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-red-100">
+              <LogOut size={20} className="text-red-500" />
             </div>
-            <span className="mobile-nav-item-label">{t('sidebar.logout')}</span>
+            <span className="text-[15px] font-medium text-text-primary whitespace-nowrap">{t('sidebar.logout')}</span>
           </button>
         </div>
       </div>
 
       {/* FAB Button */}
       <button
-        className={`mobile-nav-fab ${isOpen ? 'open' : ''}`}
+        className={`fixed bottom-6 right-6 w-14 h-14 flex items-center justify-center z-[1000] cursor-pointer transition-all duration-300 lg:hidden shadow-[0_4px_20px_rgba(30,64,175,0.4),0_8px_32px_rgba(30,64,175,0.2)] active:scale-95 hover:scale-105 ${
+          isOpen ? 'rounded-full bg-bg-primary !shadow-[0_4px_20px_rgba(0,0,0,0.1)]' : 'rounded-2xl bg-gradient-to-br from-primary to-primary-light text-white'
+        }`}
         onClick={() => setIsOpen(!isOpen)}
         aria-label="Navigation menu"
       >
-        <Menu className="fab-icon menu" size={24} />
-        <X className="fab-icon close" size={24} />
+        <Menu 
+          className={`absolute transition-all duration-300 ${isOpen ? 'opacity-0 rotate-90 scale-50' : 'opacity-100 rotate-0 scale-100'}`} 
+          size={24} 
+        />
+        <X 
+          className={`absolute transition-all duration-300 text-text-primary ${isOpen ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-50'}`} 
+          size={24} 
+        />
       </button>
     </>
   );

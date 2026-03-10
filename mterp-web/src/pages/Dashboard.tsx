@@ -31,7 +31,6 @@ import {
 } from 'recharts';
 import api from '../api/api';
 import { Card } from '../components/shared';
-import './Dashboard.css';
 
 interface WorkerEntry {
     _id: string;
@@ -169,8 +168,8 @@ export default function Dashboard() {
 
     if (loading && !data) {
         return (
-            <div className="dashboard-loading">
-                <Loader className="dashboard-spinner" size={32} />
+            <div className="flex flex-col items-center justify-center h-[60vh] gap-3 text-text-muted">
+                <Loader className="animate-spin" size={32} />
                 <p>Loading dashboard...</p>
             </div>
         );
@@ -183,35 +182,35 @@ export default function Dashboard() {
     const formattedDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     return (
-        <div className="dashboard-container">
+        <div className="p-6 max-w-[1100px] max-lg:p-4 max-sm:p-3">
             {/* Header */}
-            <div className="dashboard-header">
-                <div className="dashboard-header-left">
-                    <div className="dashboard-header-icon">
+            <div className="flex items-center justify-between mb-6 gap-4 flex-wrap max-sm:flex-col max-sm:items-start">
+                <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-primary-light flex items-center justify-center shadow-primary">
                         <BarChart3 size={24} color="white" />
                     </div>
                     <div>
-                        <h1 className="dashboard-title">Dashboard</h1>
-                        <p className="dashboard-subtitle">Project analytics overview</p>
+                        <h1 className="text-xl font-bold text-text-primary m-0">Dashboard</h1>
+                        <p className="text-sm text-text-muted m-0">Project analytics overview</p>
                     </div>
                 </div>
 
                 {/* Project Selector */}
-                <div className="project-selector-wrapper">
+                <div className="relative">
                     <button
-                        className="project-selector"
+                        className="flex items-center gap-2 px-4 py-2 bg-bg-white border border-border rounded-full cursor-pointer text-sm font-semibold text-text-primary transition-all shadow-sm hover:border-primary hover:shadow-md"
                         onClick={() => setDropdownOpen(!dropdownOpen)}
                     >
-                        <span className="project-selector-label">{selectedProjectName}</span>
+                        <span>{selectedProjectName}</span>
                         <ChevronDown
                             size={16}
-                            className={`project-selector-chevron ${dropdownOpen ? 'open' : ''}`}
+                            className={`transition-transform text-text-muted ${dropdownOpen ? 'rotate-180' : ''}`}
                         />
                     </button>
                     {dropdownOpen && (
-                        <div className="project-dropdown">
+                        <div className="absolute top-[calc(100%+6px)] right-0 min-w-[220px] max-h-[300px] overflow-y-auto bg-bg-white border border-border rounded-lg shadow-lg z-[100] animate-fade-in origin-top">
                             <button
-                                className={`project-dropdown-item ${!selectedProject ? 'active' : ''}`}
+                                className={`block w-full px-4 py-3 text-left text-sm text-text-secondary bg-transparent border-none cursor-pointer transition-all hover:bg-bg-primary hover:text-text-primary ${!selectedProject ? 'bg-primary-bg text-primary font-semibold' : ''}`}
                                 onClick={() => { setSelectedProject(''); setDropdownOpen(false); }}
                             >
                                 All Projects
@@ -219,7 +218,7 @@ export default function Dashboard() {
                             {data.projectList.map((p) => (
                                 <button
                                     key={p._id}
-                                    className={`project-dropdown-item ${selectedProject === p._id ? 'active' : ''}`}
+                                    className={`block w-full px-4 py-3 text-left text-sm text-text-secondary bg-transparent border-none cursor-pointer transition-all hover:bg-bg-primary hover:text-text-primary ${selectedProject === p._id ? 'bg-primary-bg text-primary font-semibold' : ''}`}
                                     onClick={() => { setSelectedProject(p._id); setDropdownOpen(false); }}
                                 >
                                     {p.nama}
@@ -231,59 +230,59 @@ export default function Dashboard() {
             </div>
 
             {/* KPI Cards */}
-            <div className="kpi-grid">
-                <Card className="kpi-card">
-                    <div className="kpi-icon kpi-icon-projects">
+            <div className="grid grid-cols-4 gap-4 mb-6 max-lg:grid-cols-2 max-sm:grid-cols-1">
+                <Card className="relative !p-5 flex flex-col gap-3 overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="w-10 h-10 rounded-md flex items-center justify-center text-white bg-gradient-to-br from-[#6366F1] to-[#818CF8]">
                         <BarChart3 size={20} />
                     </div>
-                    <div className="kpi-info">
-                        <span className="kpi-value">{data.totalProjects}</span>
-                        <span className="db-stat-label">{t('dashboard.activeProjects')}</span>
+                    <div className="flex flex-col">
+                        <span className="text-2xl font-extrabold text-text-primary leading-[1.1]">{data.totalProjects}</span>
+                        <span className="text-xs text-text-muted font-semibold uppercase tracking-[0.5px] mt-0.5">{t('dashboard.activeProjects')}</span>
                     </div>
-                    <div className="kpi-tags">
+                    <div className="flex gap-2 flex-wrap">
                         {data.statusCounts['In Progress'] > 0 && (
-                            <span className="kpi-tag kpi-tag-active">{data.statusCounts['In Progress']} Active</span>
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-[0.3px] bg-blue-100 text-blue-600">{data.statusCounts['In Progress']} Active</span>
                         )}
                         {data.statusCounts['Completed'] > 0 && (
-                            <span className="kpi-tag kpi-tag-done">{data.statusCounts['Completed']} Done</span>
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-[0.3px] bg-green-100 text-green-600">{data.statusCounts['Completed']} Done</span>
                         )}
                     </div>
                 </Card>
 
-                <Card className="kpi-card">
-                    <div className="db-actions-header">
-                        <h3>{t('dashboard.quickActions')}</h3>
+                <Card className="relative !p-5 flex flex-col gap-3 overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-sm font-bold text-text-primary m-0">{t('dashboard.quickActions')}</h3>
                     </div>
-                    <div className="kpi-info">
-                        <span className="kpi-value">{formatCurrency(data.actualSpend)}</span>
-                        <span className="kpi-label">Budget Used</span>
+                    <div className="flex flex-col">
+                        <span className="text-2xl font-extrabold text-text-primary leading-[1.1]">{formatCurrency(data.actualSpend)}</span>
+                        <span className="text-xs text-text-muted font-semibold uppercase tracking-[0.5px] mt-0.5">Budget Used</span>
                     </div>
-                    <div className="kpi-budget-bar">
-                        <div className="kpi-budget-track">
+                    <div className="flex flex-col gap-1">
+                        <div className="w-full h-1.5 bg-bg-secondary rounded-full overflow-hidden">
                             <div
-                                className="kpi-budget-fill"
+                                className="h-full bg-gradient-to-r from-[#059669] to-[#34D399] rounded-full transition-all duration-700 ease-out"
                                 style={{ width: `${budgetPercent}%` }}
                             />
                         </div>
-                        <span className="kpi-budget-text">
+                        <span className="text-[9px] text-text-muted font-medium">
                             {budgetPercent}% of {formatCurrency(data.totalBudget)}
                         </span>
                     </div>
                 </Card>
 
-                <Card className="kpi-card">
-                    <div className="kpi-icon kpi-icon-progress">
+                <Card className="relative !p-5 flex flex-col gap-3 overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="w-10 h-10 rounded-md flex items-center justify-center text-white bg-gradient-to-br from-primary to-primary-light">
                         <TrendingUp size={20} />
                     </div>
-                    <div className="kpi-info">
-                        <span className="kpi-value">{data.avgProgress}%</span>
-                        <span className="kpi-label">Avg. Progress</span>
+                    <div className="flex flex-col">
+                        <span className="text-2xl font-extrabold text-text-primary leading-[1.1]">{data.avgProgress}%</span>
+                        <span className="text-xs text-text-muted font-semibold uppercase tracking-[0.5px] mt-0.5">Avg. Progress</span>
                     </div>
-                    <div className="kpi-progress-ring-wrapper">
-                        <svg className="kpi-progress-ring" viewBox="0 0 44 44">
-                            <circle className="kpi-ring-bg" cx="22" cy="22" r="18" />
+                    <div className="absolute top-4 right-4 w-11 h-11">
+                        <svg className="w-full h-full -rotate-90" viewBox="0 0 44 44">
+                            <circle className="fill-none stroke-bg-secondary stroke-[3]" cx="22" cy="22" r="18" />
                             <circle
-                                className="kpi-ring-fill"
+                                className="fill-none stroke-primary stroke-[3] stroke-linecap-round transition-all duration-[0.8s] ease-out"
                                 cx="22" cy="22" r="18"
                                 strokeDasharray={`${(data.avgProgress / 100) * 113} 113`}
                             />
@@ -291,39 +290,39 @@ export default function Dashboard() {
                     </div>
                 </Card>
 
-                <Card className="kpi-card">
-                    <div className="kpi-icon kpi-icon-tasks">
+                <Card className="relative !p-5 flex flex-col gap-3 overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="w-10 h-10 rounded-md flex items-center justify-center text-white bg-gradient-to-br from-[#F59E0B] to-[#FBBF24]">
                         <ClipboardList size={20} />
                     </div>
-                    <div className="kpi-info">
-                        <span className="kpi-value">{data.totalTasks}</span>
-                        <span className="db-stat-label">{t('dashboard.toolsInUse')}</span>
+                    <div className="flex flex-col">
+                        <span className="text-2xl font-extrabold text-text-primary leading-[1.1]">{data.totalTasks}</span>
+                        <span className="text-xs text-text-muted font-semibold uppercase tracking-[0.5px] mt-0.5">{t('dashboard.toolsInUse')}</span>
                     </div>
-                    <div className="kpi-tags">
+                    <div className="flex gap-2 flex-wrap">
                         {data.taskStatusCounts.in_progress > 0 && (
-                            <span className="kpi-tag kpi-tag-active">{data.taskStatusCounts.in_progress} Active</span>
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-[0.3px] bg-blue-100 text-blue-600">{data.taskStatusCounts.in_progress} Active</span>
                         )}
                         {data.taskStatusCounts.pending > 0 && (
-                            <span className="kpi-tag kpi-tag-pending">{data.taskStatusCounts.pending} Pending</span>
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-[0.3px] bg-yellow-100 text-yellow-600">{data.taskStatusCounts.pending} Pending</span>
                         )}
                     </div>
                 </Card>
             </div>
 
             {/* Charts Row */}
-            <div className="charts-row">
+            <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 mb-6">
                 {/* Progress Timeline */}
-                <Card className="chart-card chart-card-wide">
-                    <div className="chart-header">
-                        <div className="db-header-left">
-                            <h3 className="db-card-title">{t('dashboard.projectProgress')}</h3>
+                <Card className="!p-5 relative">
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-base font-bold text-text-primary m-0">{t('dashboard.projectProgress')}</h3>
                         </div>
                         {data.progressTimeline.length === 0 && (
-                            <span className="chart-empty-hint">No reports yet</span>
+                            <span className="text-xs text-text-muted">No reports yet</span>
                         )}
                     </div>
                     {data.progressTimeline.length > 0 ? (
-                        <div className="chart-body">
+                        <div className="w-full">
                             <ResponsiveContainer width="100%" height={220}>
                                 <LineChart data={data.progressTimeline}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
@@ -362,7 +361,7 @@ export default function Dashboard() {
                             </ResponsiveContainer>
                         </div>
                     ) : (
-                        <div className="chart-empty">
+                        <div className="flex flex-col items-center justify-center h-[180px] gap-3 text-text-muted text-sm">
                             <TrendingUp size={40} color="var(--text-muted)" />
                             <p>Submit daily reports to see progress trends</p>
                         </div>
@@ -370,14 +369,14 @@ export default function Dashboard() {
                 </Card>
 
                 {/* Task Breakdown */}
-                <Card className="chart-card">
-                    <div className="db-card-header">
-                        <div className="db-header-left">
-                            <h3 className="db-card-title">{t('dashboard.progressChart')}</h3>
+                <Card className="!p-5">
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-base font-bold text-text-primary m-0">{t('dashboard.progressChart')}</h3>
                         </div>
                     </div>
                     {taskPieData.length > 0 ? (
-                        <div className="chart-body chart-body-pie">
+                        <div className="flex flex-col items-center w-full">
                             <ResponsiveContainer width="100%" height={180}>
                                 <PieChart>
                                     <Pie
@@ -404,18 +403,18 @@ export default function Dashboard() {
                                     />
                                 </PieChart>
                             </ResponsiveContainer>
-                            <div className="pie-legend">
+                            <div className="flex flex-wrap gap-3 justify-center mt-2">
                                 {taskPieData.map((entry, i) => (
-                                    <div key={i} className="pie-legend-item">
-                                        <span className="pie-legend-dot" style={{ backgroundColor: entry.color }} />
-                                        <span className="db-overall-label">{t('dashboard.overall')}</span>
-                                        <span className="pie-legend-value">{entry.value}</span>
+                                    <div key={i} className="flex items-center gap-[6px] text-xs">
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
+                                        <span className="text-text-secondary">{t('dashboard.overall')}</span>
+                                        <span className="font-bold text-text-primary">{entry.value}</span>
                                     </div>
                                 ))}
                             </div>
                         </div>
                     ) : (
-                        <div className="chart-empty">
+                        <div className="flex flex-col items-center justify-center h-[180px] gap-3 text-text-muted text-sm">
                             <ClipboardList size={40} color="var(--text-muted)" />
                             <p>No tasks found</p>
                         </div>
@@ -424,72 +423,72 @@ export default function Dashboard() {
             </div>
 
             {/* ===== ATTENDANCE ANALYTICS SECTION ===== */}
-            <div className="section-divider">
-                <div className="section-divider-icon">
+            <div className="flex items-center gap-3 mb-5 mt-2 pb-3 border-b border-border">
+                <div className="w-[34px] h-[34px] rounded-md bg-gradient-to-br from-[#10B981] to-[#34D399] flex items-center justify-center text-white shrink-0">
                     <UserCheck size={18} />
                 </div>
-                <h2 className="section-divider-title">Attendance Analytics</h2>
-                <span className="section-divider-badge">{attendanceRate}% today</span>
+                <h2 className="text-base font-bold text-text-primary m-0">Attendance Analytics</h2>
+                <span className="ml-auto text-xs font-bold py-[3px] px-[10px] rounded-full bg-[#D1FAE5] text-[#059669]">{attendanceRate}% today</span>
             </div>
 
             {/* Attendance KPI Row */}
-            <div className="att-kpi-row">
-                <Card className="att-kpi">
-                    <div className="att-kpi-header">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+                <Card className="!p-4 sm:!p-5 flex flex-col gap-3 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-text-muted uppercase tracking-[0.4px]">
                         <Users size={16} color="#10B981" />
                         <span>Today's Workforce</span>
                     </div>
-                    <div className="att-kpi-body">
-                        <span className="att-kpi-big">{data.totalAttendanceToday}</span>
-                        <span className="att-kpi-of">/ {data.totalWorkers} workers</span>
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-extrabold text-text-primary leading-none">{data.totalAttendanceToday}</span>
+                        <span className="text-xs text-text-muted font-medium">/ {data.totalWorkers} workers</span>
                     </div>
-                    <div className="att-kpi-bar-wrapper">
-                        <div className="att-kpi-bar-track">
-                            <div className="att-kpi-bar-fill att-bar-green" style={{ width: `${attendanceRate}%` }} />
+                    <div className="w-full">
+                        <div className="w-full h-1.5 bg-bg-secondary rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-[0.8s] ease bg-gradient-to-r from-[#10B981] to-[#34D399]" style={{ width: `${attendanceRate}%` }} />
                         </div>
                     </div>
                 </Card>
 
-                <Card className="att-kpi">
-                    <div className="att-kpi-header">
+                <Card className="!p-4 sm:!p-5 flex flex-col gap-3 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-text-muted uppercase tracking-[0.4px]">
                         <Clock size={16} color="#3B82F6" />
                         <span>Status Breakdown</span>
                     </div>
-                    <div className="att-status-chips">
-                        <div className="att-chip att-chip-green">
-                            <span className="att-chip-val">{data.attendanceCounts.Present || 0}</span>
-                            <span className="db-action-label">{t('dashboard.newProject')}</span>
+                    <div className="grid grid-cols-2 gap-[6px]">
+                        <div className="flex items-center gap-[6px] py-1.5 px-2.5 rounded-md text-xs bg-[#D1FAE5] text-[#059669]">
+                            <span className="font-extrabold text-base leading-none">{data.attendanceCounts.Present || 0}</span>
+                            <span className="font-medium opacity-80">{t('dashboard.newProject')}</span>
                         </div>
-                        <div className="att-chip att-chip-yellow">
-                            <span className="att-chip-val">{data.attendanceCounts.Late || 0}</span>
-                            <span className="db-action-label">{t('dashboard.reqMaterial')}</span>
+                        <div className="flex items-center gap-[6px] py-1.5 px-2.5 rounded-md text-xs bg-[#FEF3C7] text-[#D97706]">
+                            <span className="font-extrabold text-base leading-none">{data.attendanceCounts.Late || 0}</span>
+                            <span className="font-medium opacity-80">{t('dashboard.reqMaterial')}</span>
                         </div>
-                        <div className="att-chip att-chip-red">
-                            <span className="att-chip-val">{data.attendanceCounts.Absent || 0}</span>
-                            <span className="att-chip-label">Absent</span>
+                        <div className="flex items-center gap-[6px] py-1.5 px-2.5 rounded-md text-xs bg-[#FEE2E2] text-[#DC2626]">
+                            <span className="font-extrabold text-base leading-none">{data.attendanceCounts.Absent || 0}</span>
+                            <span className="font-medium opacity-80">Absent</span>
                         </div>
-                        <div className="att-chip att-chip-purple">
-                            <span className="att-chip-val">{data.attendanceCounts.Permit || 0}</span>
-                            <span className="att-chip-label">Permit</span>
+                        <div className="flex items-center gap-[6px] py-1.5 px-2.5 rounded-md text-xs bg-[#EDE9FE] text-[#7C3AED]">
+                            <span className="font-extrabold text-base leading-none">{data.attendanceCounts.Permit || 0}</span>
+                            <span className="font-medium opacity-80">Permit</span>
                         </div>
                     </div>
                 </Card>
 
-                <Card className="att-kpi">
-                    <div className="att-kpi-header">
+                <Card className="!p-4 sm:!p-5 flex flex-col gap-3 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-text-muted uppercase tracking-[0.4px]">
                         <Wallet size={16} color="#F59E0B" />
                         <span>This Month's Wages</span>
                     </div>
-                    <div className="att-kpi-body">
-                        <span className="att-kpi-big">{formatCurrency(data.wageSummary.totalWages)}</span>
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-extrabold text-text-primary leading-none">{formatCurrency(data.wageSummary.totalWages)}</span>
                     </div>
-                    <div className="att-wage-split">
-                        <div className="att-wage-item">
-                            <span className="att-wage-dot att-dot-green" />
+                    <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2 text-xs text-text-secondary font-medium">
+                            <span className="w-2 h-2 rounded-full shrink-0 bg-[#10B981]" />
                             <span>Paid: {formatCurrency(data.wageSummary.totalPaid)}</span>
                         </div>
-                        <div className="att-wage-item">
-                            <span className="att-wage-dot att-dot-red" />
+                        <div className="flex items-center gap-2 text-xs text-text-secondary font-medium">
+                            <span className="w-2 h-2 rounded-full shrink-0 bg-[#EF4444]" />
                             <span>Unpaid: {formatCurrency(data.wageSummary.totalUnpaid)}</span>
                         </div>
                     </div>
@@ -497,14 +496,14 @@ export default function Dashboard() {
             </div>
 
             {/* Weekly Trend Chart + Worker Table */}
-            <div className="att-charts-row">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
                 {/* Weekly Attendance Bar Chart */}
-                <Card className="chart-card">
-                    <div className="db-card-header">
-                        <h3 className="db-card-title">{t('dashboard.recentActivity')}</h3>
-                        <button className="db-header-action">{t('dashboard.viewAll')}</button>
+                <Card className="!p-5">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-base font-bold text-text-primary m-0">{t('dashboard.recentActivity')}</h3>
+                        <button className="text-sm font-bold text-primary cursor-pointer border-none bg-transparent p-0">{t('dashboard.viewAll')}</button>
                     </div>
-                    <div className="chart-body">
+                    <div className="w-full">
                         <ResponsiveContainer width="100%" height={220}>
                             <BarChart data={data.weeklyTrend} barSize={16}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" vertical={false} />
@@ -539,38 +538,32 @@ export default function Dashboard() {
                 </Card>
 
                 {/* Today's Workers Table */}
-                <Card className="chart-card att-workers-card">
-                    <div className="chart-header">
-                        <h3 className="chart-title">Today's Workers</h3>
-                        <span className="chart-empty-hint">{data.todayWorkers.length} records</span>
+                <Card className="flex flex-col !p-5">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-base font-bold text-text-primary m-0">Today's Workers</h3>
+                        <span className="text-xs text-text-muted">{data.todayWorkers.length} records</span>
                     </div>
                     {data.todayWorkers.length > 0 ? (
-                        <div className="att-workers-list">
+                        <div className="flex flex-col gap-[2px] max-h-[280px] overflow-y-auto pr-1">
                             {data.todayWorkers.map((w) => {
                                 const style = STATUS_STYLES[w.status] || STATUS_STYLES.Present;
                                 return (
-                                    <div key={w._id} className="att-worker-row">
-                                        <div className="att-worker-info">
-                                            <div className="att-worker-avatar" style={{ backgroundColor: style.bg, color: style.color }}>
+                                    <div key={w._id} className="flex items-center gap-3 py-2 px-2 rounded-md transition-colors hover:bg-bg-secondary">
+                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0" style={{ backgroundColor: style.bg, color: style.color }}>
                                                 {w.name.charAt(0).toUpperCase()}
                                             </div>
-                                            <div className="db-greeting-text">
-                                                <h1 className="db-title">
-                                                    {t('dashboard.welcome')} <span className="db-title-highlight">{userName}</span>
-                                                </h1>
-                                                <p className="db-subtitle">{formattedDate}</p>
-                                            </div>
-                                            <div className="att-worker-details">
-                                                <span className="att-worker-name">{w.name}</span>
-                                                <span className="att-worker-project">{w.project}</span>
+                                            <div className="flex flex-col min-w-0">
+                                                <span className="text-sm font-semibold text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{w.name}</span>
+                                                <span className="text-[10px] text-text-muted whitespace-nowrap overflow-hidden text-ellipsis">{w.project}</span>
                                             </div>
                                         </div>
-                                        <div className="att-worker-times">
-                                            <span className="att-worker-time">{formatTime(w.checkIn)}</span>
-                                            <span className="att-worker-time-sep">→</span>
-                                            <span className="att-worker-time">{formatTime(w.checkOut)}</span>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <span className="text-[11px] font-semibold text-text-secondary tabular-nums">{formatTime(w.checkIn)}</span>
+                                            <span className="text-[10px] text-text-muted">→</span>
+                                            <span className="text-[11px] font-semibold text-text-secondary tabular-nums">{formatTime(w.checkOut)}</span>
                                         </div>
-                                        <span className="att-worker-status" style={{ backgroundColor: style.bg, color: style.color }}>
+                                        <span className="text-[9px] font-bold py-0.5 px-2 rounded-full whitespace-nowrap shrink-0" style={{ backgroundColor: style.bg, color: style.color }}>
                                             {w.status}
                                         </span>
                                     </div>
@@ -578,7 +571,7 @@ export default function Dashboard() {
                             })}
                         </div>
                     ) : (
-                        <div className="chart-empty">
+                        <div className="flex flex-col items-center justify-center h-[180px] gap-3 text-text-muted text-sm">
                             <Users size={40} color="var(--text-muted)" />
                             <p>No attendance records today</p>
                         </div>
@@ -587,45 +580,45 @@ export default function Dashboard() {
             </div>
 
             {/* Quick Stats Row */}
-            <div className="quick-stats-row">
-                <Card className="quick-stat">
-                    <div className="quick-stat-icon" style={{ backgroundColor: '#D1FAE5' }}>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <Card className="flex items-center gap-3 !py-4 !px-5 transition-transform hover:-translate-y-[1px]">
+                    <div className="w-10 h-10 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: '#D1FAE5' }}>
                         <Users size={18} color="#10B981" />
                     </div>
-                    <div className="quick-stat-info">
-                        <span className="quick-stat-value">{data.totalAttendanceToday}</span>
-                        <span className="quick-stat-label">Attendance Today</span>
+                    <div className="flex flex-col min-w-0">
+                        <span className="text-lg font-extrabold text-text-primary leading-[1.2]">{data.totalAttendanceToday}</span>
+                        <span className="text-xs text-text-muted font-medium">Attendance Today</span>
                     </div>
-                    <div className="quick-stat-detail">
+                    <div className="flex gap-1 flex-wrap ml-auto">
                         {data.attendanceCounts.Present > 0 && (
-                            <span className="qs-badge qs-badge-green">{data.attendanceCounts.Present} Present</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-[#D1FAE5] text-[#059669]">{data.attendanceCounts.Present} Present</span>
                         )}
                         {data.attendanceCounts.Late > 0 && (
-                            <span className="qs-badge qs-badge-yellow">{data.attendanceCounts.Late} Late</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-[#FEF3C7] text-[#D97706]">{data.attendanceCounts.Late} Late</span>
                         )}
                         {data.attendanceCounts.Absent > 0 && (
-                            <span className="qs-badge qs-badge-red">{data.attendanceCounts.Absent} Absent</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-[#FEE2E2] text-[#DC2626]">{data.attendanceCounts.Absent} Absent</span>
                         )}
                     </div>
                 </Card>
 
-                <Card className="quick-stat">
-                    <div className="quick-stat-icon" style={{ backgroundColor: '#FEF3C7' }}>
+                <Card className="flex items-center gap-3 !py-4 !px-5 transition-transform hover:-translate-y-[1px]">
+                    <div className="w-10 h-10 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: '#FEF3C7' }}>
                         <AlertCircle size={18} color="#F59E0B" />
                     </div>
-                    <div className="quick-stat-info">
-                        <span className="quick-stat-value">{data.pendingRequests}</span>
-                        <span className="db-stat-label">{t('dashboard.pendingApprovals')}</span>
+                    <div className="flex flex-col min-w-0">
+                        <span className="text-lg font-extrabold text-text-primary leading-[1.2]">{data.pendingRequests}</span>
+                        <span className="text-xs text-text-muted font-medium uppercase tracking-[0.5px] mt-0.5">{t('dashboard.pendingApprovals')}</span>
                     </div>
                 </Card>
 
-                <Card className="quick-stat">
-                    <div className="quick-stat-icon" style={{ backgroundColor: '#FEE2E2' }}>
+                <Card className="flex items-center gap-3 !py-4 !px-5 transition-transform hover:-translate-y-[1px]">
+                    <div className="w-10 h-10 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: '#FEE2E2' }}>
                         <Package size={18} color="#EF4444" />
                     </div>
-                    <div className="quick-stat-info">
-                        <span className="quick-stat-value">{formatCurrency(data.totalUnpaid)}</span>
-                        <span className="quick-stat-label">Unpaid Wages</span>
+                    <div className="flex flex-col min-w-0">
+                        <span className="text-lg font-extrabold text-text-primary leading-[1.2]">{formatCurrency(data.totalUnpaid)}</span>
+                        <span className="text-xs text-text-muted font-medium">Unpaid Wages</span>
                     </div>
                 </Card>
             </div>

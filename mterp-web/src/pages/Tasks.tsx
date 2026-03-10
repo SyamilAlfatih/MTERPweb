@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, Input } from '../components/shared';
-import './Tasks.css';
 
 interface TaskData {
   _id: string;
@@ -196,12 +195,12 @@ export default function Tasks() {
   };
 
   return (
-    <div className="tasks-container">
+    <div className="p-6 max-w-[1000px] mx-auto max-lg:p-4 max-sm:p-3">
       {/* Header */}
-      <div className="tasks-header">
+      <div className="flex justify-between items-start mb-6 max-sm:flex-col max-sm:gap-4">
         <div>
-          <h1 className="tasks-title">{t('tasks.title')}</h1>
-          <p className="tasks-subtitle">{t('tasks.subtitle')}</p>
+          <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{t('tasks.title')}</h1>
+          <p className="text-sm text-text-muted mt-1 mb-0">{t('tasks.subtitle')}</p>
         </div>
         {canManageTasks && (
           <Button 
@@ -214,31 +213,31 @@ export default function Tasks() {
       </div>
 
       {/* Stats */}
-      <Card className="tasks-stats">
-        <div className="stat-row">
-          <div className="stat-box">
-            <span className="stat-value">{stats.pending}</span>
-            <span className="stat-label">{t('tasks.stats.pending')}</span>
+      <Card className="mb-6">
+        <div className="flex justify-around gap-4 max-sm:flex-col max-sm:gap-4">
+          <div className="flex flex-col items-center gap-1 p-3">
+            <span className="text-2xl font-bold text-text-primary">{stats.pending}</span>
+            <span className="text-sm text-text-muted">{t('tasks.stats.pending')}</span>
           </div>
-          <div className="stat-box">
-            <span className="stat-value" style={{ color: 'var(--warning)' }}>
+          <div className="flex flex-col items-center gap-1 p-3">
+            <span className="text-2xl font-bold" style={{ color: 'var(--warning)' }}>
               {stats.inProgress}
             </span>
-            <span className="stat-label">{t('tasks.stats.inProgress')}</span>
+            <span className="text-sm text-text-muted">{t('tasks.stats.inProgress')}</span>
           </div>
-          <div className="stat-box">
-            <span className="stat-value" style={{ color: 'var(--success)' }}>
+          <div className="flex flex-col items-center gap-1 p-3">
+            <span className="text-2xl font-bold" style={{ color: 'var(--success)' }}>
               {stats.completed}
             </span>
-            <span className="stat-label">{t('tasks.stats.completed')}</span>
+            <span className="text-sm text-text-muted">{t('tasks.stats.completed')}</span>
           </div>
         </div>
       </Card>
 
       {/* Loading */}
       {loading && (
-        <div className="tasks-loading">
-          <div className="spinner"></div>
+        <div className="flex flex-col items-center justify-center p-12 gap-4 text-text-muted">
+          <div className="w-8 h-8 rounded-full border-[3px] border-border border-t-primary animate-spin"></div>
           <span>{t('tasks.loading')}</span>
         </div>
       )}
@@ -263,51 +262,51 @@ export default function Tasks() {
 
       {/* Task List */}
       {!loading && !error && tasks.length > 0 && (
-        <div className="tasks-list">
+        <div className="flex flex-col gap-3">
           {tasks.map((task) => (
             <Card 
               key={task._id} 
-              className={`task-card ${task.status === 'completed' ? 'task-done' : ''}`}
+              className={`flex items-start gap-4 p-4 cursor-default transition-all duration-150 hover:translate-x-1 max-sm:flex-col max-sm:gap-3 ${task.status === 'completed' ? 'opacity-60' : ''}`}
             >
-              <div className="task-left">
+              <div className="flex items-center pt-[2px] max-sm:self-start">
                 <button 
-                  className="task-toggle" 
+                  className="p-2 border-none bg-transparent cursor-pointer rounded-full flex items-center justify-center transition-colors duration-150 hover:bg-bg-secondary" 
                   onClick={() => handleStatusToggle(task)}
                   title="Toggle status"
                 >
                   {getStatusIcon(task.status)}
                 </button>
               </div>
-              <div className="task-content">
-                <div className="task-header">
-                  <h3 className="task-title">{task.title}</h3>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-2">
+                  <h3 className={`text-base font-semibold m-0 ${task.status === 'completed' ? 'line-through text-text-muted' : 'text-text-primary'}`}>{task.title}</h3>
                   {getPriorityBadge(task.priority)}
                 </div>
                 {task.description && (
-                  <p className="task-description">{task.description}</p>
+                  <p className="text-sm text-text-secondary m-0 mb-2">{task.description}</p>
                 )}
-                <div className="task-meta">
+                <div className="flex items-center gap-4 flex-wrap max-sm:gap-2">
                   {task.projectId && (
-                    <span className="task-meta-item">
+                    <span className="flex items-center gap-1 text-sm text-text-muted">
                       <FolderKanban size={14} />
                       {task.projectId.nama}
                     </span>
                   )}
                   {task.assignedTo && (
-                    <span className="task-meta-item">
+                    <span className="flex items-center gap-1 text-sm text-text-muted">
                       <User size={14} />
                       {task.assignedTo.fullName}
                     </span>
                   )}
                   {task.dueDate && (
-                    <span className="task-meta-item">
+                    <span className="flex items-center gap-1 text-sm text-text-muted">
                       <Calendar size={14} />
                       {new Date(task.dueDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
                     </span>
                   )}
                 </div>
               </div>
-              <div className="task-actions">
+              <div className="flex items-center gap-2 max-sm:self-end max-sm:mt-2">
                 {/* Status buttons for workers and everyone */}
                 {task.status !== 'completed' && (
                   <Button
@@ -339,16 +338,16 @@ export default function Tasks() {
 
       {/* Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{modalMode === 'create' ? t('tasks.modal.createTitle') : t('tasks.modal.assignTitle')}</h2>
-              <button className="modal-close" onClick={() => setShowModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4" onClick={() => setShowModal(false)}>
+          <div className="bg-bg-white rounded-lg w-full max-w-[500px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-5 border-b border-border-light">
+              <h2 className="m-0 text-xl font-bold text-text-primary">{modalMode === 'create' ? t('tasks.modal.createTitle') : t('tasks.modal.assignTitle')}</h2>
+              <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted rounded-md flex items-center justify-center hover:bg-bg-secondary hover:text-text-primary" onClick={() => setShowModal(false)}>
                 <X size={24} />
               </button>
             </div>
             
-            <div className="modal-body">
+            <div className="p-5 flex flex-col gap-4">
               {modalMode === 'create' && (
                 <>
                   <Input
@@ -366,60 +365,60 @@ export default function Tasks() {
                     multiline
                   />
                   
-                  <div className="form-group">
-                    <label className="form-label">{t('tasks.modal.project')}</label>
-                    <div className="select-wrapper">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-semibold text-text-primary">{t('tasks.modal.project')}</label>
+                    <div className="relative">
                       <select
                         value={formData.projectId}
                         onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
-                        className="form-select"
+                        className="w-full py-3 px-4 pr-10 border border-border-medium rounded-md text-base text-text-primary bg-bg-white appearance-none cursor-pointer transition-colors duration-150 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/10"
                       >
                         <option value="">{t('tasks.modal.selectProject')}</option>
                         {projects.map(p => (
                           <option key={p._id} value={p._id}>{p.nama}</option>
                         ))}
                       </select>
-                      <ChevronDown size={16} className="select-icon" />
+                      <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
                     </div>
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label">{t('tasks.modal.priority')}</label>
-                    <div className="select-wrapper">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-semibold text-text-primary">{t('tasks.modal.priority')}</label>
+                    <div className="relative">
                       <select
                         value={formData.priority}
                         onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                        className="form-select"
+                        className="w-full py-3 px-4 pr-10 border border-border-medium rounded-md text-base text-text-primary bg-bg-white appearance-none cursor-pointer transition-colors duration-150 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/10"
                       >
                         <option value="low">{t('tasks.modal.priorityOptions.low')}</option>
                         <option value="normal">{t('tasks.modal.priorityOptions.normal')}</option>
                         <option value="high">{t('tasks.modal.priorityOptions.high')}</option>
                         <option value="urgent">{t('tasks.modal.priorityOptions.urgent')}</option>
                       </select>
-                      <ChevronDown size={16} className="select-icon" />
+                      <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
                     </div>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">{t('tasks.modal.dueDate')}</label>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-semibold text-text-primary">{t('tasks.modal.dueDate')}</label>
                     <input
                       type="date"
                       value={formData.dueDate}
                       onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                      className="form-select"
+                      className="w-full py-3 px-4 border border-border-medium rounded-md text-base text-text-primary bg-bg-white cursor-pointer transition-colors duration-150 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/10"
                     />
                   </div>
                 </>
               )}
 
-              <div className="form-group">
-                <label className="form-label">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-text-primary">
                   {modalMode === 'create' ? t('tasks.modal.assignToOptional') : t('tasks.modal.assignTo')}
                 </label>
-                <div className="select-wrapper">
+                <div className="relative">
                   <select
                     value={formData.assignedTo}
                     onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
-                    className="form-select"
+                    className="w-full py-3 px-4 pr-10 border border-border-medium rounded-md text-base text-text-primary bg-bg-white appearance-none cursor-pointer transition-colors duration-150 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/10"
                   >
                     <option value="">{t('tasks.modal.unassigned')}</option>
                     {users.map(u => (
@@ -428,12 +427,12 @@ export default function Tasks() {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown size={16} className="select-icon" />
+                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
                 </div>
               </div>
             </div>
             
-            <div className="modal-footer">
+            <div className="flex justify-end gap-3 p-5 border-t border-border-light">
               <Button
                 title={t('tasks.actions.cancel')}
                 onClick={() => setShowModal(false)}

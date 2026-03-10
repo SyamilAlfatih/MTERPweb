@@ -10,7 +10,6 @@ import { getToolDashboard, createTool, updateTool, deleteTool } from '../api/api
 import { Card, Input, Badge, EmptyState, LoadingOverlay, Button } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import { Tool } from '../types';
-import './Tools.css';
 
 const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
 
@@ -168,18 +167,18 @@ export default function Tools() {
   };
 
   return (
-    <div className="tools-container">
+    <div className="p-6 max-w-[1100px] mx-auto max-lg:p-4 max-sm:p-3">
       <LoadingOverlay visible={loading} />
 
       {/* Header */}
-      <div className="tools-header">
-        <div className="tools-header-left">
-          <div className="tools-header-icon">
+      <div className="flex justify-between items-center mb-6 max-sm:flex-col max-sm:items-start max-sm:gap-3">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary-light rounded-md flex items-center justify-center shadow-primary shrink-0 max-sm:w-10 max-sm:h-10">
             <Wrench size={24} color="white" />
           </div>
           <div>
-            <h1 className="tools-title">{t('tools.title')}</h1>
-            <p className="tools-subtitle">{t('tools.subtitle')}</p>
+            <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{t('tools.title')}</h1>
+            <p className="text-sm text-text-muted m-0 mt-[2px]">{t('tools.subtitle')}</p>
           </div>
         </div>
         {canManage && (
@@ -194,51 +193,51 @@ export default function Tools() {
 
       {/* KPI Cards */}
       {stats && (
-        <div className="tools-kpi-grid">
-          <Card className="tools-kpi-card">
-            <div className="tools-kpi-icon" style={{ backgroundColor: '#EDE9FE' }}>
+        <div className="grid grid-cols-4 gap-4 mb-6 max-lg:grid-cols-2 max-sm:grid-cols-2 max-sm:gap-2">
+          <Card className="flex items-center gap-3 p-4 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-lg max-sm:p-3 max-sm:gap-2">
+            <div className="w-11 h-11 rounded-md flex items-center justify-center shrink-0 max-sm:w-9 max-sm:h-9" style={{ backgroundColor: '#EDE9FE' }}>
               <Package size={20} color="#7C3AED" />
             </div>
-            <div className="tools-kpi-info">
-              <span className="tools-kpi-value">{stats.total || 0}</span>
-              <span className="tools-kpi-label">{t('tools.stats.total')}</span>
+            <div className="flex flex-col">
+              <span className="text-xl font-bold text-text-primary leading-[1.2] max-sm:text-lg">{stats.total || 0}</span>
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-[0.5px]">{t('tools.stats.total')}</span>
             </div>
           </Card>
 
-          <Card className="tools-kpi-card">
-            <div className="tools-kpi-icon" style={{ backgroundColor: '#D1FAE5' }}>
+          <Card className="flex items-center gap-3 p-4 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-lg max-sm:p-3 max-sm:gap-2">
+            <div className="w-11 h-11 rounded-md flex items-center justify-center shrink-0 max-sm:w-9 max-sm:h-9" style={{ backgroundColor: '#D1FAE5' }}>
               <CheckCircle2 size={20} color="#059669" />
             </div>
-            <div className="tools-kpi-info">
-              <span className="tools-kpi-value" style={{ color: '#059669' }}>{stats.available || 0}</span>
-              <span className="tools-kpi-label">{t('tools.stats.available')}</span>
+            <div className="flex flex-col">
+              <span className="text-xl font-bold text-text-primary leading-[1.2] max-sm:text-lg" style={{ color: '#059669' }}>{stats.available || 0}</span>
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-[0.5px]">{t('tools.stats.available')}</span>
             </div>
           </Card>
 
-          <Card className="tools-kpi-card">
-            <div className="tools-kpi-icon" style={{ backgroundColor: '#DBEAFE' }}>
+          <Card className="flex items-center gap-3 p-4 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-lg max-sm:p-3 max-sm:gap-2">
+            <div className="w-11 h-11 rounded-md flex items-center justify-center shrink-0 max-sm:w-9 max-sm:h-9" style={{ backgroundColor: '#DBEAFE' }}>
               <User size={20} color="#2563EB" />
             </div>
-            <div className="tools-kpi-info">
-              <span className="tools-kpi-value" style={{ color: '#2563EB' }}>{stats.inUse || 0}</span>
-              <span className="tools-kpi-label">{t('tools.stats.inUse')}</span>
+            <div className="flex flex-col">
+              <span className="text-xl font-bold text-text-primary leading-[1.2] max-sm:text-lg" style={{ color: '#2563EB' }}>{stats.inUse || 0}</span>
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-[0.5px]">{t('tools.stats.inUse')}</span>
             </div>
           </Card>
 
-          <Card className="tools-kpi-card">
-            <div className="tools-kpi-icon" style={{ backgroundColor: '#FEF3C7' }}>
+          <Card className="flex items-center gap-3 p-4 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-lg max-sm:p-3 max-sm:gap-2">
+            <div className="w-11 h-11 rounded-md flex items-center justify-center shrink-0 max-sm:w-9 max-sm:h-9" style={{ backgroundColor: '#FEF3C7' }}>
               <AlertTriangle size={20} color="#D97706" />
             </div>
-            <div className="tools-kpi-info">
-              <span className="tools-kpi-value" style={{ color: '#D97706' }}>{(stats.maintenance || 0) + (stats.other || 0)}</span>
-              <span className="tools-kpi-label">{t('tools.stats.needsAttention')}</span>
+            <div className="flex flex-col">
+              <span className="text-xl font-bold text-text-primary leading-[1.2] max-sm:text-lg" style={{ color: '#D97706' }}>{(stats.maintenance || 0) + (stats.other || 0)}</span>
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-[0.5px]">{t('tools.stats.needsAttention')}</span>
             </div>
           </Card>
         </div>
       )}
 
       {/* Search + Filters Row */}
-      <div className="tools-controls">
+      <div className="flex flex-col gap-3 mb-5">
         <Input
           placeholder={t('tools.searchPlaceholder')}
           value={search}
@@ -246,7 +245,7 @@ export default function Tools() {
           icon={Search}
           style={{ flex: 1 }}
         />
-        <div className="tools-filter-tabs">
+        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar max-sm:gap-1">
           {FILTERS.map(f => {
             const Icon = f.icon;
             const filterLabelMapping: Record<string, string> = {
@@ -259,12 +258,12 @@ export default function Tools() {
             return (
               <button
                 key={f.key}
-                className={`filter-tab ${filter === f.key ? 'filter-tab-active' : ''}`}
+                className={`flex items-center gap-[6px] py-2 px-3.5 border border-border rounded-full bg-bg-white text-text-secondary text-sm font-semibold cursor-pointer whitespace-nowrap transition-all duration-150 hover:border-primary-light hover:text-primary hover:bg-primary-bg max-sm:py-1.5 max-sm:px-2.5 max-sm:text-xs ${filter === f.key ? '!bg-primary !text-white !border-primary hover:!bg-primary-light hover:!border-primary-light' : ''}`}
                 onClick={() => setFilter(f.key)}
               >
                 <Icon size={14} />
                 <span>{filterLabelMapping[f.label]}</span>
-                <span className="filter-count">{filterCounts[f.key]}</span>
+                <span className={`py-[1px] px-[7px] rounded-full text-xs font-bold ${filter === f.key ? 'bg-white/25' : 'bg-black/10'}`}>{filterCounts[f.key]}</span>
               </button>
             );
           })}
@@ -272,12 +271,12 @@ export default function Tools() {
       </div>
 
       {/* Content: Chart + List */}
-      <div className="tools-content">
+      <div className="flex gap-5 items-start max-lg:flex-col">
         {/* Donut Chart Side Panel */}
         {stats && (stats.total || 0) > 0 && (
-          <Card className="tools-chart-panel">
-            <h3 className="chart-panel-title">{t('tools.overview')}</h3>
-            <div className="chart-panel-donut">
+          <Card className="w-[260px] shrink-0 p-5 sticky top-4 max-lg:w-full max-lg:static">
+            <h3 className="text-base font-bold text-text-primary m-0 mb-3">{t('tools.overview')}</h3>
+            <div className="mx-auto max-lg:max-w-[220px]">
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
                   <Pie
@@ -305,12 +304,12 @@ export default function Tools() {
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="chart-panel-legend">
+            <div className="flex flex-col gap-2 pt-3 border-t border-border-light mt-3 max-sm:flex-row max-sm:flex-wrap max-sm:gap-3">
               {pieData.map((entry, i) => (
-                <div key={i} className="legend-item">
-                  <span className="legend-dot" style={{ backgroundColor: COLORS[i] }} />
-                  <span className="legend-label">{entry.name}</span>
-                  <span className="legend-value">{entry.value}</span>
+                <div key={i} className="flex items-center gap-2 max-sm:min-w-[calc(50%-0.5rem)]">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[i] }} />
+                  <span className="text-sm text-text-secondary flex-1">{entry.name}</span>
+                  <span className="text-sm font-bold text-text-primary">{entry.value}</span>
                 </div>
               ))}
             </div>
@@ -318,7 +317,7 @@ export default function Tools() {
         )}
 
         {/* Tool List */}
-        <div className="tools-list-section">
+        <div className="flex-1 min-w-0">
           {filteredTools.length === 0 && !loading ? (
             <EmptyState
               icon={Wrench}
@@ -328,33 +327,33 @@ export default function Tools() {
                 : t('tools.empty.default')}
             />
           ) : (
-            <div className="tools-list">
+            <div className="flex flex-col gap-3">
               {filteredTools.map((tool, index) => {
                 const condStyle = getConditionStyle(tool.kondisi);
                 const CondIcon = condStyle.icon;
                 return (
                   <Card
                     key={tool._id}
-                    className="tool-card"
+                    className="group p-4 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-lg animate-[fade-in-up_0.35s_ease_both]"
                     style={{
                       borderLeft: `4px solid ${condStyle.color}`,
                       animationDelay: `${index * 0.04}s`,
                     }}
                   >
-                    <div className="tool-card-body">
-                      <div className="tool-icon-wrap" style={{ backgroundColor: condStyle.bg }}>
+                    <div className="flex items-start gap-4 max-sm:flex-col">
+                      <div className="w-12 h-12 rounded-md flex items-center justify-center shrink-0 max-sm:w-10 max-sm:h-10" style={{ backgroundColor: condStyle.bg }}>
                         <Wrench size={22} color={condStyle.color} />
                       </div>
 
-                      <div className="tool-info">
-                        <div className="tool-info-top">
-                          <h3 className="tool-name">{tool.nama}</h3>
-                          <div className="tool-badges">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <h3 className="text-base font-bold text-text-primary m-0">{tool.nama}</h3>
+                          <div className="flex items-center gap-2 flex-wrap">
                             {tool.kategori && (
-                              <span className="tool-category-badge">{tool.kategori}</span>
+                              <span className="text-xs font-semibold text-text-secondary bg-bg-secondary py-[2px] px-2 rounded-full">{tool.kategori}</span>
                             )}
                             <span
-                              className="tool-condition-badge"
+                              className="text-xs font-bold py-[2px] px-2 rounded-full flex items-center gap-1"
                               style={{ backgroundColor: condStyle.bg, color: condStyle.color }}
                             >
                               <CondIcon size={12} />
@@ -363,31 +362,31 @@ export default function Tools() {
                           </div>
                         </div>
 
-                        <div className="tool-meta-row">
-                          <span className="tool-meta-item">
+                        <div className="flex flex-wrap gap-3">
+                          <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
                             <Archive size={13} />
                             {tool.stok} {tool.satuan}
                           </span>
                           {tool.lokasi && (
-                            <span className="tool-meta-item">
+                            <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
                               <MapPin size={13} />
                               {tool.lokasi}
                             </span>
                           )}
                           {tool.assignedTo && (
-                            <span className="tool-meta-item tool-meta-assigned">
+                            <span className="flex items-center gap-1 text-sm whitespace-nowrap !text-primary font-medium">
                               <User size={13} />
                               {tool.assignedTo.fullName}
                             </span>
                           )}
                           {tool.projectId && (
-                            <span className="tool-meta-item tool-meta-project">
+                            <span className="flex items-center gap-1 text-sm whitespace-nowrap !text-info font-medium">
                               <Package size={13} />
                               {tool.projectId.nama}
                             </span>
                           )}
                           {tool.lastChecked && (
-                            <span className="tool-meta-item">
+                            <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
                               <Calendar size={13} />
                               {formatDate(tool.lastChecked)}
                             </span>
@@ -396,11 +395,11 @@ export default function Tools() {
                       </div>
 
                       {canManage && (
-                        <div className="tool-actions">
-                          <button className="tool-action-btn tool-edit-btn" onClick={() => openEditModal(tool)} title={t('tools.actions.edit')}>
+                        <div className="flex gap-2 opacity-0 transition-opacity duration-150 shrink-0 group-hover:opacity-100 max-sm:opacity-100 max-sm:flex-row max-sm:w-full [&>button]:max-sm:flex-1">
+                          <button className="w-[34px] h-[34px] rounded-sm border border-border bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-primary hover:!border-primary hover:!bg-primary-bg" onClick={() => openEditModal(tool)} title={t('tools.actions.edit')}>
                             <Edit3 size={16} />
                           </button>
-                          <button className="tool-action-btn tool-delete-btn" onClick={() => handleDelete(tool)} title={t('tools.actions.delete')}>
+                          <button className="w-[34px] h-[34px] rounded-sm border border-border bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-danger hover:!border-danger hover:!bg-danger-bg" onClick={() => handleDelete(tool)} title={t('tools.actions.delete')}>
                             <Trash2 size={16} />
                           </button>
                         </div>
@@ -416,40 +415,40 @@ export default function Tools() {
 
       {/* Add/Edit Modal */}
       {showAddModal && (
-        <div className="modal-overlay" onClick={() => { setShowAddModal(false); setEditingTool(null); }}>
-          <div className="modal-content tools-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{editingTool ? t('tools.modal.editTitle') : t('tools.modal.addTitle')}</h2>
-              <button className="modal-close" onClick={() => { setShowAddModal(false); setEditingTool(null); }}>
+        <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => { setShowAddModal(false); setEditingTool(null); }}>
+          <div className="bg-bg-white rounded-xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-border-light">
+              <h2 className="m-0 font-bold text-lg text-text-primary">{editingTool ? t('tools.modal.editTitle') : t('tools.modal.addTitle')}</h2>
+              <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted rounded-md flex hover:bg-bg-secondary hover:text-text-primary" onClick={() => { setShowAddModal(false); setEditingTool(null); }}>
                 <X size={24} />
               </button>
             </div>
 
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">{t('tools.modal.name')}</label>
+            <div className="p-5">
+              <div className="flex flex-col gap-2 mb-4">
+                <label className="text-sm font-semibold text-text-primary">{t('tools.modal.name')}</label>
                 <input
-                  className="form-input"
+                  className="w-full p-3 px-4 border border-border rounded-md text-base text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
                   value={formData.nama}
                   onChange={e => setFormData(p => ({ ...p, nama: e.target.value }))}
                   placeholder={t('tools.modal.namePlaceholder')}
                 />
               </div>
 
-              <div className="form-row">
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">{t('tools.modal.category')}</label>
+              <div className="flex gap-3 max-sm:flex-col mb-4">
+                <div className="flex flex-col gap-2 flex-1">
+                  <label className="text-sm font-semibold text-text-primary">{t('tools.modal.category')}</label>
                   <input
-                    className="form-input"
+                    className="w-full p-3 px-4 border border-border rounded-md text-base text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
                     value={formData.kategori}
                     onChange={e => setFormData(p => ({ ...p, kategori: e.target.value }))}
                     placeholder={t('tools.modal.categoryPlaceholder')}
                   />
                 </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">{t('tools.modal.location')}</label>
+                <div className="flex flex-col gap-2 flex-1">
+                  <label className="text-sm font-semibold text-text-primary">{t('tools.modal.location')}</label>
                   <input
-                    className="form-input"
+                    className="w-full p-3 px-4 border border-border rounded-md text-base text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
                     value={formData.lokasi}
                     onChange={e => setFormData(p => ({ ...p, lokasi: e.target.value }))}
                     placeholder={t('tools.modal.locationPlaceholder')}
@@ -457,21 +456,21 @@ export default function Tools() {
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">{t('tools.modal.stock')}</label>
+              <div className="flex gap-3 max-sm:flex-col mb-4">
+                <div className="flex flex-col gap-2 flex-1">
+                  <label className="text-sm font-semibold text-text-primary">{t('tools.modal.stock')}</label>
                   <input
-                    className="form-input"
+                    className="w-full p-3 px-4 border border-border rounded-md text-base text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
                     type="number"
                     min="0"
                     value={formData.stok}
                     onChange={e => setFormData(p => ({ ...p, stok: Number(e.target.value) }))}
                   />
                 </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">{t('tools.modal.unit')}</label>
+                <div className="flex flex-col gap-2 flex-1">
+                  <label className="text-sm font-semibold text-text-primary">{t('tools.modal.unit')}</label>
                   <input
-                    className="form-input"
+                    className="w-full p-3 px-4 border border-border rounded-md text-base text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
                     value={formData.satuan}
                     onChange={e => setFormData(p => ({ ...p, satuan: e.target.value }))}
                     placeholder={t('tools.modal.unitPlaceholder')}
@@ -479,9 +478,9 @@ export default function Tools() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">{t('tools.modal.condition')}</label>
-                <div className="condition-selector">
+              <div className="flex flex-col gap-2 mb-4">
+                <label className="text-sm font-semibold text-text-primary">{t('tools.modal.condition')}</label>
+                <div className="flex gap-2 max-sm:flex-col">
                   {(['Baik', 'Maintenance', 'Rusak'] as const).map(k => {
                     const cfg = CONDITION_CONFIG[k];
                     const isActive = formData.kondisi === k;
@@ -495,7 +494,7 @@ export default function Tools() {
                     return (
                       <button
                         key={k}
-                        className={`condition-option ${isActive ? 'condition-option-active' : ''}`}
+                        className={`flex-1 flex items-center justify-center gap-[6px] p-3 border-[1.5px] border-border rounded-md bg-bg-white text-text-secondary text-sm font-semibold cursor-pointer transition-all duration-150 hover:border-text-muted ${isActive ? '!font-bold' : ''}`}
                         style={isActive ? { backgroundColor: cfg.bg, color: cfg.color, borderColor: cfg.color } : {}}
                         onClick={() => setFormData(p => ({ ...p, kondisi: k }))}
                         type="button"
@@ -509,7 +508,7 @@ export default function Tools() {
               </div>
             </div>
 
-            <div className="modal-footer">
+            <div className="flex justify-end gap-3 p-5 border-t border-border-light">
               <Button
                 title={t('tools.actions.cancel')}
                 onClick={() => { setShowAddModal(false); setEditingTool(null); }}

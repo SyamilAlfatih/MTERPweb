@@ -5,7 +5,6 @@ import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState } from '../components/shared';
 import { ApprovalItem, KasbonItem } from '../types';
-import './Approvals.css';
 
 export default function Approvals() {
   const { t } = useTranslation();
@@ -155,16 +154,16 @@ export default function Approvals() {
   const totalItems = approvals.length + kasbons.length;
 
   return (
-    <div className="approvals-container">
+    <div className="p-6 max-w-[900px] min-h-[400px] max-lg:p-4 max-sm:p-3 mx-auto">
       {/* Header - always shown */}
-      <div className="approvals-header">
-        <h1 className="approvals-title">{t('approvals.title')}</h1>
+      <div className="flex justify-between items-center mb-6 max-sm:flex-col max-sm:items-start max-sm:gap-3">
+        <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{t('approvals.title')}</h1>
         <Badge label={t('approvals.itemsCount', { count: totalItems })} variant="warning" size="medium" />
       </div>
 
       {/* Loading State */}
       {loading && (
-        <div className="approvals-loading">
+        <div className="flex flex-col items-center justify-center p-12 gap-4 text-text-muted">
           <div className="spinner"></div>
           <span>{t('approvals.loading')}</span>
         </div>
@@ -191,38 +190,38 @@ export default function Approvals() {
       {/* Material Request Approvals */}
       {!loading && !error && approvals.length > 0 && (
         <>
-          <h2 className="section-label">{t('approvals.materialRequests.title')}</h2>
-          <div className="approvals-list">
+          <h2 className="text-sm font-bold text-text-muted uppercase tracking-wider m-0 mb-3">{t('approvals.materialRequests.title')}</h2>
+          <div className="flex flex-col gap-4">
             {approvals.map((item) => (
-              <Card key={item.id} className="approval-card">
-                <div className="approval-header">
+              <Card key={item.id} className="p-5">
+                <div className="flex justify-between items-start mb-4 max-sm:flex-col max-sm:gap-2">
                   <div>
-                    <h3 className="approval-requester">{item.requester}</h3>
-                    <span className="approval-role">{item.role}</span>
+                    <h3 className="text-base font-bold text-text-primary m-0">{item.requester}</h3>
+                    <span className="text-sm text-text-muted">{item.role}</span>
                   </div>
                   {getUrgencyBadge(item.urgency)}
                 </div>
 
-                <div className="approval-body">
-                  <div className="approval-row">
-                    <span className="approval-label">{t('approvals.materialRequests.item')}</span>
-                    <span className="approval-value">{item.item}</span>
+                <div className="flex flex-col gap-2 mb-4 pb-4 border-b border-border-light">
+                  <div className="flex justify-between max-sm:flex-col max-sm:gap-1">
+                    <span className="text-sm text-text-muted font-medium">{t('approvals.materialRequests.item')}</span>
+                    <span className="text-sm text-text-primary font-semibold">{item.item}</span>
                   </div>
-                  <div className="approval-row">
-                    <span className="approval-label">{t('approvals.materialRequests.qty')}</span>
-                    <span className="approval-value">{item.qty}</span>
+                  <div className="flex justify-between max-sm:flex-col max-sm:gap-1">
+                    <span className="text-sm text-text-muted font-medium">{t('approvals.materialRequests.qty')}</span>
+                    <span className="text-sm text-text-primary font-semibold">{item.qty}</span>
                   </div>
-                  <div className="approval-row">
-                    <span className="approval-label">{t('approvals.materialRequests.dateNeeded')}</span>
-                    <span className="approval-value">{item.date}</span>
+                  <div className="flex justify-between max-sm:flex-col max-sm:gap-1">
+                    <span className="text-sm text-text-muted font-medium">{t('approvals.materialRequests.dateNeeded')}</span>
+                    <span className="text-sm text-text-primary font-semibold">{item.date}</span>
                   </div>
-                  <div className="approval-row">
-                    <span className="approval-label">{t('approvals.materialRequests.project')}</span>
-                    <span className="approval-value">{item.project}</span>
+                  <div className="flex justify-between max-sm:flex-col max-sm:gap-1">
+                    <span className="text-sm text-text-muted font-medium">{t('approvals.materialRequests.project')}</span>
+                    <span className="text-sm text-text-primary font-semibold">{item.project}</span>
                   </div>
                 </div>
 
-                <div className="approval-actions">
+                <div className="flex gap-3 justify-end max-sm:flex-col [&>button]:max-sm:w-full">
                   <Button
                     title={t('approvals.actions.reject')}
                     icon={X}
@@ -249,7 +248,7 @@ export default function Approvals() {
       {/* Kasbon Approvals - Director/Owner Only */}
       {!loading && !error && isDirectorOrOwner && (
         <>
-          <h2 className="section-label kasbon-section-label">
+          <h2 className="text-sm font-bold text-warning uppercase tracking-wider m-0 mb-3 flex items-center gap-2 mt-8 pt-6 border-t border-border-light max-sm:mt-6 max-sm:pt-4">
             <DollarSign size={20} />
             {t('approvals.kasbon.title')}
             {kasbons.length > 0 && (
@@ -258,37 +257,37 @@ export default function Approvals() {
           </h2>
 
           {kasbons.length === 0 ? (
-            <Card className="approval-card kasbon-empty">
-              <p className="kasbon-empty-text">{t('approvals.kasbon.empty')}</p>
+            <Card className="p-6 text-center">
+              <p className="text-text-muted text-sm m-0">{t('approvals.kasbon.empty')}</p>
             </Card>
           ) : (
-            <div className="approvals-list">
+            <div className="flex flex-col gap-4">
               {kasbons.map((item) => (
-                <Card key={item.id} className="approval-card kasbon-card">
-                  <div className="approval-header">
+                <Card key={item.id} className="p-5 border-l-4 border-l-warning">
+                  <div className="flex justify-between items-start mb-4 max-sm:flex-col max-sm:gap-2">
                     <div>
-                      <h3 className="approval-requester">{item.requester}</h3>
-                      <span className="approval-role">{item.role}</span>
+                      <h3 className="text-base font-bold text-text-primary m-0">{item.requester}</h3>
+                      <span className="text-sm text-text-muted">{item.role}</span>
                     </div>
                     <Badge label={t('approvals.kasbon.badge')} variant="warning" />
                   </div>
 
-                  <div className="approval-body">
-                    <div className="approval-row">
-                      <span className="approval-label">{t('approvals.kasbon.amount')}</span>
-                      <span className="approval-value kasbon-amount">{formatCurrency(item.amount)}</span>
+                  <div className="flex flex-col gap-2 mb-4 pb-4 border-b border-border-light">
+                    <div className="flex justify-between max-sm:flex-col max-sm:gap-1">
+                      <span className="text-sm text-text-muted font-medium">{t('approvals.kasbon.amount')}</span>
+                      <span className="text-base font-bold text-warning">{formatCurrency(item.amount)}</span>
                     </div>
-                    <div className="approval-row">
-                      <span className="approval-label">{t('approvals.kasbon.reason')}</span>
-                      <span className="approval-value">{item.reason}</span>
+                    <div className="flex justify-between max-sm:flex-col max-sm:gap-1">
+                      <span className="text-sm text-text-muted font-medium">{t('approvals.kasbon.reason')}</span>
+                      <span className="text-sm text-text-primary font-semibold">{item.reason}</span>
                     </div>
-                    <div className="approval-row">
-                      <span className="approval-label">{t('approvals.kasbon.requested')}</span>
-                      <span className="approval-value">{item.date}</span>
+                    <div className="flex justify-between max-sm:flex-col max-sm:gap-1">
+                      <span className="text-sm text-text-muted font-medium">{t('approvals.kasbon.requested')}</span>
+                      <span className="text-sm text-text-primary font-semibold">{item.date}</span>
                     </div>
                   </div>
 
-                  <div className="approval-actions">
+                  <div className="flex gap-3 justify-end max-sm:flex-col [&>button]:max-sm:w-full">
                     <Button
                       title={t('approvals.actions.reject')}
                       icon={X}
@@ -315,20 +314,20 @@ export default function Approvals() {
 
       {/* Passphrase Confirmation Modal */}
       {confirmModal.open && (
-        <div className="approval-modal-overlay" onClick={closeConfirmModal}>
-          <div className="approval-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="approval-modal-body">
-              <div className="approval-modal-icon">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000] p-5" onClick={closeConfirmModal}>
+          <div className="bg-bg-white rounded-2xl max-w-[400px] w-full shadow-[0_20px_60px_rgba(0,0,0,0.18)] animate-[fade-in-up_0.25s_ease-out]" onClick={(e) => e.stopPropagation()}>
+            <div className="py-8 px-6 text-center flex flex-col items-center gap-3">
+              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#312E59] to-indigo-600 text-white flex items-center justify-center shadow-[0_6px_20px_rgba(49,46,89,0.3)] mb-1">
                 <Lock size={28} />
               </div>
-              <h3 className="approval-modal-title">{t('approvals.confirmModal.title')}</h3>
-              <p className="approval-modal-desc">{t('approvals.confirmModal.desc')}</p>
+              <h3 className="text-[1.15rem] font-bold text-text-primary m-0">{t('approvals.confirmModal.title')}</h3>
+              <p className="text-[0.85rem] text-text-muted m-0 leading-relaxed max-w-[280px]">{t('approvals.confirmModal.desc')}</p>
 
-              <div className="approval-modal-input-wrap">
-                <Shield size={16} className="approval-modal-input-icon" />
+              <div className="relative w-full mt-1">
+                <Shield size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
                 <input
                   type="password"
-                  className={`approval-modal-input ${passphraseError ? 'approval-modal-input-error' : ''}`}
+                  className={`w-full py-3.5 pl-10 pr-3.5 border-2 border-border rounded-xl text-base text-center text-text-primary bg-bg-secondary outline-none transition-colors tracking-[3px] focus:border-[#312E59] focus:bg-white ${passphraseError ? '!border-red-500 !shadow-[0_0_0_3px_rgba(239,68,68,0.1)]' : ''}`}
                   value={passphrase}
                   onChange={(e) => { setPassphrase(e.target.value); setPassphraseError(''); }}
                   placeholder={t('approvals.confirmModal.placeholder')}
@@ -336,19 +335,19 @@ export default function Approvals() {
                   onKeyDown={(e) => { if (e.key === 'Enter' && passphrase.length >= 4) handleConfirmApprove(); }}
                 />
               </div>
-              {passphraseError && <p className="approval-modal-error">{passphraseError}</p>}
+              {passphraseError && <p className="text-red-500 text-[0.8rem] m-0 font-medium">{passphraseError}</p>}
 
-              <div className="approval-modal-actions">
-                <button className="approval-modal-btn-cancel" onClick={closeConfirmModal}>
+              <div className="flex gap-3 w-full mt-1">
+                <button className="flex-1 p-3 border border-border bg-bg-white rounded-lg text-[0.9rem] font-semibold text-text-secondary cursor-pointer transition-colors hover:bg-bg-secondary" onClick={closeConfirmModal}>
                   {t('approvals.confirmModal.btnCancel')}
                 </button>
                 <button
-                  className="approval-modal-btn-approve"
+                  className="flex-1 flex items-center justify-center gap-1.5 p-3 border-none rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-400 text-white text-[0.9rem] font-bold cursor-pointer shadow-[0_3px_12px_rgba(5,150,105,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_5px_16px_rgba(5,150,105,0.35)] disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleConfirmApprove}
                   disabled={passphrase.length < 4 || confirming}
                 >
                   {confirming ? (
-                    <><div className="spinner-small"></div> {t('approvals.confirmModal.btnApproving')}</>
+                    <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> {t('approvals.confirmModal.btnApproving')}</>
                   ) : (
                     <><Check size={16} /> {t('approvals.confirmModal.btnApprove')}</>
                   )}

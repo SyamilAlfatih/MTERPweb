@@ -1,5 +1,4 @@
 import React from 'react';
-import './Avatar.css';
 
 interface AvatarProps {
   name?: string;
@@ -20,12 +19,24 @@ export default function Avatar({
     return name.charAt(0).toUpperCase();
   };
 
+  const sizeClasses = {
+    small: 'w-8 h-8',
+    medium: 'w-10 h-10',
+    large: 'w-14 h-14'
+  };
+
+  const textClasses = {
+    small: 'text-base',
+    medium: 'text-base',
+    large: 'text-xl'
+  };
+
   return (
-    <div className={`avatar avatar-${size} ${className}`} style={style}>
+    <div className={`flex items-center justify-center rounded-md bg-primary-bg overflow-hidden shrink-0 ${sizeClasses[size]} ${className}`} style={style}>
       {src ? (
-        <img src={src} alt={name} className="avatar-image" />
+        <img src={src} alt={name} className="w-full h-full object-cover" />
       ) : (
-        <span className="avatar-initials">{getInitials(name)}</span>
+        <span className={`font-bold text-primary ${textClasses[size]}`}>{getInitials(name)}</span>
       )}
     </div>
   );

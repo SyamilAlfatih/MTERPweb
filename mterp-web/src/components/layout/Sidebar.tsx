@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
-import './Sidebar.css';
 
 interface NavItem {
   id: string;
@@ -139,18 +138,18 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
-        <div className="sidebar-logo">
+    <aside className="w-[260px] min-h-screen bg-gradient-to-b from-primary to-primary-light p-6 flex flex-col fixed left-0 top-0 bottom-0 z-[100] border-r-2 border-border-light max-lg:hidden">
+      <div className="flex items-center gap-3 pb-6 border-b border-white/10 mb-6">
+        <div className="w-12 h-12 bg-white/15 rounded-md flex items-center justify-center -rotate-6">
           <Wrench size={28} color="white" />
         </div>
-        <div className="sidebar-brand">
-          <span className="sidebar-title">mterp<span className="sidebar-dot">.</span></span>
-          <span className="sidebar-subtitle">Construction ERP</span>
+        <div className="flex flex-col">
+          <span className="text-2xl font-black text-white">mterp<span className="text-white/60">.</span></span>
+          <span className="text-xs text-white/60">Construction ERP</span>
         </div>
       </div>
 
-      <nav className="sidebar-nav">
+      <nav className="flex flex-col gap-1 flex-1 overflow-y-auto pr-2 -mr-2">
         {filteredItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.route ||
@@ -160,41 +159,49 @@ export default function Sidebar() {
             <NavLink
               key={item.id}
               to={item.route}
-              className={`sidebar-link ${isActive ? 'sidebar-link-active' : ''}`}
+              className={`flex items-center gap-3 py-3 px-4 rounded-md font-medium text-sm transition-all relative ${
+                isActive
+                  ? 'bg-white/20 text-white font-bold before:absolute before:-left-6 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-6 before:bg-white before:rounded-r-md'
+                  : 'text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
             >
               <Icon size={20} />
               <span>{item.label.includes('sidebar.') ? t(item.label) : item.label}</span>
-              {isActive && <ChevronRight size={16} className="sidebar-link-indicator" />}
+              {isActive && <ChevronRight size={16} className="ml-auto opacity-60" />}
             </NavLink>
           );
         })}
       </nav>
 
       {/* Footer with profile & logout */}
-      <div className="sidebar-footer">
+      <div className="mt-auto pt-4 border-t border-white/10 flex flex-col gap-2">
         <NavLink
           to="/profile"
-          className={`sidebar-profile-btn ${isProfileActive ? 'sidebar-link-active' : ''}`}
+          className={`flex items-center gap-3 py-3 px-4 rounded-md transition-all relative ${
+            isProfileActive
+              ? 'bg-white/20 text-white'
+              : 'text-white/85 hover:bg-white/10 hover:text-white'
+          }`}
         >
-          <div className="sidebar-avatar">
+          <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0 overflow-hidden">
             {user?.profilePhoto ? (
-              <img src={user.profilePhoto} alt={user?.fullName} className="sidebar-avatar-img" />
+              <img src={user.profilePhoto} alt={user?.fullName} className="w-full h-full object-cover rounded-full" />
             ) : (
               <User size={18} />
             )}
           </div>
-          <div className="sidebar-profile-info">
-            <span className="sidebar-profile-name">{user?.fullName || 'User'}</span>
-            <span className="sidebar-profile-role">{user?.role || 'Worker'}</span>
+          <div className="flex flex-col overflow-hidden min-w-0">
+            <span className="text-sm font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis">{user?.fullName || 'User'}</span>
+            <span className="text-xs text-white/50 capitalize">{user?.role || 'Worker'}</span>
           </div>
         </NavLink>
 
-        <button className="sidebar-logout-btn" onClick={toggleLanguage} style={{ marginBottom: 8 }}>
+        <button className="flex items-center gap-3 py-3 px-4 rounded-md bg-white/10 border border-white/10 text-white/70 text-sm font-medium transition-all w-full hover:bg-white/20 hover:text-white mb-2" onClick={toggleLanguage}>
           <Globe size={18} />
           <span>{i18n.language === 'id' ? 'English' : 'Bahasa Ind'}</span>
         </button>
 
-        <button className="sidebar-logout-btn" onClick={handleLogout}>
+        <button className="flex items-center gap-3 py-3 px-4 rounded-md bg-white/10 border border-white/10 text-white/70 text-sm font-medium transition-all w-full hover:bg-red-500/25 hover:text-red-300 hover:border-red-500/30" onClick={handleLogout}>
           <LogOut size={18} />
           <span>{t('sidebar.logout')}</span>
         </button>

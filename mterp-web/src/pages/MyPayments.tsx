@@ -10,7 +10,6 @@ import { Card, Badge, Button, EmptyState, CostInput } from '../components/shared
 import { Alert } from '../components/shared';
 import { useTranslation } from 'react-i18next';
 import { exportSlipToPdf } from '../utils/exportSlipPdf';
-import './MyPayments.css';
 
 interface KasbonRecord {
   _id: string;
@@ -244,7 +243,7 @@ export default function MyPayments() {
   const totalKasbonApproved = kasbons.filter(k => k.status === 'Approved' || k.status === 'Paid').reduce((sum, k) => sum + k.amount, 0);
 
   return (
-    <div className="mypayments-container">
+    <div className="p-6 max-w-[900px] min-h-[400px] max-lg:p-4 max-sm:p-3 mx-auto">
       <Alert
         visible={alertData.visible}
         type={alertData.type}
@@ -254,28 +253,28 @@ export default function MyPayments() {
       />
 
       {/* Header */}
-      <div className="mypayments-header">
-        <h1 className="mypayments-title">{t('myPayments.title')}</h1>
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{t('myPayments.title')}</h1>
       </div>
 
       {/* Tabs */}
-      <div className="mypayments-tabs">
+      <div className="flex gap-2 mb-6 bg-bg-secondary rounded-lg p-1">
         <button
-          className={`mypayments-tab ${activeTab === 'kasbon' ? 'active' : ''}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 border-none rounded-md text-sm font-semibold cursor-pointer transition-all hover:text-text-primary ${activeTab === 'kasbon' ? 'bg-bg-primary text-primary shadow-sm' : 'bg-transparent text-text-muted'}`}
           onClick={() => setActiveTab('kasbon')}
         >
           <DollarSign size={16} />
           {t('myPayments.tabs.kasbon')}
         </button>
         <button
-          className={`mypayments-tab ${activeTab === 'wages' ? 'active' : ''}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 border-none rounded-md text-sm font-semibold cursor-pointer transition-all hover:text-text-primary ${activeTab === 'wages' ? 'bg-bg-primary text-primary shadow-sm' : 'bg-transparent text-text-muted'}`}
           onClick={() => setActiveTab('wages')}
         >
           <TrendingUp size={16} />
           {t('myPayments.tabs.addRequest')}
         </button>
         <button
-          className={`mypayments-tab ${activeTab === 'slip' ? 'active' : ''}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 border-none rounded-md text-sm font-semibold cursor-pointer transition-all hover:text-text-primary ${activeTab === 'slip' ? 'bg-bg-primary text-primary shadow-sm' : 'bg-transparent text-text-muted'}`}
           onClick={() => setActiveTab('slip')}
         >
           <Receipt size={16} />
@@ -310,7 +309,7 @@ export default function MyPayments() {
 
       {/* Loading */}
       {loading && (
-        <div className="mypayments-loading">
+        <div className="flex flex-col items-center justify-center p-12 gap-4 text-text-muted">
           <div className="spinner"></div>
           <span>{t('myPayments.loading')}</span>
         </div>
@@ -323,16 +322,16 @@ export default function MyPayments() {
 
       {/* ===== KASBON TAB ===== */}
       {!loading && !error && activeTab === 'kasbon' && (
-        <div className="mypayments-content">
+        <div className="flex flex-col gap-4">
           {/* Kasbon Summary Cards */}
-          <div className="summary-cards">
-            <div className="summary-card pending">
-              <span className="summary-card-label">{t('myPayments.kasbon.pending')}</span>
-              <span className="summary-card-value">{formatCurrency(totalKasbonPending)}</span>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3 mb-2 max-sm:grid-cols-2">
+            <div className="flex flex-col gap-1 p-4 rounded-lg bg-bg-secondary border border-border-light border-l-[3px] border-l-warning [&>span:last-child]:text-warning">
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">{t('myPayments.kasbon.pending')}</span>
+              <span className="text-lg font-bold text-text-primary">{formatCurrency(totalKasbonPending)}</span>
             </div>
-            <div className="summary-card approved">
-              <span className="summary-card-label">{t('myPayments.kasbon.approvedPaid')}</span>
-              <span className="summary-card-value">{formatCurrency(totalKasbonApproved)}</span>
+            <div className="flex flex-col gap-1 p-4 rounded-lg bg-bg-secondary border border-border-light border-l-[3px] border-l-success [&>span:last-child]:text-success">
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">{t('myPayments.kasbon.approvedPaid')}</span>
+              <span className="text-lg font-bold text-text-primary">{formatCurrency(totalKasbonApproved)}</span>
             </div>
           </div>
 
@@ -347,9 +346,9 @@ export default function MyPayments() {
 
           {/* Kasbon Form */}
           {showForm && (
-            <Card className="kasbon-form-card">
-              <h3 className="form-title">{t('myPayments.kasbon.form.title')}</h3>
-              <div className="form-group">
+            <Card className="p-5">
+              <h3 className="text-base font-bold text-text-primary m-0 mb-4">{t('myPayments.kasbon.form.title')}</h3>
+              <div className="mb-4">
                 <CostInput
                   label={t('myPayments.kasbon.form.amount')}
                   placeholder={t('myPayments.kasbon.form.amountPlaceholder')}
@@ -357,10 +356,10 @@ export default function MyPayments() {
                   onChange={(v) => setAmount(v.toString())}
                 />
               </div>
-              <div className="form-group">
-                <label className="form-label">{t('myPayments.kasbon.form.reason')}</label>
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-text-secondary mb-2">{t('myPayments.kasbon.form.reason')}</label>
                 <textarea
-                  className="form-textarea"
+                  className="w-full p-3 border border-border-light rounded-md text-sm text-text-primary bg-bg-primary transition-colors focus:outline-none focus:border-primary focus:ring-2 focus:ring-indigo-500/10 resize-y"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   placeholder={t('myPayments.kasbon.form.reasonPlaceholder')}
@@ -378,7 +377,7 @@ export default function MyPayments() {
           )}
 
           {/* Kasbon List */}
-          <h2 className="section-label">{t('myPayments.kasbon.history')}</h2>
+          <h2 className="flex items-center gap-2 text-sm font-bold text-text-muted uppercase tracking-wider mt-2 mb-0">{t('myPayments.kasbon.history')}</h2>
           {kasbons.length === 0 ? (
             <EmptyState
               icon={Inbox}
@@ -386,31 +385,33 @@ export default function MyPayments() {
               description={t('myPayments.kasbon.emptyDesc')}
             />
           ) : (
-            <div className="records-list">
-              {kasbons.map((k) => (
-                <Card key={k._id} className={`record-card kasbon-status-${k.status.toLowerCase()}`}>
-                  <div className="record-header">
-                    <span className="record-date">{formatDate(k.createdAt)}</span>
+            <div className="flex flex-col gap-3">
+              {kasbons.map((k) => {
+                const statusColor = k.status === 'Pending' ? 'border-l-warning' : k.status === 'Approved' ? 'border-l-success' : k.status === 'Rejected' ? 'border-l-danger' : 'border-l-primary';
+                return (
+                <Card key={k._id} className={`p-4 border-l-4 ${statusColor}`}>
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm font-semibold text-text-secondary">{formatDate(k.createdAt)}</span>
                     {getStatusBadge(k.status)}
                   </div>
-                  <div className="record-amount">{formatCurrency(k.amount)}</div>
-                  {k.reason && <p className="record-reason">{k.reason}</p>}
+                  <div className="text-xl font-bold text-text-primary mb-2 max-sm:text-lg">{formatCurrency(k.amount)}</div>
+                  {k.reason && <p className="text-sm text-text-secondary m-0 mb-2 leading-relaxed">{k.reason}</p>}
                   {k.rejectionReason && (
-                    <p className="record-rejection">
+                    <p className="text-sm text-danger m-0 mb-2 py-2 px-3 bg-red-500/5 rounded-sm">
                       <strong>{t('myPayments.kasbon.rejected')}</strong> {k.rejectionReason}
                     </p>
                   )}
                   {k.approvedBy && (
-                    <span className="record-meta">
+                    <span className="block text-xs text-text-muted mt-2">
                       {t('myPayments.kasbon.approvedBy', { name: k.approvedBy.fullName })}
                       {k.approvedAt && ` • ${formatDate(k.approvedAt)}`}
                     </span>
                   )}
                   {k.paidAt && (
-                    <span className="record-meta paid">{t('myPayments.kasbon.paidOn', { date: formatDate(k.paidAt) })}</span>
+                    <span className="block text-xs text-text-muted mt-2 text-success font-semibold">{t('myPayments.kasbon.paidOn', { date: formatDate(k.paidAt) })}</span>
                   )}
                 </Card>
-              ))}
+              )})}
             </div>
           )}
         </div>
@@ -418,26 +419,26 @@ export default function MyPayments() {
 
       {/* ===== WAGES TAB ===== */}
       {!loading && !error && activeTab === 'wages' && (
-        <div className="mypayments-content">
+        <div className="flex flex-col gap-4">
           {/* Wage Summary */}
           {wageSummary && (
-            <div className="summary-cards">
-              <div className="summary-card wage-days">
-                <span className="summary-card-label">{t('myPayments.wages.daysWorked')}</span>
-                <span className="summary-card-value">{wageSummary.present + wageSummary.late}</span>
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3 mb-2 max-sm:grid-cols-2">
+              <div className="flex flex-col gap-1 p-4 rounded-lg bg-bg-secondary border border-border-light border-l-[3px] border-l-primary [&>span:last-child]:text-primary">
+                <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">{t('myPayments.wages.daysWorked')}</span>
+                <span className="text-lg font-bold text-text-primary">{wageSummary.present + wageSummary.late}</span>
               </div>
-              <div className="summary-card wage-hours">
-                <span className="summary-card-label">{t('myPayments.wages.totalHours')}</span>
-                <span className="summary-card-value">{wageSummary.totalHours.toFixed(1)}h</span>
+              <div className="flex flex-col gap-1 p-4 rounded-lg bg-bg-secondary border border-border-light border-l-[3px] border-l-success [&>span:last-child]:text-success">
+                <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">{t('myPayments.wages.totalHours')}</span>
+                <span className="text-lg font-bold text-text-primary">{wageSummary.totalHours.toFixed(1)}h</span>
               </div>
-              <div className="summary-card wage-multiplier">
-                <span className="summary-card-label">{t('myPayments.wages.multiplier')}</span>
-                <span className="summary-card-value">{wageSummary.wageMultiplierTotal.toFixed(1)}x</span>
+              <div className="flex flex-col gap-1 p-4 rounded-lg bg-bg-secondary border border-border-light border-l-[3px] border-l-warning [&>span:last-child]:text-warning">
+                <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">{t('myPayments.wages.multiplier')}</span>
+                <span className="text-lg font-bold text-text-primary">{wageSummary.wageMultiplierTotal.toFixed(1)}x</span>
               </div>
             </div>
           )}
 
-          <h2 className="section-label">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-text-muted uppercase tracking-wider mt-2 mb-0">
             <Clock size={16} />
             {t('myPayments.wages.title')}
           </h2>
@@ -449,29 +450,29 @@ export default function MyPayments() {
               description={t('myPayments.wages.emptyDesc')}
             />
           ) : (
-            <div className="records-list">
+            <div className="flex flex-col gap-3">
               {wageRecords.map((r) => (
-                <Card key={r._id} className="record-card wage-card">
-                  <div className="record-header">
-                    <span className="record-date">{formatDate(r.date)}</span>
+                <Card key={r._id} className="p-4 border-l-[3px] border-l-primary">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm font-semibold text-text-secondary">{formatDate(r.date)}</span>
                     {getWageBadge(r.wageType)}
                   </div>
-                  <div className="wage-details">
-                    <div className="wage-detail">
-                      <span className="wage-detail-label">{t('myPayments.wages.checkIn')}</span>
-                      <span className="wage-detail-value">{formatTime(r.checkIn?.time)}</span>
+                  <div className="grid grid-cols-3 gap-3 mb-2 max-sm:grid-cols-3 max-sm:gap-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted font-medium">{t('myPayments.wages.checkIn')}</span>
+                      <span className="text-sm font-semibold text-text-primary">{formatTime(r.checkIn?.time)}</span>
                     </div>
-                    <div className="wage-detail">
-                      <span className="wage-detail-label">{t('myPayments.wages.checkOut')}</span>
-                      <span className="wage-detail-value">{formatTime(r.checkOut?.time)}</span>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted font-medium">{t('myPayments.wages.checkOut')}</span>
+                      <span className="text-sm font-semibold text-text-primary">{formatTime(r.checkOut?.time)}</span>
                     </div>
-                    <div className="wage-detail">
-                      <span className="wage-detail-label">Multiplier</span>
-                      <span className="wage-detail-value multiplier">{r.wageMultiplier}x</span>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted font-medium">Multiplier</span>
+                      <span className="text-sm font-bold text-warning">{r.wageMultiplier}x</span>
                     </div>
                   </div>
                   {r.projectId && (
-                    <span className="record-meta">{r.projectId.nama}</span>
+                    <span className="block text-xs text-text-muted mt-2">{r.projectId.nama}</span>
                   )}
                 </Card>
               ))}
@@ -482,9 +483,9 @@ export default function MyPayments() {
 
       {/* ===== SLIP GAJI TAB ===== */}
       {!loading && !error && activeTab === 'slip' && (
-        <div className="mypayments-content">
+        <div className="flex flex-col gap-4">
           {slipLoading ? (
-            <div className="mypayments-loading">
+            <div className="flex flex-col items-center justify-center p-12 gap-4 text-text-muted">
               <div className="spinner"></div>
               <span>{t('myPayments.loadingSlips')}</span>
             </div>
@@ -495,17 +496,16 @@ export default function MyPayments() {
               description={t('myPayments.slip.emptyDesc')}
             />
           ) : (
-            <div className="records-list">
+            <div className="flex flex-col gap-3">
               {mySlips.map((slip) => (
                 <Card
                   key={slip._id}
-                  className="record-card slip-card"
+                  className="p-4 cursor-pointer hover:border-primary transition-colors"
                   onClick={() => { setSelectedSlip(slip); setSlipDetailOpen(true); }}
-                  style={{ cursor: 'pointer' }}
                 >
-                  <div className="record-header">
-                    <span className="record-date">
-                      <Calendar size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm font-semibold text-text-secondary">
+                      <Calendar size={12} className="inline mr-1 -mt-0.5" />
                       {fmtPeriod(slip.period)}
                     </span>
                     <Badge
@@ -514,13 +514,13 @@ export default function MyPayments() {
                       size="small"
                     />
                   </div>
-                  <div className="record-amount">{formatRp(slip.earnings.netPay)}</div>
-                  <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                    <span className="record-meta">
-                      <Clock size={12} style={{ marginRight: 3, verticalAlign: 'middle' }} />
+                  <div className="text-xl font-bold text-text-primary mb-2 max-sm:text-lg">{formatRp(slip.earnings.netPay)}</div>
+                  <div className="flex gap-3 mt-1">
+                    <span className="block text-xs text-text-muted mt-2">
+                      <Clock size={12} className="inline mr-1 -mt-0.5" />
                       {slip.attendanceSummary.presentDays} {t('myPayments.slip.days')}
                     </span>
-                    <span className="record-meta" style={{ fontFamily: 'monospace', fontSize: '0.75em' }}>
+                    <span className="block text-xs text-text-muted mt-2 font-mono" style={{ fontSize: '0.75em' }}>
                       {slip.slipNumber}
                     </span>
                   </div>

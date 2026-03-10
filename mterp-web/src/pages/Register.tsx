@@ -4,7 +4,6 @@ import { CheckCircle2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { Input, Button, Chip } from '../components/shared';
-import './Register.css';
 
 export default function Register() {
   const { t } = useTranslation();
@@ -59,15 +58,15 @@ export default function Register() {
   // Step 2: OTP Verification
   if (step === 2) {
     return (
-      <div className="register-container">
-        <div className="register-content">
-          <CheckCircle2 size={60} color="var(--primary)" className="register-icon" />
-          <h1 className="register-title">{t('auth.register.verifyEmailTitle')}</h1>
-          <p className="register-subtitle">
+      <div className="min-h-screen flex items-center justify-center bg-bg-white">
+        <div className="p-10 w-full max-w-[450px] max-sm:px-5 max-sm:py-6">
+          <CheckCircle2 size={60} color="var(--primary)" className="block mx-auto mb-5" />
+          <h1 className="text-[28px] font-bold text-primary m-0 mb-1 max-sm:text-[24px]">{t('auth.register.verifyEmailTitle')}</h1>
+          <p className="text-sm text-text-secondary m-0 mb-[30px]">
             {t('auth.register.verifyEmailSubtitle')} {formData.email}
           </p>
 
-          {error && <div className="register-error">{error}</div>}
+          {error && <div className="bg-semantic-danger-bg text-semantic-danger px-4 py-3 rounded-md text-sm font-medium mb-4">{error}</div>}
 
           <Input
             placeholder="000000"
@@ -93,23 +92,23 @@ export default function Register() {
 
   // Step 1: Registration Form
   return (
-    <div className="register-container">
-      <div className="register-content">
-        <h1 className="register-title">{t('auth.register.createAccountTitle')}</h1>
-        <p className="register-subtitle">{t('auth.register.createAccountSubtitle')}</p>
+    <div className="min-h-screen flex items-center justify-center bg-bg-white">
+      <div className="p-10 w-full max-w-[450px] max-sm:px-5 max-sm:py-6">
+        <h1 className="text-[28px] font-bold text-primary m-0 mb-1 max-sm:text-[24px]">{t('auth.register.createAccountTitle')}</h1>
+        <p className="text-sm text-text-secondary m-0 mb-[30px]">{t('auth.register.createAccountSubtitle')}</p>
 
-        {error && <div className="register-error">{error}</div>}
+        {error && <div className="bg-semantic-danger-bg text-semantic-danger px-4 py-3 rounded-md text-sm font-medium mb-4">{error}</div>}
 
-        <div className="register-form">
+        <div className="flex flex-col gap-3">
           <Input
             placeholder={t('auth.register.fullNamePlaceholder')}
             value={formData.fullName}
             onChangeText={(t) => setFormData({ ...formData, fullName: t })}
           />
 
-          <div className="role-section">
-            <label className="role-label">{t('auth.register.roleLabel')}</label>
-            <div className="role-chips">
+          <div className="mb-2">
+            <label className="block text-xs font-bold text-text-muted mb-2 tracking-[1px]">{t('auth.register.roleLabel')}</label>
+            <div className="flex flex-wrap gap-2">
               {['supervisor', 'asset_admin', 'director'].map((r) => (
                 <Chip
                   key={r}

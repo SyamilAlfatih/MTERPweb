@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import api from '../api/api';
 import { Card, Input, Button, Alert, EmptyState, LoadingOverlay, CostInput } from '../components/shared';
-import './ProjectMaterials.css';
 import { ProjectData } from '../types';
 
 interface Supply {
@@ -131,11 +130,11 @@ export default function MaterialUsage() {
   const selectedSupply = supplies.find(s => s._id === formData.supplyId);
 
   if (loading) {
-    return <div className="pm-container"><LoadingOverlay visible={true} /></div>;
+    return <div className="p-6 max-w-[1000px] mx-auto max-sm:p-3"><LoadingOverlay visible={true} /></div>;
   }
 
   return (
-    <div className="pm-container">
+    <div className="p-6 max-w-[1000px] mx-auto max-sm:p-3">
       <Alert
         visible={alertData.visible}
         type={alertData.type}
@@ -145,194 +144,194 @@ export default function MaterialUsage() {
       />
 
       {/* Header */}
-      <div className="pm-header">
-        <button className="pm-back-btn" onClick={() => navigate(-1)}>
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-4 max-sm:flex-col max-sm:items-start max-sm:gap-3">
+        <button className="w-10 h-10 rounded-lg flex items-center justify-center bg-bg-secondary text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors cursor-pointer border-none shrink-0" onClick={() => navigate(-1)}>
           <ArrowLeft size={20} />
         </button>
-        <div className="pm-header-info">
-          <h1 className="pm-title">Material Usage</h1>
-          <p className="pm-subtitle">{project?.nama || 'Project'}</p>
+        <div className="flex-1 min-w-[200px]">
+          <h1 className="text-2xl font-extrabold text-text-primary m-0 mb-1 tracking-tight">Material Usage</h1>
+          <p className="text-sm text-text-muted m-0">{project?.nama || 'Project'}</p>
         </div>
-        <Button
-          title={showForm ? 'Cancel' : 'Log Usage'}
-          icon={showForm ? ArrowLeft : Plus}
-          onClick={() => setShowForm(!showForm)}
-          variant={showForm ? 'outline' : 'primary'}
-          size="small"
-        />
+        <div className="max-sm:w-full [&>button]:max-sm:w-full">
+          <Button
+            title={showForm ? 'Cancel' : 'Log Usage'}
+            icon={showForm ? ArrowLeft : Plus}
+            onClick={() => setShowForm(!showForm)}
+            variant={showForm ? 'outline' : 'primary'}
+            size="small"
+          />
+        </div>
       </div>
 
       {/* KPI Stats */}
-      <div className="pm-stats-row">
-        <div className="pm-stat-card">
-          <div className="pm-stat-icon" style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
+      <div className="grid grid-cols-3 gap-4 mb-6 max-lg:grid-cols-1">
+        <div className="bg-bg-white border border-border-light rounded-lg p-4 flex gap-4 items-center shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-violet-300">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center opacity-90 bg-violet-100 text-violet-700">
             <Package size={20} />
           </div>
-          <div className="pm-stat-info">
-            <span className="pm-stat-value">{supplies.length}</span>
-            <span className="pm-stat-label">Materials</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-2xl font-extrabold leading-tight text-text-primary">{supplies.length}</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Materials</span>
           </div>
         </div>
-        <div className="pm-stat-card">
-          <div className="pm-stat-icon" style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}>
+        <div className="bg-bg-white border border-border-light rounded-lg p-4 flex gap-4 items-center shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-amber-300">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center opacity-90 bg-amber-100 text-amber-600">
             <FileText size={20} />
           </div>
-          <div className="pm-stat-info">
-            <span className="pm-stat-value">{logs.length}</span>
-            <span className="pm-stat-label">Usage Logs</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-2xl font-extrabold leading-tight text-text-primary">{logs.length}</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Usage Logs</span>
           </div>
         </div>
-        <div className="pm-stat-card">
-          <div className="pm-stat-icon" style={{ backgroundColor: '#DBEAFE', color: '#2563EB' }}>
+        <div className="bg-bg-white border border-border-light rounded-lg p-4 flex gap-4 items-center shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-blue-300">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center opacity-90 bg-blue-100 text-blue-600">
             <Package size={20} />
           </div>
-          <div className="pm-stat-info">
-            <span className="pm-stat-value">{totalUsedQty}/{totalPlannedQty}</span>
-            <span className="pm-stat-label">Total Qty Used</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-2xl font-extrabold leading-tight text-text-primary">{totalUsedQty}/{totalPlannedQty}</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Total Qty Used</span>
           </div>
         </div>
       </div>
 
       {/* Log Usage Form */}
       {showForm && (
-        <Card className="pm-card" style={{ borderLeft: '4px solid #7C3AED', marginBottom: 20 }}>
-          <h3 style={{ margin: '0 0 16px 0', fontSize: '1.05rem', color: '#1E293B' }}>
-            <Plus size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-            Log Material Usage
-          </h3>
+        <Card className="relative overflow-hidden !p-0 mb-5 border-l-4 border-l-violet-600 shadow-sm animate-[fade-in-up_0.35s_ease_both]">
+          <div className="p-5">
+            <h3 className="flex items-center m-0 mb-4 text-[1.05rem] text-slate-800">
+              <Plus size={18} className="mr-2" />
+              Log Material Usage
+            </h3>
 
-          {/* Date */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', color: '#64748B', marginBottom: 4, fontWeight: 500 }}>Date</label>
-            <div style={{ display: 'flex', alignItems: 'center', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 12px' }}>
-              <Calendar size={16} color="#64748B" style={{ marginRight: 8 }} />
-              <input
-                type="date"
-                value={formData.date}
-                onChange={e => setFormData({ ...formData, date: e.target.value })}
-                style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '0.95rem', color: '#1E293B' }}
-              />
+            {/* Date */}
+            <div className="mb-3.5">
+              <label className="block text-[0.85rem] text-slate-500 mb-1 font-medium">Date</label>
+              <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus-within:ring-2 focus-within:ring-violet-500/20 focus-within:border-violet-500 transition-all">
+                <Calendar size={16} className="text-slate-500 mr-2" />
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={e => setFormData({ ...formData, date: e.target.value })}
+                  className="border-none bg-transparent outline-none w-full text-[0.95rem] text-slate-800"
+                />
+              </div>
             </div>
-          </div>
 
-          {/* Select Material */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', color: '#64748B', marginBottom: 4, fontWeight: 500 }}>Material</label>
-            <select
-              value={formData.supplyId}
-              onChange={e => setFormData({ ...formData, supplyId: e.target.value })}
-              style={{
-                width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #E2E8F0',
-                background: '#F8FAFC', fontSize: '0.95rem', color: '#1E293B', outline: 'none',
-              }}
-            >
-              <option value="">-- Select Material --</option>
-              {supplies.map(s => (
-                <option key={s._id} value={s._id}>
-                  {s.item} ({s.qty - (s.totalQtyUsed || 0)} {s.unit} remaining)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Qty Used */}
-          {selectedSupply && (
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: '#64748B', marginBottom: 4, fontWeight: 500 }}>
-                Qty Used ({selectedSupply.unit}) — {selectedSupply.qty - (selectedSupply.totalQtyUsed || 0)} remaining
-              </label>
-              <input
-                type="number"
-                min="0"
-                max={selectedSupply.qty - (selectedSupply.totalQtyUsed || 0)}
-                placeholder="e.g. 3"
-                value={formData.qtyUsed}
-                onChange={e => setFormData({ ...formData, qtyUsed: e.target.value })}
-                style={{
-                  width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #E2E8F0',
-                  background: '#F8FAFC', fontSize: '0.95rem', color: '#1E293B', outline: 'none',
-                }}
-              />
+            {/* Select Material */}
+            <div className="mb-3.5">
+              <label className="block text-[0.85rem] text-slate-500 mb-1 font-medium">Material</label>
+              <select
+                value={formData.supplyId}
+                onChange={e => setFormData({ ...formData, supplyId: e.target.value })}
+                className="w-full py-2.5 px-3 rounded-lg border border-slate-200 bg-slate-50 text-[0.95rem] text-slate-800 outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all appearance-none"
+              >
+                <option value="">-- Select Material --</option>
+                {supplies.map(s => (
+                  <option key={s._id} value={s._id}>
+                    {s.item} ({s.qty - (s.totalQtyUsed || 0)} {s.unit} remaining)
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
 
-          {/* Notes */}
-          <Input
-            label="Usage Notes"
-            placeholder="e.g. Used by Worker for foundation work"
-            value={formData.notes}
-            onChangeText={v => setFormData({ ...formData, notes: v })}
-            multiline
-          />
+            {/* Qty Used */}
+            {selectedSupply && (
+              <div className="mb-3.5">
+                <label className="block text-[0.85rem] text-slate-500 mb-1 font-medium">
+                  Qty Used ({selectedSupply.unit}) — {selectedSupply.qty - (selectedSupply.totalQtyUsed || 0)} remaining
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max={selectedSupply.qty - (selectedSupply.totalQtyUsed || 0)}
+                  placeholder="e.g. 3"
+                  value={formData.qtyUsed}
+                  onChange={e => setFormData({ ...formData, qtyUsed: e.target.value })}
+                  className="w-full py-2.5 px-3 rounded-lg border border-slate-200 bg-slate-50 text-[0.95rem] text-slate-800 outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all"
+                />
+              </div>
+            )}
 
-          {/* Submit */}
-          <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-            <Button
-              title="Log Usage"
-              icon={Send}
-              onClick={handleSubmit}
-              loading={submitting}
-              variant="success"
+            {/* Notes */}
+            <Input
+              label="Usage Notes"
+              placeholder="e.g. Used by Worker for foundation work"
+              value={formData.notes}
+              onChangeText={v => setFormData({ ...formData, notes: v })}
+              multiline
             />
+
+            {/* Submit */}
+            <div className="mt-4 flex justify-end">
+              <Button
+                title="Log Usage"
+                icon={Send}
+                onClick={handleSubmit}
+                loading={submitting}
+                variant="success"
+              />
+            </div>
           </div>
         </Card>
       )}
 
       {/* Search */}
       {logs.length > 0 && (
-        <Input
-          placeholder="Search usage logs..."
-          value={search}
-          onChangeText={setSearch}
-          icon={Search}
-          style={{ marginBottom: 20 }}
-        />
+        <div className="mb-5">
+          <Input
+            placeholder="Search usage logs..."
+            value={search}
+            onChangeText={setSearch}
+            icon={Search}
+          />
+        </div>
       )}
 
       {/* Supply Overview Cards */}
       {supplies.length > 0 && (
         <>
-          <h3 style={{ fontSize: '1rem', color: '#475569', marginBottom: 12 }}>📦 Supply Inventory</h3>
-          <div className="pm-list" style={{ marginBottom: 24 }}>
+          <h3 className="text-base text-slate-600 mb-3 font-semibold">📦 Supply Inventory</h3>
+          <div className="flex flex-col gap-4 mb-6">
             {supplies.map((supply) => {
               const remaining = supply.qty - (supply.totalQtyUsed || 0);
               const usagePercent = supply.qty > 0 ? Math.round((supply.totalQtyUsed || 0) / supply.qty * 100) : 0;
               const isLow = remaining <= 0;
+              
+              const borderLeftColorClass = isLow ? 'border-l-red-500' : usagePercent > 75 ? 'border-l-amber-500' : 'border-l-emerald-500';
+              const iconBgClass = isLow ? 'bg-red-100' : 'bg-emerald-100';
+              const iconColor = isLow ? '#EF4444' : '#10B981';
 
               return (
                 <Card
                   key={supply._id}
-                  className="pm-card"
-                  style={{ borderLeft: `4px solid ${isLow ? '#EF4444' : usagePercent > 75 ? '#F59E0B' : '#10B981'}` }}
+                  className={`relative overflow-hidden !p-0 border-l-4 ${borderLeftColorClass} shadow-sm transition-all duration-150 hover:-translate-y-[2px] hover:shadow-md`}
                 >
-                  <div className="pm-card-body">
-                    <div className="pm-icon-wrap" style={{ backgroundColor: isLow ? '#FEE2E2' : '#D1FAE5' }}>
-                      <Package size={24} color={isLow ? '#EF4444' : '#10B981'} />
+                  <div className="p-4 flex gap-4 items-center pl-5 max-sm:flex-col max-sm:items-start max-sm:p-4">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${iconBgClass}`}>
+                      <Package size={20} color={iconColor} />
                     </div>
-                    <div className="pm-info">
-                      <div className="pm-info-top">
-                        <h3 className="pm-item-name">{supply.item}</h3>
-                        <div className={`pm-status-badge pm-status-${supply.status.toLowerCase()}`}>
-                          {supply.status}
-                        </div>
+                    <div className="flex-1 min-w-0 w-full">
+                      <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
+                        <h3 className="text-base font-bold text-slate-800 m-0 leading-tight block w-full">{supply.item}</h3>
                       </div>
-                      <div className="pm-meta-row">
-                        <span className="pm-meta-item">
+                      <div className="flex flex-wrap items-center justify-between gap-4 max-sm:flex-col max-sm:items-start max-sm:gap-2">
+                        <span className="flex items-center gap-1.5 text-sm text-slate-600">
                           <Package size={14} /> Used: <strong>{supply.totalQtyUsed || 0}</strong> / {supply.qty} {supply.unit}
                         </span>
-                        <span className="pm-meta-item" style={{ color: isLow ? '#EF4444' : '#059669', fontWeight: 600 }}>
+                        <span className={`text-sm font-semibold ${isLow ? 'text-red-500' : 'text-emerald-600'}`}>
                           Remaining: {remaining} {supply.unit}
                         </span>
                       </div>
                       {/* Usage Progress Bar */}
-                      <div style={{ marginTop: 6, background: '#E2E8F0', borderRadius: 4, height: 6, overflow: 'hidden' }}>
-                        <div style={{
-                          width: `${Math.min(usagePercent, 100)}%`,
-                          height: '100%',
-                          borderRadius: 4,
-                          backgroundColor: isLow ? '#EF4444' : usagePercent > 75 ? '#F59E0B' : '#10B981',
-                          transition: 'width 0.5s ease',
-                        }} />
+                      <div className="mt-2.5 bg-slate-200 rounded overflow-hidden">
+                        <div 
+                          className={`rounded transition-all duration-500 ease-out`}
+                          style={{
+                            width: `${Math.min(usagePercent, 100)}%`,
+                            backgroundColor: isLow ? '#EF4444' : usagePercent > 75 ? '#F59E0B' : '#10B981',
+                            height: '6px'
+                          }} 
+                        />
                       </div>
                     </div>
                   </div>
@@ -344,7 +343,7 @@ export default function MaterialUsage() {
       )}
 
       {/* Usage History */}
-      <h3 style={{ fontSize: '1rem', color: '#475569', marginBottom: 12 }}>📝 Usage History</h3>
+      <h3 className="text-base text-slate-600 mb-3 font-semibold">📝 Usage History</h3>
 
       {filteredLogs.length === 0 && (
         <EmptyState
@@ -355,42 +354,42 @@ export default function MaterialUsage() {
       )}
 
       {filteredLogs.length > 0 && (
-        <div className="pm-list">
+        <div className="flex flex-col gap-3">
           {filteredLogs.map((log, index) => (
             <Card
               key={log._id}
-              className="pm-card"
-              style={{ borderLeft: '4px solid #7C3AED', animationDelay: `${index * 0.03}s` }}
+              className="relative overflow-hidden !p-0 border-l-4 border-l-violet-600 shadow-sm transition-all duration-150 animate-[fade-in-up_0.35s_ease_both]"
+              style={{ animationDelay: `${index * 0.03}s` }}
             >
-              <div className="pm-card-body">
-                <div className="pm-icon-wrap" style={{ backgroundColor: '#EDE9FE' }}>
-                  <Package size={24} color="#7C3AED" />
+              <div className="p-4 flex gap-4 items-start pl-5 max-sm:flex-col max-sm:p-4">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-violet-100 hidden sm:flex">
+                  <Package size={20} color="#7C3AED" />
                 </div>
-                <div className="pm-info">
-                  <div className="pm-info-top">
-                    <h3 className="pm-item-name">
+                <div className="flex-1 min-w-0 w-full">
+                  <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
+                    <h3 className="text-base font-bold text-slate-800 m-0 block">
                       {log.supplyId?.item || 'Unknown Material'}
                     </h3>
-                    <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
-                      <Calendar size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                    <span className="text-xs text-slate-500 flex items-center">
+                      <Calendar size={12} className="mr-1" />
                       {formatDate(log.date)}
                     </span>
                   </div>
-                  <div className="pm-meta-row">
-                    <span className="pm-meta-item" style={{ fontWeight: 600, color: '#7C3AED' }}>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm bg-slate-50 py-1.5 px-2.5 rounded border border-slate-100 mb-2">
+                    <span className="font-semibold text-violet-600">
                       -{log.qtyUsed} {log.supplyId?.unit || ''}
                     </span>
-                    <span className="pm-meta-item" style={{ color: '#059669' }}>
+                    <span className="text-emerald-600 font-medium">
                       Left: {log.qtyLeft} {log.supplyId?.unit || ''}
                     </span>
                     {log.recordedBy && (
-                      <span className="pm-meta-item">
-                        <User size={14} /> {log.recordedBy.fullName}
+                      <span className="flex items-center text-slate-600">
+                        <User size={13} className="mr-1 opacity-70" /> {log.recordedBy.fullName}
                       </span>
                     )}
                   </div>
                   {log.notes && (
-                    <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: '#475569', fontStyle: 'italic' }}>
+                    <p className="m-0 text-sm text-slate-600 italic bg-slate-50 border-l-2 border-slate-300 pl-3 py-1">
                       "{log.notes}"
                     </p>
                   )}

@@ -1,5 +1,4 @@
 import React from 'react';
-import './Divider.css';
 
 interface DividerProps {
   style?: React.CSSProperties;
@@ -7,5 +6,5 @@ interface DividerProps {
 }
 
 export default function Divider({ style, className = '' }: DividerProps) {
-  return <hr className={`divider ${className}`} style={style} />;
+  return <hr className={`border-0 border-t border-border-light my-4 ${className}`} style={style} />;
 }

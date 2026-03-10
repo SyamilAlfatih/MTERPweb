@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { LucideIcon } from 'lucide-react';
-import './Input.css';
 
 interface CostInputProps {
   value: number;
@@ -67,14 +66,14 @@ export default function CostInput({
   const shown = isFocused ? displayValue : (value ? formatWithDots(value) : '');
 
   return (
-    <div className={`input-wrapper ${className}`}>
-      {label && <label className="input-label">{label}</label>}
-      <div className={`input-container ${error ? 'input-error' : ''} ${disabled ? 'input-disabled' : ''}`}>
-        {Icon && <Icon size={20} className="input-icon" />}
+    <div className={`flex flex-col gap-1.5 w-full ${className}`}>
+      {label && <label className="text-sm font-semibold text-text-primary">{label}</label>}
+      <div className="relative flex items-center">
+        {Icon && <Icon size={20} className="absolute left-3.5 text-text-muted select-none" />}
         <input
           type="text"
           inputMode="numeric"
-          className="input-field"
+          className={`w-full py-2.5 ${Icon ? 'pl-10 pr-3.5' : 'px-3.5'} border ${error ? 'border-red-500 ring-1 ring-red-500/20' : 'border-border focus:border-primary focus:ring-3 focus:ring-primary/10'} rounded-lg text-sm bg-bg-white text-text-primary outline-none transition-all placeholder:text-text-muted disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-bg-secondary`}
           value={shown}
           placeholder={placeholder}
           onChange={handleChange}
@@ -83,7 +82,7 @@ export default function CostInput({
           disabled={disabled}
         />
       </div>
-      {error && <span className="input-error-text">{error}</span>}
+      {error && <span className="text-xs text-red-500 font-medium">{error}</span>}
     </div>
   );
 }

@@ -18,7 +18,6 @@ import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { Card, Button, Input, Alert, Badge, CostInput } from '../components/shared';
 import { ProjectData, WorkItem, ProjectSupply } from '../types';
-import './AddProject.css';
 
 const UNIT_OPTIONS = ['pcs', 'kg', 'sak', 'btg', 'lbr', 'unit', 'set', 'roll', 'ltr', 'M2', 'M3', 'M1'];
 
@@ -144,7 +143,7 @@ export default function AddProject() {
   };
 
   return (
-    <div className="add-project-container">
+    <div className="p-6 max-w-[700px] mx-auto max-lg:p-4 max-sm:p-3">
       <Alert
         visible={alertData.visible}
         type={alertData.type}
@@ -154,27 +153,31 @@ export default function AddProject() {
       />
 
       {/* Header */}
-      <div className="add-header">
-        <h1 className="add-title">{t('addProject.title')}</h1>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{t('addProject.title')}</h1>
       </div>
 
       {/* Step Indicator */}
-      <div className="steps-container">
+      <div className="flex justify-between mb-6 max-sm:gap-1">
         {STEPS.map((step, i) => (
-          <div key={step} className={`step ${i === currentStep ? 'active' : ''} ${i < currentStep ? 'done' : ''}`}>
-            <div className="step-circle">
+          <div key={step} className="flex flex-col items-center flex-1">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mb-2 transition-all ${
+              i === currentStep ? 'bg-primary text-white' : i < currentStep ? 'bg-success text-white' : 'bg-bg-secondary text-text-muted'
+            }`}>
               {i < currentStep ? <Check size={14} /> : i + 1}
             </div>
-            <span className="step-label">{step}</span>
+            <span className={`text-xs text-center max-sm:text-[9px] ${
+              i === currentStep ? 'text-primary font-bold' : 'text-text-muted font-medium'
+            }`}>{step}</span>
           </div>
         ))}
       </div>
 
       {/* Step Content */}
-      <Card className="step-content">
+      <Card className="mb-6 min-h-[300px]">
         {/* Step 0: Basic Info */}
         {currentStep === 0 && (
-          <div className="form-section">
+          <div>
             <Input
               label={t('addProject.form.projectName')}
               placeholder={t('addProject.form.projectNamePlaceholder')}
@@ -201,7 +204,7 @@ export default function AddProject() {
               onChange={(v) => setProjectData({ ...projectData, totalBudget: v.toString() })}
               icon={DollarSign}
             />
-            <div className="date-row">
+            <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
               <Input
                 label={t('addProject.form.startDate')}
                 placeholder="YYYY-MM-DD"
@@ -222,12 +225,12 @@ export default function AddProject() {
 
         {/* Step 1: Documents */}
         {currentStep === 1 && (
-          <div className="form-section">
-            <h3>{t('addProject.form.uploadDocs')}</h3>
+          <div>
+            <h3 className="text-base font-bold text-text-primary m-0 mb-4">{t('addProject.form.uploadDocs')}</h3>
             {['shopDrawing', 'hse', 'manPowerList', 'materialList'].map((docKey) => (
-              <div key={docKey} className="doc-upload">
-                <label className="doc-label">{docKey.replace(/([A-Z])/g, ' $1').toUpperCase()}</label>
-                <label className="doc-input">
+              <div key={docKey} className="mb-3">
+                <label className="block text-xs font-bold text-text-muted mb-1 tracking-wide">{docKey.replace(/([A-Z])/g, ' $1').toUpperCase()}</label>
+                <label className="flex items-center gap-2 p-3 border border-dashed border-border rounded-md cursor-pointer text-text-secondary text-sm hover:border-primary hover:bg-primary-bg">
                   <Upload size={18} />
                   <span>{documents[docKey]?.name || t('addProject.form.chooseFile')}</span>
                   <input
@@ -243,17 +246,17 @@ export default function AddProject() {
 
         {/* Step 2: Supply Plan */}
         {currentStep === 2 && (
-          <div className="form-section">
-            <div className="section-header">
-              <h3>{STEPS[2]}</h3>
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-base font-bold text-text-primary m-0">{STEPS[2]}</h3>
               <Button title={t('addProject.actions.add')} icon={Plus} onClick={addSupply} variant="outline" size="small" />
             </div>
 
             {/* Summary */}
             {supplies.length > 0 && (
-              <div className="cost-summary">
+              <div className="flex items-center gap-3 p-3 px-4 bg-bg-secondary rounded-md mb-4 text-sm text-text-secondary max-sm:flex-wrap">
                 <span>{t('addProject.form.totalSupplyCost')}</span>
-                <span className="cost-summary-value">Rp {formatRupiah(totalSupplyCost)}</span>
+                <span className="font-bold text-text-primary ml-auto">Rp {formatRupiah(totalSupplyCost)}</span>
                 {totalBudget > 0 && (
                   <Badge label={`${((totalSupplyCost / totalBudget) * 100).toFixed(1)}${t('addProject.form.ofBudget')}`} variant="primary" size="small" />
                 )}
@@ -261,9 +264,9 @@ export default function AddProject() {
             )}
 
             {supplies.map((s, i) => (
-              <div key={s.id} className="item-card">
-                <div className="item-card-header">
-                  <span className="item-card-number">#{i + 1}</span>
+              <div key={s.id} className="bg-bg-secondary border border-border rounded-lg p-4 mb-3 transition-colors hover:border-primary">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xs font-bold text-text-muted bg-bg-primary py-[2px] px-2 rounded-full">#{i + 1}</span>
                   {totalBudget > 0 && (Number(s.cost) || 0) > 0 && (
                     <Badge
                       label={`${getWeight(Number(s.cost) || 0)}%`}
@@ -272,14 +275,14 @@ export default function AddProject() {
                     />
                   )}
                   <button
-                    className="item-delete-btn"
+                    className="ml-auto w-8 h-8 rounded-full flex items-center justify-center bg-transparent text-text-muted cursor-pointer transition-all border-none hover:bg-red-500/10 hover:text-red-500"
                     onClick={() => setSupplies(supplies.filter((_, idx) => idx !== i))}
                   >
                     <Trash2 size={16} />
                   </button>
                 </div>
-                <div className="item-card-body">
-                  <div className="item-field item-field-full">
+                <div className="flex flex-col gap-2">
+                  <div className="w-full">
                     <Input
                       label={t('addProject.form.itemName')}
                       placeholder={t('addProject.form.itemNamePlaceholder')}
@@ -287,8 +290,8 @@ export default function AddProject() {
                       onChangeText={(t) => updateSupply(i, 'item', t)}
                     />
                   </div>
-                  <div className="item-field-row">
-                    <div className="item-field">
+                  <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
+                    <div className="flex flex-col">
                       <Input
                         label={t('addProject.form.qty')}
                         type="number"
@@ -297,10 +300,10 @@ export default function AddProject() {
                         onChangeText={(t) => updateSupply(i, 'qty', Number(t) || 0)}
                       />
                     </div>
-                    <div className="item-field">
-                      <label className="form-label-sm">{t('addProject.form.unit')}</label>
+                    <div className="flex flex-col">
+                      <label className="text-xs font-semibold text-text-secondary mb-1">{t('addProject.form.unit')}</label>
                       <select
-                        className="form-select-sm"
+                        className="py-2 px-3 border border-border rounded-md bg-bg-primary text-text-primary text-sm h-10 cursor-pointer transition-colors focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/10"
                         value={s.unit || 'pcs'}
                         onChange={(e) => updateSupply(i, 'unit', e.target.value)}
                       >
@@ -309,7 +312,7 @@ export default function AddProject() {
                         ))}
                       </select>
                     </div>
-                    <div className="item-field">
+                    <div className="flex flex-col">
                       <CostInput
                         label={t('addProject.form.cost')}
                         placeholder="0"
@@ -318,8 +321,8 @@ export default function AddProject() {
                       />
                     </div>
                   </div>
-                  <div className="item-field-row">
-                    <div className="item-field">
+                  <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+                    <div className="flex flex-col">
                       <Input
                         label={t('addProject.form.startDate')}
                         type="date"
@@ -329,7 +332,7 @@ export default function AddProject() {
                         icon={Calendar}
                       />
                     </div>
-                    <div className="item-field">
+                    <div className="flex flex-col">
                       <Input
                         label={t('addProject.form.endDate')}
                         type="date"
@@ -343,23 +346,23 @@ export default function AddProject() {
                 </div>
               </div>
             ))}
-            {supplies.length === 0 && <p className="empty-text">{t('addProject.form.noSupplies')}</p>}
+            {supplies.length === 0 && <p className="text-text-muted text-sm text-center py-6">{t('addProject.form.noSupplies')}</p>}
           </div>
         )}
 
         {/* Step 3: Work Items */}
         {currentStep === 3 && (
-          <div className="form-section">
-            <div className="section-header">
-              <h3>{STEPS[3]}</h3>
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-base font-bold text-text-primary m-0">{STEPS[3]}</h3>
               <Button title={t('addProject.actions.add')} icon={Plus} onClick={addWorkItem} variant="outline" size="small" />
             </div>
 
             {/* Summary */}
             {workItems.length > 0 && (
-              <div className="cost-summary">
+              <div className="flex items-center gap-3 p-3 px-4 bg-bg-secondary rounded-md mb-4 text-sm text-text-secondary max-sm:flex-wrap">
                 <span>{t('addProject.form.totalWorkItemCost')}</span>
-                <span className="cost-summary-value">Rp {formatRupiah(totalWorkItemCost)}</span>
+                <span className="font-bold text-text-primary ml-auto">Rp {formatRupiah(totalWorkItemCost)}</span>
                 {totalBudget > 0 && (
                   <Badge label={`${((totalWorkItemCost / totalBudget) * 100).toFixed(1)}${t('addProject.form.ofBudget')}`} variant="primary" size="small" />
                 )}
@@ -367,9 +370,9 @@ export default function AddProject() {
             )}
 
             {workItems.map((w, i) => (
-              <div key={w.id} className="item-card">
-                <div className="item-card-header">
-                  <span className="item-card-number">#{i + 1}</span>
+              <div key={w.id} className="bg-bg-secondary border border-border rounded-lg p-4 mb-3 transition-colors hover:border-primary">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xs font-bold text-text-muted bg-bg-primary py-[2px] px-2 rounded-full">#{i + 1}</span>
                   {totalBudget > 0 && (Number(w.cost) || 0) > 0 && (
                     <Badge
                       label={`${getWeight(Number(w.cost) || 0)}%`}
@@ -378,14 +381,14 @@ export default function AddProject() {
                     />
                   )}
                   <button
-                    className="item-delete-btn"
+                    className="ml-auto w-8 h-8 rounded-full flex items-center justify-center bg-transparent text-text-muted cursor-pointer transition-all border-none hover:bg-red-500/10 hover:text-red-500"
                     onClick={() => setWorkItems(workItems.filter((_, idx) => idx !== i))}
                   >
                     <Trash2 size={16} />
                   </button>
                 </div>
-                <div className="item-card-body">
-                  <div className="item-field item-field-full">
+                <div className="flex flex-col gap-2">
+                  <div className="w-full">
                     <Input
                       label={t('addProject.form.workItemName')}
                       placeholder={t('addProject.form.workItemNamePlaceholder')}
@@ -393,8 +396,8 @@ export default function AddProject() {
                       onChangeText={(t) => updateWorkItem(i, 'name', t)}
                     />
                   </div>
-                  <div className="item-field-row">
-                    <div className="item-field">
+                  <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
+                    <div className="flex flex-col">
                       <Input
                         label={t('addProject.form.qty')}
                         type="number"
@@ -403,10 +406,10 @@ export default function AddProject() {
                         onChangeText={(t) => updateWorkItem(i, 'qty', Number(t) || 0)}
                       />
                     </div>
-                    <div className="item-field">
-                      <label className="form-label-sm">{t('addProject.form.unit')}</label>
+                    <div className="flex flex-col">
+                      <label className="text-xs font-semibold text-text-secondary mb-1">{t('addProject.form.unit')}</label>
                       <select
-                        className="form-select-sm"
+                        className="py-2 px-3 border border-border rounded-md bg-bg-primary text-text-primary text-sm h-10 cursor-pointer transition-colors focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/10"
                         value={w.unit || w.volume || 'M2'}
                         onChange={(e) => {
                           updateWorkItem(i, 'unit', e.target.value);
@@ -418,7 +421,7 @@ export default function AddProject() {
                         ))}
                       </select>
                     </div>
-                    <div className="item-field">
+                    <div className="flex flex-col">
                       <CostInput
                         label={t('addProject.form.cost')}
                         placeholder="0"
@@ -427,8 +430,8 @@ export default function AddProject() {
                       />
                     </div>
                   </div>
-                  <div className="item-field-row">
-                    <div className="item-field">
+                  <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+                    <div className="flex flex-col">
                       <Input
                         label={t('addProject.form.startDate')}
                         type="date"
@@ -438,7 +441,7 @@ export default function AddProject() {
                         icon={Calendar}
                       />
                     </div>
-                    <div className="item-field">
+                    <div className="flex flex-col">
                       <Input
                         label={t('addProject.form.endDate')}
                         type="date"
@@ -452,13 +455,13 @@ export default function AddProject() {
                 </div>
               </div>
             ))}
-            {workItems.length === 0 && <p className="empty-text">{t('addProject.form.noWorkItems')}</p>}
+            {workItems.length === 0 && <p className="text-text-muted text-sm text-center py-6">{t('addProject.form.noWorkItems')}</p>}
           </div>
         )}
       </Card>
 
       {/* Navigation Buttons */}
-      <div className="nav-buttons">
+      <div className={`flex justify-between gap-4 max-sm:flex-col [&>button]:max-sm:w-full ${currentStep === 0 ? 'justify-end' : ''}`}>
         {currentStep > 0 && (
           <Button
             title={t('addProject.actions.back')}

@@ -15,7 +15,6 @@ import api from '../api/api';
 import { Card, ProgressBar, Button, LoadingOverlay, Badge } from '../components/shared';
 import { ProjectData, WorkItem } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import './ProjectDetail.css';
 
 /* ─── Types ─── */
 
@@ -105,33 +104,33 @@ const SCurveTooltip = ({ active, payload, label }: any) => {
   const devColor = dev >= 0 ? '#10B981' : '#EF4444';
 
   return (
-    <div className="scurve-tooltip">
-      <div className="scurve-tooltip-title">
+    <div className="bg-bg-primary border border-border rounded-lg p-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] min-w-[200px] backdrop-blur-[12px]">
+      <div className="text-sm font-bold text-text-primary mb-1">
         {data.date}
-        {data.isToday && <span className="scurve-tooltip-today-badge">{data.todayLabel}</span>}
+        {data.isToday && <span className="inline-block ml-2 py-[1px] px-[6px] text-[9px] font-extrabold text-[#f59e0b] bg-[#f59e0b]/12 rounded-full tracking-[0.5px] align-middle">{data.todayLabel}</span>}
       </div>
-      <div className="scurve-tooltip-divider" />
-      <div className="scurve-tooltip-row">
-        <span className="scurve-tooltip-dot planned" />
+      <div className="h-[1px] bg-border my-2" />
+      <div className="flex items-center gap-2 text-sm text-text-secondary py-[2px]">
+        <span className="w-2 h-2 rounded-full shrink-0 bg-[#6366f1]" />
         <span>{data.plannedLabel}</span>
-        <span className="scurve-tooltip-value">{data.planned.toFixed(1)}%</span>
+        <span className="ml-auto font-bold text-text-primary">{data.planned.toFixed(1)}%</span>
       </div>
-      <div className="scurve-tooltip-row">
-        <span className="scurve-tooltip-dot actual" />
+      <div className="flex items-center gap-2 text-sm text-text-secondary py-[2px]">
+        <span className="w-2 h-2 rounded-full shrink-0 bg-[#10b981]" />
         <span>{data.actualLabel}</span>
-        <span className="scurve-tooltip-value">{data.actual.toFixed(1)}%</span>
+        <span className="ml-auto font-bold text-text-primary">{data.actual.toFixed(1)}%</span>
       </div>
       {data.actual > 0 && (
-        <div className="scurve-tooltip-row">
-          <span className="scurve-tooltip-dot" style={{ backgroundColor: devColor }} />
+        <div className="flex items-center gap-2 text-sm text-text-secondary py-[2px]">
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: devColor }} />
           <span>{data.deviationLabel}</span>
-          <span className="scurve-tooltip-value" style={{ color: devColor }}>
+          <span className="ml-auto font-bold text-text-primary" style={{ color: devColor }}>
             {dev >= 0 ? '+' : ''}{dev.toFixed(1)}% ({dev >= 0 ? data.aheadLabel : data.behindLabel})
           </span>
         </div>
       )}
-      <div className="scurve-tooltip-divider" />
-      <div className="scurve-tooltip-detail">
+      <div className="h-[1px] bg-border my-2" />
+      <div className="flex justify-between text-xs text-text-muted py-[1px]">
         <span>{data.planLabel}: {formatRupiah(data.plannedCost)}</span>
         <span>{data.actLabel}: {formatRupiah(data.actualCost)}</span>
       </div>
@@ -248,7 +247,7 @@ export default function ProjectDetail() {
 
   if (!project) {
     return (
-      <div className="project-detail-container">
+      <div className="p-6 max-w-[900px] mx-auto max-lg:p-4 max-sm:p-3">
         <p>{t('projectDetail.notFound')}</p>
       </div>
     );
@@ -388,75 +387,75 @@ export default function ProjectDetail() {
   const isUnderBudget = costVariance <= 0;
 
   return (
-    <div className="project-detail-container">
+    <div className="p-6 max-w-[900px] mx-auto max-lg:p-4 max-sm:p-3">
       {/* Header */}
-      <div className="detail-header">
-        <button className="back-btn" onClick={() => navigate(-1)}>
+      <div className="flex items-center gap-4 mb-6 max-sm:flex-col max-sm:items-start max-sm:gap-3">
+        <button className="w-10 h-10 rounded-full bg-bg-secondary flex items-center justify-center cursor-pointer transition-colors border-none text-text-primary hover:bg-border" onClick={() => navigate(-1)}>
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 className="detail-title">{project.nama || project.name}</h1>
-          <p className="detail-location">{project.lokasi || project.location}</p>
+          <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{project.nama || project.name}</h1>
+          <p className="text-sm text-text-muted mt-[2px]">{project.lokasi || project.location}</p>
         </div>
       </div>
 
       <div ref={statsRef}>
         {/* Progress Card */}
-        <Card className="progress-card gradient-primary">
-          <div className="progress-header">
-            <span className="progress-label">{t('projectDetail.progress.overall')}</span>
-            <span className="progress-value">{progress}%</span>
+        <Card className="p-6 mb-4 bg-gradient-to-br from-primary to-primary-light text-white border-none">
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-sm text-white/80 font-medium">{t('projectDetail.progress.overall')}</span>
+            <span className="text-2xl font-bold text-white">{progress}%</span>
           </div>
-          <div className="progress-bar-white">
-            <div className="progress-fill-white" style={{ width: `${progress}%` }} />
+          <div className="h-2 bg-white/30 rounded-full overflow-hidden">
+            <div className="h-full bg-white rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
           </div>
         </Card>
 
         {/* Stats Grid */}
-        <div className="stats-grid">
-          <Card className="stat-card">
+        <div className="grid grid-cols-2 gap-4 mb-4 max-sm:grid-cols-1">
+          <Card className="flex items-center gap-3 p-4">
             <Calendar size={24} color="var(--primary)" />
-            <div className="stat-content">
-              <span className="stat-label">{t('projectDetail.stats.start')}</span>
-              <span className="stat-value">
+            <div className="flex flex-col">
+              <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.start')}</span>
+              <span className="text-base text-text-primary font-bold">
                 {fmtDate(project.startDate || (project.globalDates as any)?.planned?.start)}
               </span>
             </div>
           </Card>
 
-          <Card className="stat-card">
+          <Card className="flex items-center gap-3 p-4">
             <Calendar size={24} color="var(--danger, #EF4444)" />
-            <div className="stat-content">
-              <span className="stat-label">{t('projectDetail.stats.end')}</span>
-              <span className="stat-value">
+            <div className="flex flex-col">
+              <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.end')}</span>
+              <span className="text-base text-text-primary font-bold">
                 {fmtDate(project.endDate || (project.globalDates as any)?.planned?.end)}
               </span>
             </div>
           </Card>
 
-          <Card className="stat-card">
+          <Card className="flex items-center gap-3 p-4">
             <DollarSign size={24} color="var(--success)" />
-            <div className="stat-content">
-              <span className="stat-label">{t('projectDetail.stats.budget')}</span>
-              <span className="stat-value">{formatRupiah(budget)}</span>
+            <div className="flex flex-col">
+              <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.budget')}</span>
+              <span className="text-base text-text-primary font-bold">{formatRupiah(budget)}</span>
             </div>
           </Card>
 
           {canSeeFinancials && (
             <>
-              <Card className="stat-card">
+              <Card className="flex items-center gap-3 p-4">
                 <TrendingUp size={24} color="var(--warning)" />
-                <div className="stat-content">
-                  <span className="stat-label">{t('projectDetail.stats.plannedCost')}</span>
-                  <span className="stat-value">{formatRupiah(totalPlannedCost)}</span>
+                <div className="flex flex-col">
+                  <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.plannedCost')}</span>
+                  <span className="text-base text-text-primary font-bold">{formatRupiah(totalPlannedCost)}</span>
                 </div>
               </Card>
 
-              <Card className="stat-card">
+              <Card className="flex items-center gap-3 p-4">
                 <BarChart3 size={24} color="var(--info, #3B82F6)" />
-                <div className="stat-content">
-                  <span className="stat-label">{t('projectDetail.stats.actualCost')}</span>
-                  <span className="stat-value">{formatRupiah(totalActualCost)}</span>
+                <div className="flex flex-col">
+                  <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.actualCost')}</span>
+                  <span className="text-base text-text-primary font-bold">{formatRupiah(totalActualCost)}</span>
                 </div>
               </Card>
             </>
@@ -467,27 +466,27 @@ export default function ProjectDetail() {
       {/* Data Visualization: S-Curve / Gantt Chart */}
       {canSeeFinancials && (scurveData.length > 1 || workItems.length > 0 || supplies.length > 0) && (
         <div ref={chartRef}>
-          <Card className="scurve-card">
+          <Card className="mb-4 p-5 overflow-visible max-sm:p-3">
             {/* ── Viz Tab Switcher ── */}
-            <div className="viz-tab-header">
+            <div className="flex justify-between items-start mb-4 gap-3 flex-wrap max-lg:flex-col max-lg:gap-2">
               <div>
-                <h3 className="scurve-title">
+                <h3 className="text-lg font-bold text-text-primary m-0">
                   {vizMode === 'scurve' ? t('projectDetail.scurve.title') : t('projectDetail.gantt.title')}
                 </h3>
-                <p className="scurve-subtitle">
+                <p className="text-xs text-text-muted mt-[2px]">
                   {vizMode === 'scurve' ? t('projectDetail.scurve.subtitle') : t('projectDetail.gantt.subtitle')}
                 </p>
               </div>
-              <div className="viz-tabs">
+              <div className="flex bg-bg-secondary rounded-lg p-[3px] gap-[2px] shrink-0">
                 <button
-                  className={`viz-tab${vizMode === 'scurve' ? ' active' : ''}`}
+                  className={`flex items-center gap-[6px] py-[6px] px-[14px] border-none bg-transparent rounded-md text-xs font-semibold text-text-muted cursor-pointer transition-all hover:text-text-primary hover:bg-bg-primary whitespace-nowrap${vizMode === 'scurve' ? ' bg-bg-primary !text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : ''}`}
                   onClick={() => setVizMode('scurve')}
                 >
                   <TrendingUp size={14} />
                   S-Curve
                 </button>
                 <button
-                  className={`viz-tab${vizMode === 'gantt' ? ' active' : ''}`}
+                  className={`flex items-center gap-[6px] py-[6px] px-[14px] border-none bg-transparent rounded-md text-xs font-semibold text-text-muted cursor-pointer transition-all hover:text-text-primary hover:bg-bg-primary whitespace-nowrap${vizMode === 'gantt' ? ' bg-bg-primary !text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : ''}`}
                   onClick={() => setVizMode('gantt')}
                 >
                   <BarChart3 size={14} />
@@ -499,23 +498,23 @@ export default function ProjectDetail() {
             {/* ── S-Curve View ── */}
             {vizMode === 'scurve' && scurveData.length > 1 && (
               <>
-                <div className="scurve-header" style={{ marginTop: 0 }}>
+                <div className="flex justify-between items-start mb-4 max-lg:flex-col max-lg:gap-2" style={{ marginTop: 0 }}>
                   <div />
-                  <div className="scurve-legend">
-                    <span className="legend-item">
-                      <span className="legend-dot planned" /> {t('projectDetail.scurve.planned')}
+                  <div className="flex gap-4 items-center max-sm:gap-2">
+                    <span className="flex items-center gap-1 text-xs text-text-secondary font-medium">
+                      <span className="w-[10px] h-[10px] rounded-full bg-[#6366f1]" /> {t('projectDetail.scurve.planned')}
                     </span>
-                    <span className="legend-item">
-                      <span className="legend-dot actual" /> {t('projectDetail.scurve.actual')}
+                    <span className="flex items-center gap-1 text-xs text-text-secondary font-medium">
+                      <span className="w-[10px] h-[10px] rounded-full bg-[#10b981]" /> {t('projectDetail.scurve.actual')}
                     </span>
                     {hasTodayOnChart && (
-                      <span className="legend-item">
-                        <span className="legend-dot today" /> {t('projectDetail.scurve.today')}
+                      <span className="flex items-center gap-1 text-xs text-text-secondary font-medium">
+                        <span className="w-[10px] h-[10px] rounded-full bg-[#f59e0b]" /> {t('projectDetail.scurve.today')}
                       </span>
                     )}
                   </div>
                 </div>
-                <div className="scurve-chart-wrapper">
+                <div className="w-full overflow-x-auto">
                   <ResponsiveContainer width="100%" height={320}>
                     <AreaChart data={scurveData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
                       <defs>
@@ -564,35 +563,35 @@ export default function ProjectDetail() {
                 </div>
 
                 {/* Performance Summary */}
-                <div className="scurve-performance">
-                  <div className={`perf-card ${isAheadOfSchedule ? 'perf-good' : 'perf-bad'}`}>
-                    <div className="perf-icon">{isAheadOfSchedule ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}</div>
-                    <div className="perf-info">
-                      <span className="perf-label">{t('projectDetail.scurve.performance.schedule')}</span>
-                      <span className="perf-value">
+                <div className="grid grid-cols-4 gap-3 mt-4 pt-4 border-t border-border max-sm:grid-cols-2">
+                  <div className={`flex items-center gap-2 p-3 rounded-lg bg-bg-secondary transition-all hover:-translate-y-[1px] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]`}>
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-full shrink-0 ${isAheadOfSchedule ? 'bg-[#10b981]/12 text-[#10b981]' : 'bg-[#ef4444]/12 text-[#ef4444]'}`}>{isAheadOfSchedule ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}</div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs text-text-muted font-medium whitespace-nowrap">{t('projectDetail.scurve.performance.schedule')}</span>
+                      <span className={`text-sm font-bold whitespace-nowrap ${isAheadOfSchedule ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
                         {Math.abs(scheduleDeviation).toFixed(1)}% {isAheadOfSchedule ? t('projectDetail.scurve.performance.ahead') : t('projectDetail.scurve.performance.behind')}
                       </span>
                     </div>
                   </div>
-                  <div className={`perf-card ${isUnderBudget ? 'perf-good' : 'perf-bad'}`}>
-                    <div className="perf-icon">{isUnderBudget ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}</div>
-                    <div className="perf-info">
-                      <span className="perf-label">{t('projectDetail.scurve.performance.costVariance')}</span>
-                      <span className="perf-value">{costVariance >= 0 ? '+' : ''}{costVariance.toFixed(1)}%</span>
+                  <div className={`flex items-center gap-2 p-3 rounded-lg bg-bg-secondary transition-all hover:-translate-y-[1px] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]`}>
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-full shrink-0 ${isUnderBudget ? 'bg-[#10b981]/12 text-[#10b981]' : 'bg-[#ef4444]/12 text-[#ef4444]'}`}>{isUnderBudget ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}</div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs text-text-muted font-medium whitespace-nowrap">{t('projectDetail.scurve.performance.costVariance')}</span>
+                      <span className={`text-sm font-bold whitespace-nowrap ${isUnderBudget ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>{costVariance >= 0 ? '+' : ''}{costVariance.toFixed(1)}%</span>
                     </div>
                   </div>
-                  <div className="perf-card perf-neutral">
-                    <div className="perf-icon"><Target size={18} /></div>
-                    <div className="perf-info">
-                      <span className="perf-label">{t('projectDetail.scurve.performance.cpi')}</span>
-                      <span className="perf-value">{cpi > 0 ? cpi.toFixed(2) : t('projectDetail.scurve.performance.na')}</span>
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-bg-secondary transition-all hover:-translate-y-[1px] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full shrink-0 bg-[#6366f1]/12 text-[#6366f1]"><Target size={18} /></div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs text-text-muted font-medium whitespace-nowrap">{t('projectDetail.scurve.performance.cpi')}</span>
+                      <span className="text-sm font-bold text-text-primary whitespace-nowrap">{cpi > 0 ? cpi.toFixed(2) : t('projectDetail.scurve.performance.na')}</span>
                     </div>
                   </div>
-                  <div className="perf-card perf-neutral">
-                    <div className="perf-icon"><Clock size={18} /></div>
-                    <div className="perf-info">
-                      <span className="perf-label">{t('projectDetail.scurve.performance.elapsed')}</span>
-                      <span className="perf-value">
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-bg-secondary transition-all hover:-translate-y-[1px] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full shrink-0 bg-[#6366f1]/12 text-[#6366f1]"><Clock size={18} /></div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs text-text-muted font-medium whitespace-nowrap">{t('projectDetail.scurve.performance.elapsed')}</span>
+                      <span className="text-sm font-bold text-text-primary whitespace-nowrap">
                         {(() => {
                           const gs = project.startDate || (project.globalDates as any)?.planned?.start;
                           const ge = project.endDate || (project.globalDates as any)?.planned?.end;
@@ -679,24 +678,24 @@ export default function ProjectDetail() {
               if (ganttItems.length === 0) return <p className="gantt-no-data">{t('projectDetail.gantt.noData')}</p>;
 
               return (
-                <div className="gantt-container">
+                <div className="mt-2">
                   {/* Legend */}
-                  <div className="gantt-legend">
-                    <span className="legend-item"><span className="legend-dot" style={{ background: '#6366F1' }} /> {t('projectDetail.gantt.workItems')}</span>
-                    <span className="legend-item"><span className="legend-dot" style={{ background: '#F59E0B' }} /> {t('projectDetail.gantt.supplies')}</span>
-                    {showToday && <span className="legend-item"><span className="legend-dot today" /> {t('projectDetail.gantt.today')}</span>}
+                  <div className="flex gap-4 items-center mb-3 justify-end max-sm:gap-2 max-sm:flex-wrap max-sm:justify-start">
+                    <span className="flex items-center gap-1 text-xs text-text-secondary font-medium"><span className="w-[10px] h-[10px] rounded-full bg-[#6366f1]" /> {t('projectDetail.gantt.workItems')}</span>
+                    <span className="flex items-center gap-1 text-xs text-text-secondary font-medium"><span className="w-[10px] h-[10px] rounded-full bg-[#f59e0b]" /> {t('projectDetail.gantt.supplies')}</span>
+                    {showToday && <span className="flex items-center gap-1 text-xs text-text-secondary font-medium"><span className="w-[10px] h-[10px] rounded-full bg-[#f59e0b]" /> {t('projectDetail.gantt.today')}</span>}
                   </div>
 
-                  <div className="gantt-scroll">
-                    <div className="gantt-chart" style={{ minWidth: Math.max(600, months.length * 80) }}>
+                  <div className="overflow-x-auto overflow-y-visible pb-2 [-webkit-overflow-scrolling:touch]">
+                    <div className="relative" style={{ minWidth: Math.max(600, months.length * 80) }}>
                       {/* Month header */}
-                      <div className="gantt-header-row">
-                        <div className="gantt-label-col">&nbsp;</div>
-                        <div className="gantt-timeline-col">
+                      <div className="flex items-stretch min-h-[36px] border-b-2 border-border mb-1">
+                        <div className="w-[160px] min-w-[160px] max-sm:w-[100px] max-sm:min-w-[100px] max-sm:text-[10px] shrink-0 flex items-center gap-2 py-1 px-2 text-xs text-text-secondary font-semibold overflow-hidden">&nbsp;</div>
+                        <div className="flex-1 relative min-h-[32px]">
                           {months.map((m, i) => (
                             <div
                               key={i}
-                              className="gantt-month"
+                              className="absolute top-0 bottom-0 flex items-center justify-center text-[10px] font-bold text-text-muted uppercase tracking-[0.5px] border-l border-border box-border"
                               style={{
                                 left: `${toPercent(m)}%`,
                                 width: `${i < months.length - 1 ? toPercent(months[i + 1]) - toPercent(m) : 100 - toPercent(m)}%`,
@@ -718,51 +717,51 @@ export default function ProjectDetail() {
                         const fillColor = isWork ? '#818CF8' : '#FCD34D';
 
                         return (
-                          <div key={idx} className="gantt-row">
-                            <div className="gantt-label-col" title={item.name}>
-                              <span className="gantt-item-dot" style={{ background: barColor }} />
-                              <span className="gantt-item-name">{item.name}</span>
+                          <div key={idx} className="flex items-stretch min-h-[36px] border-b border-border transition-colors hover:bg-bg-secondary last:border-b-0">
+                            <div className="w-[160px] min-w-[160px] max-sm:w-[100px] max-sm:min-w-[100px] max-sm:text-[10px] shrink-0 flex items-center gap-2 py-1 px-2 text-xs text-text-secondary font-semibold overflow-hidden" title={item.name}>
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: barColor }} />
+                              <span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span>
                             </div>
-                            <div className="gantt-timeline-col">
+                            <div className="flex-1 relative min-h-[32px]">
                               {/* Grid lines */}
                               {months.map((m, i) => (
-                                <div key={i} className="gantt-grid-line" style={{ left: `${toPercent(m)}%` }} />
+                                <div key={i} className="absolute top-0 bottom-0 w-[1px] bg-border opacity-40 pointer-events-none" style={{ left: `${toPercent(m)}%` }} />
                               ))}
                               {/* Today marker */}
-                              {showToday && <div className="gantt-today-line" style={{ left: `${todayPct}%` }} />}
+                              {showToday && <div className="absolute top-[-2px] bottom-[-2px] w-[2px] bg-[#f59e0b] z-[3] rounded-[1px] pointer-events-none before:content-[''] before:absolute before:top-[-4px] before:left-[-3px] before:w-2 before:h-2 before:bg-[#f59e0b] before:rounded-full" style={{ left: `${todayPct}%` }} />}
                               {/* Bar */}
                               <div
-                                className="gantt-bar"
+                                className="absolute top-[4px] bottom-[4px] rounded-md overflow-hidden cursor-pointer transition-all duration-150 z-[2] flex items-center hover:scale-y-[1.15] hover:shadow-[0_2px_8px_rgba(0,0,0,0.15)] hover:z-[5] group"
                                 style={{ left: `${left}%`, width: `${width}%`, background: `${barColor}22`, border: `1.5px solid ${barColor}` }}
                               >
-                                <div className="gantt-bar-fill" style={{ width: `${item.progress}%`, background: fillColor }} />
+                                <div className="absolute top-0 left-0 bottom-0 rounded-md transition-[width] duration-300" style={{ width: `${item.progress}%`, background: fillColor }} />
                                 {width > 8 && (
-                                  <span className="gantt-bar-label" style={{ color: item.progress > 50 ? '#fff' : barColor }}>
+                                  <span className="relative z-[2] text-[9px] font-extrabold px-[6px] whitespace-nowrap tracking-[0.3px]" style={{ color: item.progress > 50 ? '#fff' : barColor }}>
                                     {item.progress}%
                                   </span>
                                 )}
                                 {/* Tooltip */}
-                                <div className="gantt-tooltip">
-                                  <div className="gantt-tooltip-title">
-                                    <span className="gantt-tooltip-dot" style={{ background: barColor }} />
+                                <div className="hidden group-hover:block absolute top-[calc(100%+8px)] left-1/2 -translate-x-1/2 bg-bg-primary border border-border rounded-lg p-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] min-w-[200px] backdrop-blur-[12px] z-20 pointer-events-none animate-[ganttTooltipIn_0.15s_ease]">
+                                  <div className="flex items-center gap-2 text-sm font-bold text-text-primary mb-1">
+                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: barColor }} />
                                     {item.name}
                                   </div>
-                                  <div className="gantt-tooltip-divider" />
-                                  <div className="gantt-tooltip-row">
+                                  <div className="h-[1px] bg-border my-2" />
+                                  <div className="flex justify-between items-center gap-3 text-xs text-text-secondary py-[2px] [&>strong]:text-text-primary [&>strong]:font-bold">
                                     <span>{fmtDate(item.startDate)} → {fmtDate(item.endDate)}</span>
                                   </div>
-                                  <div className="gantt-tooltip-row">
+                                  <div className="flex justify-between items-center gap-3 text-xs text-text-secondary py-[2px] [&>strong]:text-text-primary [&>strong]:font-bold">
                                     <span>{t('projectDetail.gantt.progress')}</span>
                                     <strong>{item.progress}%</strong>
                                   </div>
                                   {canSeeFinancials && (
-                                    <div className="gantt-tooltip-row">
+                                    <div className="flex justify-between items-center gap-3 text-xs text-text-secondary py-[2px] [&>strong]:text-text-primary [&>strong]:font-bold">
                                       <span>{t('projectDetail.gantt.cost')}</span>
                                       <strong>{formatRupiah(item.cost)}</strong>
                                     </div>
                                   )}
                                   {item.status && (
-                                    <div className="gantt-tooltip-row">
+                                    <div className="flex justify-between items-center gap-3 text-xs text-text-secondary py-[2px] [&>strong]:text-text-primary [&>strong]:font-bold">
                                       <span>Status</span>
                                       <strong>{item.status}</strong>
                                     </div>
@@ -785,14 +784,14 @@ export default function ProjectDetail() {
       {/* Work Items Table */}
       {workItems.length > 0 && (
         <div ref={tableRef}>
-          <Card className="detail-table-card">
-            <div className="detail-table-header">
+          <Card className="mb-4 overflow-hidden">
+            <div className="flex items-center gap-2 p-4 pb-3 max-sm:p-3">
               <Layers size={20} color="var(--primary)" />
-              <h3>{t('projectDetail.workItems.title')}</h3>
+              <h3 className="text-base font-bold text-text-primary m-0 flex-1">{t('projectDetail.workItems.title')}</h3>
               <Badge label={`${workItems.length} ${t('projectDetail.workItems.items')}`} variant="neutral" size="small" />
             </div>
-            <div className="detail-table-scroll">
-              <table className="detail-table">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm [&_th]:py-2 [&_th]:px-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-bold [&_th]:text-text-muted [&_th]:uppercase [&_th]:tracking-[0.5px] [&_th]:border-b [&_th]:border-border [&_th]:whitespace-nowrap [&_th]:bg-bg-secondary [&_td]:p-3 [&_td]:border-b [&_td]:border-border [&_td]:text-text-secondary [&_td]:whitespace-nowrap [&_tbody>tr:last-child>td]:border-b-0 [&_tbody>tr:hover]:bg-bg-secondary">
                 <thead>
                   <tr>
                     <th>{t('projectDetail.workItems.headers.num')}</th>
@@ -814,31 +813,31 @@ export default function ProjectDetail() {
                       : '0';
                     const wiAny = item as any;
                     return (
-                      <tr key={wiAny._id || i} className="table-row">
-                        <td className="table-num">{i + 1}</td>
-                        <td className="table-name">{item.name}</td>
-                        <td className="table-date">{fmtDate(wiAny.startDate || wiAny.dates?.plannedStart)}</td>
-                        <td className="table-date">{fmtDate(wiAny.endDate || wiAny.dates?.plannedEnd)}</td>
+                      <tr key={wiAny._id || i} className="transition-colors duration-150">
+                        <td className="font-bold text-text-muted text-xs w-8">{i + 1}</td>
+                        <td className="font-semibold text-text-primary max-w-[200px] overflow-hidden text-ellipsis">{item.name}</td>
+                        <td className="text-xs text-text-muted font-medium whitespace-nowrap">{fmtDate(wiAny.startDate || wiAny.dates?.plannedStart)}</td>
+                        <td className="text-xs text-text-muted font-medium whitespace-nowrap">{fmtDate(wiAny.endDate || wiAny.dates?.plannedEnd)}</td>
                         <td>{item.qty || 0}</td>
                         <td>{wiAny.unit || item.volume || '-'}</td>
-                        {canSeeFinancials && <td className="table-cost">{formatRupiah(item.cost || 0)}</td>}
+                        {canSeeFinancials && <td className="font-mono text-xs font-semibold">{formatRupiah(item.cost || 0)}</td>}
                         {canSeeFinancials && (
                           <td>
                             <Badge label={`${weight}%`} variant="primary" size="small" />
                           </td>
                         )}
                         <td>
-                          <div className="table-progress">
-                            <div className="table-progress-bar">
+                          <div className="flex items-center gap-2 min-w-[120px]">
+                            <div className="flex-1 h-[6px] bg-bg-secondary rounded-full overflow-hidden">
                               <div
-                                className="table-progress-fill"
+                                className="h-full bg-gradient-to-r from-primary to-success rounded-full transition-[width] duration-300"
                                 style={{ width: `${wiAny.progress || 0}%` }}
                               />
                             </div>
-                            <span className="table-progress-text">{wiAny.progress || 0}%</span>
+                            <span className="text-xs font-bold text-text-primary min-w-[36px] text-right">{wiAny.progress || 0}%</span>
                           </div>
                         </td>
-                        {canSeeFinancials && <td className="table-cost">{formatRupiah(wiAny.actualCost || 0)}</td>}
+                        {canSeeFinancials && <td className="font-mono text-xs font-semibold">{formatRupiah(wiAny.actualCost || 0)}</td>}
                       </tr>
                     );
                   })}
@@ -849,14 +848,14 @@ export default function ProjectDetail() {
 
           {/* Supply Plan Table */}
           {canSeeFinancials && supplies.length > 0 && (
-            <Card className="detail-table-card">
-              <div className="detail-table-header">
+            <Card className="mb-4 overflow-hidden">
+              <div className="flex items-center gap-2 p-4 pb-3 max-sm:p-3">
                 <Package size={20} color="var(--warning)" />
-                <h3>{t('projectDetail.supplyPlan.title')}</h3>
+                <h3 className="text-base font-bold text-text-primary m-0 flex-1">{t('projectDetail.supplyPlan.title')}</h3>
                 <Badge label={`${supplies.length} ${t('projectDetail.supplyPlan.items')}`} variant="neutral" size="small" />
               </div>
-              <div className="detail-table-scroll">
-                <table className="detail-table">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm [&_th]:py-2 [&_th]:px-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-bold [&_th]:text-text-muted [&_th]:uppercase [&_th]:tracking-[0.5px] [&_th]:border-b [&_th]:border-border [&_th]:whitespace-nowrap [&_th]:bg-bg-secondary [&_td]:p-3 [&_td]:border-b [&_td]:border-border [&_td]:text-text-secondary [&_td]:whitespace-nowrap [&_tbody>tr:last-child>td]:border-b-0 [&_tbody>tr:hover]:bg-bg-secondary">
                   <thead>
                     <tr>
                       <th>{t('projectDetail.supplyPlan.headers.num')}</th>
@@ -877,14 +876,14 @@ export default function ProjectDetail() {
                         ? ((s.cost || 0) / totalPlannedCost * 100).toFixed(1)
                         : '0';
                       return (
-                        <tr key={s._id || i} className="table-row">
-                          <td className="table-num">{i + 1}</td>
-                          <td className="table-name">{s.item}</td>
-                          <td className="table-date">{fmtDate(s.startDate)}</td>
-                          <td className="table-date">{fmtDate(s.endDate)}</td>
+                        <tr key={s._id || i} className="transition-colors duration-150">
+                          <td className="font-bold text-text-muted text-xs w-8">{i + 1}</td>
+                          <td className="font-semibold text-text-primary max-w-[200px] overflow-hidden text-ellipsis">{s.item}</td>
+                          <td className="text-xs text-text-muted font-medium whitespace-nowrap">{fmtDate(s.startDate)}</td>
+                          <td className="text-xs text-text-muted font-medium whitespace-nowrap">{fmtDate(s.endDate)}</td>
                           <td>{s.qty || 0}</td>
                           <td>{s.unit || '-'}</td>
-                          <td className="table-cost">{formatRupiah(s.cost || 0)}</td>
+                          <td className="font-mono text-xs font-semibold">{formatRupiah(s.cost || 0)}</td>
                           <td>
                             <Badge label={`${supplyWeight}%`} variant="warning" size="small" />
                           </td>
@@ -899,7 +898,7 @@ export default function ProjectDetail() {
                               size="small"
                             />
                           </td>
-                          <td className="table-cost">{formatRupiah(s.actualCost || 0)}</td>
+                          <td className="font-mono text-xs font-semibold">{formatRupiah(s.actualCost || 0)}</td>
                         </tr>
                       );
                     })}
@@ -912,9 +911,9 @@ export default function ProjectDetail() {
       )}
 
       {/* Quick Actions */}
-      <Card className="actions-card">
-        <h3 className="actions-title">{t('projectDetail.actions.title')}</h3>
-        <div className="actions-grid">
+      <Card className="mb-4">
+        <h3 className="text-base font-bold text-text-primary mb-4 mt-0">{t('projectDetail.actions.title')}</h3>
+        <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
           <Button
             title={t('projectDetail.actions.dailyReport')}
             icon={FileText}
@@ -954,9 +953,9 @@ export default function ProjectDetail() {
       </Card>
 
       {project.description && (
-        <Card className="description-card">
-          <h3 className="section-title">{t('projectDetail.description.title')}</h3>
-          <p className="description-text">{project.description}</p>
+        <Card className="mt-4">
+          <h3 className="text-base font-bold text-text-primary mb-3 mt-0">{t('projectDetail.description.title')}</h3>
+          <p className="text-base text-text-secondary leading-relaxed m-0">{project.description}</p>
         </Card>
       )}
     </div>

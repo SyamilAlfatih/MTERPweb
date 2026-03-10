@@ -1,5 +1,4 @@
 import { LucideIcon } from "lucide-react";
-import "./Button.css";
 
 interface ButtonProps {
   title: string;
@@ -40,29 +39,60 @@ export default function Button({
 
   const getIconSize = () => {
     switch (size) {
-      case "small":
-        return 16;
-      case "medium":
-        return 20;
-      case "large":
-        return 24;
-      default:
-        return 20;
+      case "small": return 16;
+      case "medium": return 20;
+      case "large": return 24;
+      default: return 20;
     }
   };
+
+  const baseClasses = "inline-flex items-center justify-center font-bold outline-none transition-all duration-200";
+  
+  const sizeClasses = {
+    small: "px-3 py-2 text-sm rounded-md",
+    medium: "px-4 py-3 text-base rounded-lg",
+    large: "px-5 py-4 text-lg rounded-xl",
+  };
+
+  const variantClasses = {
+    primary: isDisabled 
+      ? "bg-primary text-white shadow-hypr"
+      : "bg-primary text-white shadow-hypr hover:bg-primary-light hover:-translate-y-[1px]",
+    secondary: isDisabled
+      ? "bg-text-secondary text-white"
+      : "bg-text-secondary text-white hover:opacity-90",
+    success: isDisabled
+      ? "bg-semantic-success text-white shadow-[0_4px_14px_rgba(16,185,129,0.3)]"
+      : "bg-semantic-success text-white shadow-[0_4px_14px_rgba(16,185,129,0.3)] hover:opacity-90 hover:-translate-y-[1px]",
+    danger: isDisabled
+      ? "bg-semantic-danger text-white shadow-[0_4px_14px_rgba(239,68,68,0.3)]"
+      : "bg-semantic-danger text-white shadow-[0_4px_14px_rgba(239,68,68,0.3)] hover:opacity-90 hover:-translate-y-[1px]",
+    warning: isDisabled
+      ? "bg-semantic-warning text-white shadow-[0_4px_14px_rgba(245,158,11,0.3)]"
+      : "bg-semantic-warning text-white shadow-[0_4px_14px_rgba(245,158,11,0.3)] hover:opacity-90 hover:-translate-y-[1px]",
+    outline: isDisabled
+      ? "bg-transparent text-primary border-2 border-primary"
+      : "bg-transparent text-primary border-2 border-primary hover:bg-primary-bg",
+  };
+
+  const stateClasses = [
+    fullWidth ? "w-full" : "",
+    isDisabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+    className
+  ].filter(Boolean).join(" ");
 
   return (
     <button
       type={type}
-      className={`btn btn-${variant} btn-${size} ${fullWidth ? "btn-full" : ""} ${isDisabled ? "btn-disabled" : ""} ${className}`}
+      className={`${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${stateClasses}`}
       onClick={onClick}
       disabled={isDisabled}
       style={style}
     >
       {loading ? (
-        <span className="spinner"></span>
+        <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
       ) : (
-        <span className="btn-content">
+        <span className="flex items-center justify-center">
           {Icon && iconPosition === "left" && (
             <Icon size={getIconSize()} style={{ marginRight: 8 }} />
           )}

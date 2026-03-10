@@ -1,5 +1,4 @@
 import React from 'react';
-import './ProgressBar.css';
 
 interface ProgressBarProps {
   progress: number;
@@ -19,16 +18,16 @@ export default function ProgressBar({
   const clampedProgress = Math.min(100, Math.max(0, progress));
 
   return (
-    <div className="progress-wrapper" style={style}>
+    <div className="mb-4" style={style}>
       {showLabel && (
-        <div className="progress-header">
-          <span className="progress-label">{label || 'Progress'}</span>
-          <span className="progress-value">{clampedProgress}%</span>
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-sm text-text-secondary">{label || 'Progress'}</span>
+          <span className="text-sm font-bold text-text-primary">{clampedProgress}%</span>
         </div>
       )}
-      <div className="progress-track">
+      <div className="h-2 bg-bg-secondary rounded-full overflow-hidden">
         <div
-          className="progress-fill"
+          className="h-full rounded-full transition-[width] duration-300"
           style={{ width: `${clampedProgress}%`, backgroundColor: color }}
         />
       </div>

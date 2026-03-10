@@ -9,7 +9,6 @@ import { addProjectSupply, updateProjectSupply, deleteProjectSupply } from '../a
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Input, EmptyState, LoadingOverlay } from '../components/shared';
-import './ProjectMaterials.css';
 import { ProjectData } from '../types';
 
 interface Supply {
@@ -186,71 +185,73 @@ export default function ProjectMaterials() {
 
   if (loading) {
     return (
-      <div className="pm-container">
+      <div className="p-6 max-w-[1000px] mx-auto max-sm:p-3">
         <LoadingOverlay visible={true} />
       </div>
     );
   }
 
   return (
-    <div className="pm-container">
+    <div className="p-6 max-w-[1000px] mx-auto max-sm:p-3">
       {/* Header */}
-      <div className="pm-header">
-        <button className="pm-back-btn" onClick={() => navigate(-1)}>
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-4 max-sm:flex-col max-sm:items-start max-sm:gap-3">
+        <button className="w-10 h-10 rounded-lg flex items-center justify-center bg-bg-secondary text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors cursor-pointer border-none shrink-0" onClick={() => navigate(-1)}>
           <ArrowLeft size={20} />
         </button>
-        <div className="pm-header-info">
-          <h1 className="pm-title">{t('projectMaterials.title')}</h1>
-          <p className="pm-subtitle">{project?.nama || t('projectMaterials.fallbackProject')}</p>
+        <div className="flex-1 min-w-[200px]">
+          <h1 className="text-2xl font-extrabold text-text-primary m-0 mb-1 tracking-tight">{t('projectMaterials.title')}</h1>
+          <p className="text-sm text-text-muted m-0">{project?.nama || t('projectMaterials.fallbackProject')}</p>
         </div>
         {canManage && (
-          <Button
-            title={t('projectMaterials.actions.addMaterial')}
-            icon={Plus}
-            onClick={openAddModal}
-            variant="primary"
-            size="small"
-          />
+          <div className="max-sm:w-full [&>button]:max-sm:w-full">
+            <Button
+              title={t('projectMaterials.actions.addMaterial')}
+              icon={Plus}
+              onClick={openAddModal}
+              variant="primary"
+              size="small"
+            />
+          </div>
         )}
       </div>
 
       {/* KPI Stats */}
       {supplies.length > 0 && (
-        <div className="pm-stats-row">
-          <div className="pm-stat-card">
-            <div className="pm-stat-icon" style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
+        <div className="grid grid-cols-4 gap-4 mb-6 max-lg:grid-cols-2">
+          <div className="bg-bg-white border border-border-light rounded-lg p-4 flex gap-4 items-center shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-violet-300">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center opacity-90 bg-violet-100 text-violet-700">
               <Package size={20} />
             </div>
-            <div className="pm-stat-info">
-              <span className="pm-stat-value">{totalItems}</span>
-              <span className="pm-stat-label">{t('projectMaterials.stats.total')}</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-2xl font-extrabold leading-tight text-text-primary">{totalItems}</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">{t('projectMaterials.stats.total')}</span>
             </div>
           </div>
-          <div className="pm-stat-card">
-            <div className="pm-stat-icon" style={{ backgroundColor: StatusColor['Pending'].bg, color: StatusColor['Pending'].color }}>
+          <div className="bg-bg-white border border-border-light rounded-lg p-4 flex gap-4 items-center shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-amber-300">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center opacity-90" style={{ backgroundColor: StatusColor['Pending'].bg, color: StatusColor['Pending'].color }}>
               <Clock size={20} />
             </div>
-            <div className="pm-stat-info">
-              <span className="pm-stat-value" style={{ color: StatusColor['Pending'].color }}>{pendingItems}</span>
-              <span className="pm-stat-label">{t('projectMaterials.stats.pending')}</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-2xl font-extrabold leading-tight" style={{ color: StatusColor['Pending'].color }}>{pendingItems}</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">{t('projectMaterials.stats.pending')}</span>
             </div>
           </div>
-          <div className="pm-stat-card">
-            <div className="pm-stat-icon" style={{ backgroundColor: StatusColor['Ordered'].bg, color: StatusColor['Ordered'].color }}>
+          <div className="bg-bg-white border border-border-light rounded-lg p-4 flex gap-4 items-center shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-blue-300">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center opacity-90" style={{ backgroundColor: StatusColor['Ordered'].bg, color: StatusColor['Ordered'].color }}>
               <Truck size={20} />
             </div>
-            <div className="pm-stat-info">
-              <span className="pm-stat-value" style={{ color: StatusColor['Ordered'].color }}>{orderedItems}</span>
-              <span className="pm-stat-label">{t('projectMaterials.stats.ordered')}</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-2xl font-extrabold leading-tight" style={{ color: StatusColor['Ordered'].color }}>{orderedItems}</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">{t('projectMaterials.stats.ordered')}</span>
             </div>
           </div>
-          <div className="pm-stat-card">
-            <div className="pm-stat-icon" style={{ backgroundColor: StatusColor['Delivered'].bg, color: StatusColor['Delivered'].color }}>
+          <div className="bg-bg-white border border-border-light rounded-lg p-4 flex gap-4 items-center shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-emerald-300">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center opacity-90" style={{ backgroundColor: StatusColor['Delivered'].bg, color: StatusColor['Delivered'].color }}>
               <CheckCircle2 size={20} />
             </div>
-            <div className="pm-stat-info">
-              <span className="pm-stat-value" style={{ color: StatusColor['Delivered'].color }}>{deliveredItems}</span>
-              <span className="pm-stat-label">{t('projectMaterials.stats.delivered')}</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-2xl font-extrabold leading-tight" style={{ color: StatusColor['Delivered'].color }}>{deliveredItems}</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">{t('projectMaterials.stats.delivered')}</span>
             </div>
           </div>
         </div>
@@ -258,13 +259,14 @@ export default function ProjectMaterials() {
 
       {/* Search */}
       {supplies.length > 0 && (
-        <Input
-          placeholder={t('projectMaterials.searchPlaceholder')}
-          value={search}
-          onChangeText={setSearch}
-          icon={Search}
-          style={{ marginBottom: 20 }}
-        />
+        <div className="mb-5">
+          <Input
+            placeholder={t('projectMaterials.searchPlaceholder')}
+            value={search}
+            onChangeText={setSearch}
+            icon={Search}
+          />
+        </div>
       )}
 
       {/* Empty State */}
@@ -278,42 +280,47 @@ export default function ProjectMaterials() {
 
       {/* Materials List */}
       {filteredSupplies.length > 0 && (
-        <div className="pm-list">
+        <div className="flex flex-col gap-4">
           {filteredSupplies.map((supply, index) => {
             const statusConfig = StatusColor[supply.status] || { color: '#64748B', bg: '#F1F5F9' };
             const IconComponent = StatusIcon[supply.status] || Package;
+            
+            let statusBadgeClass = 'bg-slate-50 text-slate-700 border-slate-200';
+            if(supply.status === 'Pending') statusBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
+            if(supply.status === 'Ordered') statusBadgeClass = 'bg-blue-50 text-blue-700 border-blue-200';
+            if(supply.status === 'Delivered') statusBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
             return (
               <Card
                 key={supply._id}
-                className="pm-card"
+                className="relative overflow-hidden !p-0 animate-[fade-in-up_0.35s_ease_both] transition-all duration-150 hover:-translate-y-[2px] hover:shadow-lg"
                 style={{
-                  borderLeft: `4px solid ${statusConfig.color}`,
                   animationDelay: `${index * 0.05}s`
                 }}
               >
-                <div className="pm-card-body">
-                  <div className="pm-icon-wrap" style={{ backgroundColor: statusConfig.bg }}>
+               <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: statusConfig.color }} />
+                <div className="p-5 flex gap-5 items-center max-sm:flex-col max-sm:items-start pl-6">
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 max-sm:w-10 max-sm:h-10" style={{ backgroundColor: statusConfig.bg }}>
                     <IconComponent size={24} color={statusConfig.color} />
                   </div>
-                  <div className="pm-info">
-                    <div className="pm-info-top">
-                      <h3 className="pm-item-name">{supply.item}</h3>
-                      <div className={`pm-status-badge pm-status-${supply.status.toLowerCase()}`}>
+                  <div className="flex-1 min-w-0 w-full">
+                    <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+                      <h3 className="text-lg font-bold text-text-primary m-0">{supply.item}</h3>
+                      <div className={`text-xs font-bold py-1 px-2.5 rounded-full border box-border whitespace-nowrap ${statusBadgeClass}`}>
                         {supply.status}
                       </div>
                     </div>
-                    <div className="pm-meta-row">
-                      <span className="pm-meta-item pm-meta-qty">
-                        <Package size={14} /> {supply.qty} {supply.unit}
+                    <div className="flex flex-wrap items-center gap-4 max-sm:flex-col max-sm:items-start max-sm:gap-2">
+                      <span className="flex items-center gap-1.5 text-sm font-bold text-text-primary">
+                        <Package size={14} className="text-text-secondary" /> {supply.qty} {supply.unit}
                       </span>
                       {supply.cost > 0 && (
-                        <span className="pm-meta-item">
+                        <span className="flex items-center gap-1.5 text-sm text-text-secondary">
                           <DollarSign size={14} /> {t('projectMaterials.labels.estCost', { cost: formatRupiah(supply.cost) })}
                         </span>
                       )}
                       {(supply.startDate || supply.endDate) && (
-                        <span className="pm-meta-item">
+                        <span className="flex items-center gap-1.5 text-sm text-text-secondary">
                           <Calendar size={14} /> {formatDate(supply.startDate)} - {formatDate(supply.endDate)}
                         </span>
                       )}
@@ -321,11 +328,11 @@ export default function ProjectMaterials() {
                   </div>
 
                   {canManage && (
-                    <div className="pm-actions">
-                      <div className="pm-status-quick-actions">
+                    <div className="flex items-center gap-3 shrink-0 max-sm:w-full max-sm:justify-end max-sm:pt-4 max-sm:border-t max-sm:border-dashed max-sm:border-border-light max-sm:mt-2">
+                      <div className="flex items-center max-sm:w-full max-sm:flex-col max-sm:gap-2 max-sm:mr-0 z-10">
                         {supply.status === 'Pending' && (
                           <button
-                            className="pm-quick-btn pm-quick-ordered"
+                            className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded text-xs font-bold border border-transparent cursor-pointer transition-colors max-sm:w-full bg-blue-50 text-blue-600 hover:bg-blue-100 hover:border-blue-200 mr-2 max-sm:mr-0"
                             onClick={() => handleStatusUpdate(supply._id, 'Ordered')}
                             title={t('projectMaterials.actions.markOrdered')}
                           >
@@ -334,7 +341,7 @@ export default function ProjectMaterials() {
                         )}
                         {supply.status === 'Ordered' && (
                           <button
-                            className="pm-quick-btn pm-quick-delivered"
+                            className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded text-xs font-bold border border-transparent cursor-pointer transition-colors max-sm:w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:border-emerald-200 mr-2 max-sm:mr-0"
                             onClick={() => handleStatusUpdate(supply._id, 'Delivered')}
                             title={t('projectMaterials.actions.markDelivered')}
                           >
@@ -342,12 +349,14 @@ export default function ProjectMaterials() {
                           </button>
                         )}
                       </div>
-                      <button className="pm-action-btn pm-edit-btn" onClick={() => openEditModal(supply)}>
-                        <Edit3 size={16} />
-                      </button>
-                      <button className="pm-action-btn pm-delete-btn" onClick={() => handleDelete(supply._id, supply.item)}>
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="flex gap-2">
+                          <button className="w-8 h-8 rounded-md flex items-center justify-center cursor-pointer transition-colors border-none bg-bg-secondary text-text-secondary hover:bg-primary/10 hover:text-primary z-10" onClick={() => openEditModal(supply)}>
+                            <Edit3 size={16} />
+                          </button>
+                          <button className="w-8 h-8 rounded-md flex items-center justify-center cursor-pointer transition-colors border-none bg-bg-secondary text-rose-500 hover:bg-rose-50 hover:text-rose-600 z-10" onClick={() => handleDelete(supply._id, supply.item)}>
+                            <Trash2 size={16} />
+                          </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -368,43 +377,43 @@ export default function ProjectMaterials() {
 
       {/* Modal Form */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{editingId ? t('projectMaterials.actions.editMaterial') : t('projectMaterials.actions.addMaterial')}</h2>
-              <button className="modal-close" onClick={() => setShowModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => setShowModal(false)}>
+          <div className="bg-bg-white rounded-xl w-full max-w-[500px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-border-light">
+              <h2 className="m-0 font-bold text-lg text-text-primary">{editingId ? t('projectMaterials.actions.editMaterial') : t('projectMaterials.actions.addMaterial')}</h2>
+              <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted flex hover:bg-bg-secondary hover:text-text-primary rounded-md" onClick={() => setShowModal(false)}>
                 <X size={24} />
               </button>
             </div>
 
-            <div className="modal-body">
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label">{t('projectMaterials.modal.itemName')}</label>
+            <div className="p-5 flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-text-primary">{t('projectMaterials.modal.itemName')}</label>
                 <input
                   type="text"
-                  className="form-input"
+                  className="w-full p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 transition-shadow"
                   placeholder={t('projectMaterials.modal.itemNamePlaceholder')}
                   value={formData.item}
                   onChange={e => setFormData({ ...formData, item: e.target.value })}
                 />
               </div>
 
-              <div className="form-row" style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-                <div className="form-group" style={{ flex: 2 }}>
-                  <label className="form-label">{t('projectMaterials.modal.quantity')}</label>
+              <div className="flex gap-3 max-sm:flex-col">
+                <div className="flex flex-col gap-1.5 flex-[2]">
+                  <label className="text-sm font-semibold text-text-primary">{t('projectMaterials.modal.quantity')}</label>
                   <input
                     type="number"
-                    className="form-input"
+                    className="w-full p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 transition-shadow"
                     placeholder="0"
                     value={formData.qty}
                     onChange={e => setFormData({ ...formData, qty: e.target.value })}
                   />
                 </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">{t('projectMaterials.modal.unit')}</label>
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <label className="text-sm font-semibold text-text-primary">{t('projectMaterials.modal.unit')}</label>
                   <input
                     type="text"
-                    className="form-input"
+                    className="w-full p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 transition-shadow"
                     placeholder={t('projectMaterials.modal.unitPlaceholder')}
                     value={formData.unit}
                     onChange={e => setFormData({ ...formData, unit: e.target.value })}
@@ -412,42 +421,42 @@ export default function ProjectMaterials() {
                 </div>
               </div>
 
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label">{t('projectMaterials.modal.estimatedCost', { unit: formData.unit || 'unit' })}</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-text-primary">{t('projectMaterials.modal.estimatedCost', { unit: formData.unit || 'unit' })}</label>
                 <input
                   type="number"
-                  className="form-input"
+                  className="w-full p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 transition-shadow"
                   placeholder={t('projectMaterials.modal.costPlaceholder')}
                   value={formData.cost}
                   onChange={e => setFormData({ ...formData, cost: e.target.value })}
                 />
               </div>
 
-              <div className="form-row" style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">{t('projectMaterials.modal.startDate')}</label>
+              <div className="flex gap-3 max-sm:flex-col">
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <label className="text-sm font-semibold text-text-primary">{t('projectMaterials.modal.startDate')}</label>
                   <input
                     type="date"
-                    className="form-input"
+                    className="w-full p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 transition-shadow"
                     value={formData.startDate}
                     onChange={e => setFormData({ ...formData, startDate: e.target.value })}
                   />
                 </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">{t('projectMaterials.modal.endDate')}</label>
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <label className="text-sm font-semibold text-text-primary">{t('projectMaterials.modal.endDate')}</label>
                   <input
                     type="date"
-                    className="form-input"
+                    className="w-full p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 transition-shadow"
                     value={formData.endDate}
                     onChange={e => setFormData({ ...formData, endDate: e.target.value })}
                   />
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">{t('projectMaterials.modal.status')}</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-text-primary">{t('projectMaterials.modal.status')}</label>
                 <select
-                  className="form-input"
+                  className="w-full p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 transition-shadow appearance-none cursor-pointer"
                   value={formData.status}
                   onChange={e => setFormData({ ...formData, status: e.target.value as any })}
                 >
@@ -458,7 +467,7 @@ export default function ProjectMaterials() {
               </div>
             </div>
 
-            <div className="modal-footer">
+            <div className="flex justify-end gap-3 p-5 border-t border-border-light bg-bg-secondary/50 rounded-b-xl">
               <Button title={t('projectMaterials.actions.cancel')} variant="outline" onClick={() => setShowModal(false)} />
               <Button title={t('projectMaterials.actions.saveMaterial')} variant="primary" onClick={handleSave} loading={submitting} />
             </div>

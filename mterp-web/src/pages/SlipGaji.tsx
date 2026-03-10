@@ -29,7 +29,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { Card, Alert, Button } from '../components/shared';
 import { useTranslation } from 'react-i18next';
 import { exportSlipToPdf } from '../utils/exportSlipPdf';
-import './SlipGaji.css';
 
 /* ---- helpers ---- */
 /** Get Monday→Saturday of the current week */
@@ -268,7 +267,7 @@ export default function SlipGaji() {
     };
 
     return (
-        <div className="sg-container">
+        <div className="p-6 max-w-[900px] mx-auto">
             <Alert
                 visible={alertData.visible}
                 type={alertData.type}
@@ -278,32 +277,32 @@ export default function SlipGaji() {
             />
 
             {/* Header */}
-            <div className="sg-header">
-                <button className="sg-back-btn" onClick={() => navigate(-1)}>
+            <div className="flex items-center gap-3 mb-6">
+                <button className="w-9 h-9 border border-border bg-bg-white rounded-md flex items-center justify-center text-text-primary transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0" onClick={() => navigate(-1)}>
                     <ArrowLeft size={20} />
                 </button>
-                <div className="sg-header-icon">
+                <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-teal-600 to-teal-400 flex items-center justify-center shadow-[0_4px_14px_rgba(13,148,136,0.35)] shrink-0">
                     <Receipt size={22} color="white" />
                 </div>
                 <div>
-                    <h1 className="sg-title">{t('slipGaji.title')}</h1>
-                    <p className="sg-subtitle">{t('slipGaji.subtitle')}</p>
+                    <h1 className="text-xl font-bold text-text-primary m-0">{t('slipGaji.title')}</h1>
+                    <p className="text-xs text-text-muted m-0">{t('slipGaji.subtitle')}</p>
                 </div>
             </div>
 
             {/* Action Bar — Date Range Filter */}
-            <div className="sg-action-bar">
-                <div className="sg-filters">
-                    <button className="sg-week-btn" onClick={() => shiftWeek(-1)}>◀</button>
-                    <div className="sg-date-range">
+            <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+                <div className="flex items-center gap-2">
+                    <button className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0" onClick={() => shiftWeek(-1)}>◀</button>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md bg-bg-white">
                         <Calendar size={14} />
-                        <input type="date" className="sg-date-input" value={filterStart} onChange={(e) => setFilterStart(e.target.value)} />
-                        <span className="sg-date-sep">—</span>
-                        <input type="date" className="sg-date-input" value={filterEnd} onChange={(e) => setFilterEnd(e.target.value)} />
+                        <input type="date" className="border-none bg-transparent text-[0.8em] font-medium text-text-primary outline-none w-[120px] cursor-pointer" value={filterStart} onChange={(e) => setFilterStart(e.target.value)} />
+                        <span className="text-text-muted text-[0.85em]">—</span>
+                        <input type="date" className="border-none bg-transparent text-[0.8em] font-medium text-text-primary outline-none w-[120px] cursor-pointer" value={filterEnd} onChange={(e) => setFilterEnd(e.target.value)} />
                     </div>
-                    <button className="sg-week-btn" onClick={() => shiftWeek(1)}>▶</button>
+                    <button className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0" onClick={() => shiftWeek(1)}>▶</button>
                 </div>
-                <button className="sg-generate-btn" onClick={() => setGenModal(true)}>
+                <button className="flex items-center gap-1.5 px-5 py-2.5 border-none rounded-md bg-gradient-to-br from-teal-600 to-teal-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(13,148,136,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_6px_18px_rgba(13,148,136,0.35)]" onClick={() => setGenModal(true)}>
                     <Plus size={18} />
                     <span>{t('slipGaji.actions.generate')}</span>
                 </button>
@@ -311,79 +310,79 @@ export default function SlipGaji() {
 
             {/* Slips List */}
             {loading ? (
-                <div className="sg-loading">
-                    <Loader2 size={32} className="sg-spinner" />
+                <div className="flex flex-col items-center justify-center p-10 gap-3 text-text-muted">
+                    <Loader2 size={32} className="animate-spin" />
                     <span>{t('slipGaji.loading')}</span>
                 </div>
             ) : slips.length === 0 ? (
-                <Card className="sg-empty">
+                <Card className="flex flex-col items-center gap-4 !p-10 text-center text-text-muted">
                     <FileText size={48} color="var(--text-muted)" />
                     <p>{t('slipGaji.empty.title')}</p>
-                    <button className="sg-generate-btn" onClick={() => setGenModal(true)}>
+                    <button className="flex items-center gap-1.5 px-5 py-2.5 border-none rounded-md bg-gradient-to-br from-teal-600 to-teal-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(13,148,136,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_6px_18px_rgba(13,148,136,0.35)]" onClick={() => setGenModal(true)}>
                         <Plus size={18} />
                         <span>{t('slipGaji.empty.btnGenerate')}</span>
                     </button>
                 </Card>
             ) : (
-                <div className="sg-slips-list">
+                <div className="flex flex-col gap-3">
                     {slips.map((slip) => {
                         const badge = STATUS_BADGE[slip.status] || STATUS_BADGE.draft;
                         return (
-                            <Card key={slip._id} className="sg-slip-card" onClick={() => openDetail(slip)}>
-                                <div className="sg-slip-top">
-                                    <div className="sg-slip-worker">
-                                        <div className="sg-slip-avatar" style={{ background: badge.bg, color: badge.color }}>
+                            <Card key={slip._id} className="!p-4 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md" onClick={() => openDetail(slip)}>
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ background: badge.bg, color: badge.color }}>
                                             {slip.workerId?.fullName?.[0]?.toUpperCase() || 'W'}
                                         </div>
                                         <div>
-                                            <span className="sg-slip-name">{slip.workerId?.fullName || t('slipGaji.card.worker')}</span>
-                                            <span className="sg-slip-number">{slip.slipNumber}</span>
+                                            <span className="block text-sm font-semibold text-text-primary">{slip.workerId?.fullName || t('slipGaji.card.worker')}</span>
+                                            <span className="block text-[10px] text-text-muted font-mono">{slip.slipNumber}</span>
                                         </div>
                                     </div>
-                                    <span className="sg-slip-badge" style={{ color: badge.color, background: badge.bg }}>
+                                    <span className="text-[9px] font-bold px-2.5 py-[3px] rounded-full uppercase tracking-[0.3px] whitespace-nowrap" style={{ color: badge.color, background: badge.bg }}>
                                         {t(`slipGaji.status.${badge.labelKey}`)}
                                     </span>
                                 </div>
 
-                                <div className="sg-slip-period-row">
+                                <div className="flex items-center gap-1.5 text-[0.72em] text-text-secondary pt-1 pb-0.5">
                                     <Calendar size={11} />
                                     <span>{formatDateRange(slip.period.startDate, slip.period.endDate)}</span>
                                 </div>
 
-                                <div className="sg-slip-middle">
-                                    <div className="sg-slip-stat">
+                                <div className="flex items-center gap-4 pb-3 border-b border-border-light mb-3">
+                                    <div className="flex items-center gap-1 text-xs text-text-secondary">
                                         <Clock size={12} />
                                         <span>{slip.attendanceSummary.presentDays} {t('slipGaji.card.days')}</span>
                                     </div>
-                                    <div className="sg-slip-stat">
+                                    <div className="flex items-center gap-1 text-xs text-text-secondary">
                                         <Briefcase size={12} />
                                         <span>{formatRp(slip.earnings.totalDailyWage)}</span>
                                     </div>
-                                    <div className="sg-slip-stat sg-net-pay">
+                                    <div className="flex items-center gap-1 text-xs text-text-secondary ml-auto font-bold !text-primary !text-sm">
                                         <DollarSign size={12} />
                                         <span>{formatRp(slip.earnings.netPay)}</span>
                                     </div>
                                 </div>
 
-                                <div className="sg-slip-bottom">
-                                    <div className="sg-slip-sigs">
-                                        <div className={`sg-sig-dot ${slip.authorization.directorPassphrase ? 'signed' : ''}`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex gap-3">
+                                        <div className={`flex items-center gap-1 text-[10px] text-text-muted ${slip.authorization.directorPassphrase ? 'text-[#059669] [&_svg]:text-[#059669]' : ''}`}>
                                             <Shield size={10} />
                                             <span>{t('slipGaji.modals.detail.digitalAuth.director')}</span>
                                         </div>
-                                        <div className={`sg-sig-dot ${slip.authorization.ownerPassphrase ? 'signed' : ''}`}>
+                                        <div className={`flex items-center gap-1 text-[10px] text-text-muted ${slip.authorization.ownerPassphrase ? 'text-[#059669] [&_svg]:text-[#059669]' : ''}`}>
                                             <Shield size={10} />
                                             <span>{t('slipGaji.modals.detail.digitalAuth.owner')}</span>
                                         </div>
                                     </div>
-                                    <div className="sg-slip-actions" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                                         {canSign(slip) && (
-                                            <button className="sg-action-btn sg-sign-btn" onClick={() => openAuth(slip._id)} title="Sign">
+                                            <button className="w-7 h-7 border border-border bg-bg-white rounded-sm flex items-center justify-center cursor-pointer transition-all text-[#0D9488] hover:bg-[#CCFBF1] hover:border-[#0D9488]" onClick={() => openAuth(slip._id)} title="Sign">
                                                 <Lock size={14} />
                                             </button>
                                         )}
                                         {slip.status === 'draft' && (
-                                            <button className="sg-action-btn sg-delete-btn" onClick={() => handleDelete(slip._id)} title="Delete">
+                                            <button className="w-7 h-7 border border-border bg-bg-white rounded-sm flex items-center justify-center cursor-pointer transition-all text-danger hover:bg-[#FEE2E2] hover:border-danger" onClick={() => handleDelete(slip._id)} title="Delete">
                                                 <Trash2 size={14} />
                                             </button>
                                         )}
@@ -398,63 +397,63 @@ export default function SlipGaji() {
             {/* ===== Generate Modal ===== */}
             {genModal && (
                 <div className="modal-overlay" onClick={() => setGenModal(false)}>
-                    <div className="sg-modal sg-modal-gen" onClick={(e) => e.stopPropagation()}>
-                        <div className="sg-modal-header">
-                            <div className="sg-modal-icon" style={{ background: 'linear-gradient(135deg, #6366F1, #818CF8)' }}>
+                    <div className="bg-bg-white rounded-xl w-[90%] max-w-[520px] max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-3 px-5 pt-5 pb-0">
+                            <div className="w-[42px] h-[42px] rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #6366F1, #818CF8)' }}>
                                 <Receipt size={20} color="white" />
                             </div>
                             <div>
-                                <h3 className="sg-modal-title">{t('slipGaji.modals.generate.title')}</h3>
-                                <p className="sg-modal-desc">{t('slipGaji.modals.generate.desc')}</p>
+                                <h3 className="text-lg font-bold text-text-primary m-0">{t('slipGaji.modals.generate.title')}</h3>
+                                <p className="text-xs text-text-muted m-0">{t('slipGaji.modals.generate.desc')}</p>
                             </div>
-                            <button className="sg-modal-close" onClick={() => setGenModal(false)}><X size={18} /></button>
+                            <button className="ml-auto w-8 h-8 border-none bg-bg-secondary rounded-full cursor-pointer flex items-center justify-center text-text-muted transition-colors hover:bg-border" onClick={() => setGenModal(false)}><X size={18} /></button>
                         </div>
 
-                        <div className="sg-modal-body">
-                            <div className="sg-form-group">
-                                <label className="sg-label"><UserCheck size={14} /> {t('slipGaji.modals.generate.worker')}</label>
-                                <div className="sg-select-group sg-full">
-                                    <Search size={14} className="sg-select-icon" />
-                                    <select className="sg-select" value={genWorker} onChange={(e) => setGenWorker(e.target.value)}>
+                        <div className="p-5">
+                            <div className="mb-4 flex-1">
+                                <label className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-[0.3px]"><UserCheck size={14} /> {t('slipGaji.modals.generate.worker')}</label>
+                                <div className="w-full relative flex items-center">
+                                    <Search size={14} className="absolute left-2.5 text-text-muted pointer-events-none z-10" />
+                                    <select className="w-full py-2 pr-7 pl-8 border border-border rounded-md text-sm font-medium text-text-primary bg-bg-white appearance-none cursor-pointer outline-none transition-colors focus:border-primary" value={genWorker} onChange={(e) => setGenWorker(e.target.value)}>
                                         <option value="">{t('slipGaji.modals.generate.workerPlaceholder')}</option>
                                         {workers.map(w => <option key={w._id} value={w._id}>{w.fullName}</option>)}
                                     </select>
-                                    <ChevronDown size={14} className="sg-select-arrow" />
+                                    <ChevronDown size={14} className="absolute right-2.5 text-text-muted pointer-events-none" />
                                 </div>
                             </div>
 
-                            <div className="sg-form-row">
-                                <div className="sg-form-group">
-                                    <label className="sg-label"><Calendar size={14} /> {t('slipGaji.modals.generate.startDate')}</label>
-                                    <input type="date" className="sg-input" value={genStart} onChange={(e) => setGenStart(e.target.value)} />
+                            <div className="flex gap-3">
+                                <div className="mb-4 flex-1">
+                                    <label className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-[0.3px]"><Calendar size={14} /> {t('slipGaji.modals.generate.startDate')}</label>
+                                    <input type="date" className="w-full px-3.5 py-2.5 border border-border rounded-md text-sm text-text-primary bg-bg-white outline-none transition-colors focus:border-primary box-border" value={genStart} onChange={(e) => setGenStart(e.target.value)} />
                                 </div>
-                                <div className="sg-form-group">
-                                    <label className="sg-label">{t('slipGaji.modals.generate.endDate')}</label>
-                                    <input type="date" className="sg-input" value={genEnd} onChange={(e) => setGenEnd(e.target.value)} />
-                                </div>
-                            </div>
-
-                            <div className="sg-form-row">
-                                <div className="sg-form-group">
-                                    <label className="sg-label"><DollarSign size={14} /> {t('slipGaji.modals.generate.bonus')}</label>
-                                    <input type="number" className="sg-input" value={genBonus || ''} onChange={(e) => setGenBonus(Number(e.target.value))} placeholder="0" />
-                                </div>
-                                <div className="sg-form-group">
-                                    <label className="sg-label">{t('slipGaji.modals.generate.deductions')}</label>
-                                    <input type="number" className="sg-input" value={genDeductions || ''} onChange={(e) => setGenDeductions(Number(e.target.value))} placeholder="0" />
+                                <div className="mb-4 flex-1">
+                                    <label className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-[0.3px]">{t('slipGaji.modals.generate.endDate')}</label>
+                                    <input type="date" className="w-full px-3.5 py-2.5 border border-border rounded-md text-sm text-text-primary bg-bg-white outline-none transition-colors focus:border-primary box-border" value={genEnd} onChange={(e) => setGenEnd(e.target.value)} />
                                 </div>
                             </div>
 
-                            <div className="sg-form-group">
-                                <label className="sg-label"><FileText size={14} /> {t('slipGaji.modals.generate.notes')}</label>
-                                <textarea className="sg-textarea" value={genNotes} onChange={(e) => setGenNotes(e.target.value)} placeholder={t('slipGaji.modals.generate.notesPlaceholder')} rows={2} />
+                            <div className="flex gap-3">
+                                <div className="mb-4 flex-1">
+                                    <label className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-[0.3px]"><DollarSign size={14} /> {t('slipGaji.modals.generate.bonus')}</label>
+                                    <input type="number" className="w-full px-3.5 py-2.5 border border-border rounded-md text-sm text-text-primary bg-bg-white outline-none transition-colors focus:border-primary box-border" value={genBonus || ''} onChange={(e) => setGenBonus(Number(e.target.value))} placeholder="0" />
+                                </div>
+                                <div className="mb-4 flex-1">
+                                    <label className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-[0.3px]">{t('slipGaji.modals.generate.deductions')}</label>
+                                    <input type="number" className="w-full px-3.5 py-2.5 border border-border rounded-md text-sm text-text-primary bg-bg-white outline-none transition-colors focus:border-primary box-border" value={genDeductions || ''} onChange={(e) => setGenDeductions(Number(e.target.value))} placeholder="0" />
+                                </div>
+                            </div>
+
+                            <div className="mb-4 flex-1">
+                                <label className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-[0.3px]"><FileText size={14} /> {t('slipGaji.modals.generate.notes')}</label>
+                                <textarea className="w-full px-3.5 py-2.5 border border-border rounded-md text-sm text-text-primary bg-bg-white outline-none transition-colors focus:border-primary box-border resize-y font-inherit" value={genNotes} onChange={(e) => setGenNotes(e.target.value)} placeholder={t('slipGaji.modals.generate.notesPlaceholder')} rows={2} />
                             </div>
                         </div>
 
-                        <div className="sg-modal-footer">
-                            <button className="sg-btn-cancel" onClick={() => setGenModal(false)}>{t('slipGaji.modals.generate.btnCancel')}</button>
-                            <button className="sg-btn-primary" onClick={handleGenerate} disabled={!genWorker || generating}>
-                                {generating ? <><Loader2 size={16} className="sg-spinner" /> {t('slipGaji.modals.generate.btnGenerating')}</> : <><Receipt size={16} /> {t('slipGaji.modals.generate.btnGenerate')}</>}
+                        <div className="flex justify-end gap-3 px-5 pb-5 pt-0">
+                            <button className="px-5 py-2.5 border border-border bg-bg-white rounded-md text-sm font-semibold text-text-secondary cursor-pointer transition-colors hover:bg-bg-secondary" onClick={() => setGenModal(false)}>{t('slipGaji.modals.generate.btnCancel')}</button>
+                            <button className="flex items-center gap-1.5 px-6 py-2.5 border-none rounded-md bg-gradient-to-br from-indigo-500 to-indigo-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(99,102,241,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_5px_18px_rgba(99,102,241,0.35)] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-[0_3px_12px_rgba(99,102,241,0.3)]" onClick={handleGenerate} disabled={!genWorker || generating}>
+                                {generating ? <><Loader2 size={16} className="animate-spin" /> {t('slipGaji.modals.generate.btnGenerating')}</> : <><Receipt size={16} /> {t('slipGaji.modals.generate.btnGenerate')}</>}
                             </button>
                         </div>
                     </div>
@@ -464,30 +463,30 @@ export default function SlipGaji() {
             {/* ===== Detail Modal ===== */}
             {detailModal && selectedSlip && (
                 <div className="modal-overlay" onClick={() => setDetailModal(false)}>
-                    <div className="sg-modal sg-modal-detail" onClick={(e) => e.stopPropagation()}>
-                        <div className="sg-modal-header">
-                            <div className="sg-modal-icon" style={{ background: 'linear-gradient(135deg, #059669, #34D399)' }}>
+                    <div className="bg-bg-white rounded-xl w-[90%] max-w-[600px] max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-3 px-5 pt-5 pb-0">
+                            <div className="w-[42px] h-[42px] rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #059669, #34D399)' }}>
                                 <FileText size={20} color="white" />
                             </div>
                             <div>
-                                <h3 className="sg-modal-title">{t('slipGaji.modals.detail.title')}</h3>
-                                <p className="sg-modal-desc">{selectedSlip.slipNumber}</p>
+                                <h3 className="text-lg font-bold text-text-primary m-0">{t('slipGaji.modals.detail.title')}</h3>
+                                <p className="text-xs text-text-muted m-0">{selectedSlip.slipNumber}</p>
                             </div>
-                            <button className="sg-modal-close" onClick={() => setDetailModal(false)}><X size={18} /></button>
+                            <button className="ml-auto w-8 h-8 border-none bg-bg-secondary rounded-full cursor-pointer flex items-center justify-center text-text-muted transition-colors hover:bg-border" onClick={() => setDetailModal(false)}><X size={18} /></button>
                         </div>
 
-                        <div className="sg-modal-body sg-slip-detail">
+                        <div className="p-5 flex flex-col gap-4">
                             {/* Worker Info */}
-                            <div className="sg-detail-section">
-                                <div className="sg-detail-worker">
-                                    <div className="sg-detail-avatar">
+                            <div>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-[42px] h-[42px] rounded-full bg-gradient-to-br from-indigo-500 to-indigo-400 text-white flex items-center justify-center font-bold text-base shrink-0">
                                         {selectedSlip.workerId?.fullName?.[0]?.toUpperCase() || 'W'}
                                     </div>
                                     <div>
-                                        <span className="sg-detail-name">{selectedSlip.workerId?.fullName}</span>
-                                        <span className="sg-detail-role">{selectedSlip.workerId?.role}</span>
+                                        <span className="block font-bold text-base text-text-primary">{selectedSlip.workerId?.fullName}</span>
+                                        <span className="block text-xs text-text-muted capitalize">{selectedSlip.workerId?.role}</span>
                                     </div>
-                                    <span className="sg-slip-badge" style={{
+                                    <span className="text-[9px] font-bold px-2.5 py-[3px] rounded-full uppercase tracking-[0.3px] whitespace-nowrap" style={{
                                         color: STATUS_BADGE[selectedSlip.status]?.color,
                                         background: STATUS_BADGE[selectedSlip.status]?.bg,
                                     }}>
@@ -497,110 +496,110 @@ export default function SlipGaji() {
                             </div>
 
                             {/* Period */}
-                            <div className="sg-detail-period">
+                            <div className="flex items-center gap-1.5 text-sm text-text-secondary bg-bg-secondary px-3.5 py-2 rounded-md">
                                 <Calendar size={14} />
                                 <span>{t('slipGaji.modals.detail.period')} {formatDateRange(selectedSlip.period.startDate, selectedSlip.period.endDate)}</span>
                             </div>
 
                             {/* Payment Info */}
                             {selectedSlip.workerPaymentInfo?.bankPlatform && (
-                                <div className="sg-detail-payment">
+                                <div className="flex items-center gap-1.5 text-sm text-text-secondary bg-[#F0F9FF] px-3.5 py-2 rounded-md">
                                     <CreditCard size={14} />
                                     <span>{selectedSlip.workerPaymentInfo.bankPlatform} — {selectedSlip.workerPaymentInfo.bankAccount}</span>
-                                    <span className="sg-detail-accname">a/n {selectedSlip.workerPaymentInfo.accountName}</span>
+                                    <span className="ml-auto italic text-text-muted">a/n {selectedSlip.workerPaymentInfo.accountName}</span>
                                 </div>
                             )}
 
                             {/* Attendance Summary */}
-                            <div className="sg-detail-grid">
-                                <div className="sg-detail-stat">
-                                    <span className="sg-detail-stat-val">{selectedSlip.attendanceSummary.totalDays}</span>
-                                    <span className="sg-detail-stat-label">{t('slipGaji.modals.detail.totalDays')}</span>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="text-center p-3 bg-bg-secondary rounded-md">
+                                    <span className="block text-lg font-bold text-text-primary">{selectedSlip.attendanceSummary.totalDays}</span>
+                                    <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.totalDays')}</span>
                                 </div>
-                                <div className="sg-detail-stat">
-                                    <span className="sg-detail-stat-val sg-green">{selectedSlip.attendanceSummary.presentDays}</span>
-                                    <span className="sg-detail-stat-label">{t('slipGaji.modals.detail.present')}</span>
+                                <div className="text-center p-3 bg-bg-secondary rounded-md">
+                                    <span className="block text-lg font-bold text-[#059669]">{selectedSlip.attendanceSummary.presentDays}</span>
+                                    <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.present')}</span>
                                 </div>
-                                <div className="sg-detail-stat">
-                                    <span className="sg-detail-stat-val sg-amber">{selectedSlip.attendanceSummary.lateDays}</span>
-                                    <span className="sg-detail-stat-label">{t('slipGaji.modals.detail.late')}</span>
+                                <div className="text-center p-3 bg-bg-secondary rounded-md">
+                                    <span className="block text-lg font-bold text-[#D97706]">{selectedSlip.attendanceSummary.lateDays}</span>
+                                    <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.late')}</span>
                                 </div>
-                                <div className="sg-detail-stat">
-                                    <span className="sg-detail-stat-val sg-red">{selectedSlip.attendanceSummary.absentDays}</span>
-                                    <span className="sg-detail-stat-label">{t('slipGaji.modals.detail.absent')}</span>
+                                <div className="text-center p-3 bg-bg-secondary rounded-md">
+                                    <span className="block text-lg font-bold text-[#DC2626]">{selectedSlip.attendanceSummary.absentDays}</span>
+                                    <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.absent')}</span>
                                 </div>
-                                <div className="sg-detail-stat">
-                                    <span className="sg-detail-stat-val sg-purple">{selectedSlip.attendanceSummary.permitDays}</span>
-                                    <span className="sg-detail-stat-label">{t('slipGaji.modals.detail.permit')}</span>
+                                <div className="text-center p-3 bg-bg-secondary rounded-md">
+                                    <span className="block text-lg font-bold text-[#7C3AED]">{selectedSlip.attendanceSummary.permitDays}</span>
+                                    <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.permit')}</span>
                                 </div>
-                                <div className="sg-detail-stat">
-                                    <span className="sg-detail-stat-val">{selectedSlip.attendanceSummary.totalHours}h</span>
-                                    <span className="sg-detail-stat-label">{t('slipGaji.modals.detail.totalHours')}</span>
+                                <div className="text-center p-3 bg-bg-secondary rounded-md">
+                                    <span className="block text-lg font-bold text-text-primary">{selectedSlip.attendanceSummary.totalHours}h</span>
+                                    <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.totalHours')}</span>
                                 </div>
                             </div>
 
                             {/* Earnings Table */}
-                            <div className="sg-detail-table">
-                                <h4 className="sg-detail-table-title">{t('slipGaji.modals.detail.earnings.title')}</h4>
-                                <div className="sg-table-row">
+                            <div className="bg-bg-secondary rounded-md p-4">
+                                <h4 className="text-xs font-bold text-text-primary uppercase tracking-[0.5px] m-0 mb-3">{t('slipGaji.modals.detail.earnings.title')}</h4>
+                                <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                     <span>{t('slipGaji.modals.detail.earnings.dailyRate')}</span>
                                     <span>{formatRp(selectedSlip.earnings.dailyRate)}</span>
                                 </div>
-                                <div className="sg-table-row">
+                                <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                     <span>{t('slipGaji.modals.detail.earnings.totalDailyWages', { days: selectedSlip.attendanceSummary.presentDays + selectedSlip.attendanceSummary.lateDays })}</span>
                                     <span>{formatRp(selectedSlip.earnings.totalDailyWage)}</span>
                                 </div>
-                                <div className="sg-table-row">
+                                <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                     <span>{t('slipGaji.modals.detail.earnings.overtime')}</span>
-                                    <span className="sg-green">{formatRp(selectedSlip.earnings.totalOvertime)}</span>
+                                    <span className="text-[#059669]">{formatRp(selectedSlip.earnings.totalOvertime)}</span>
                                 </div>
                                 {selectedSlip.earnings.bonus > 0 && (
-                                    <div className="sg-table-row">
+                                    <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                         <span>{t('slipGaji.modals.detail.earnings.bonus')}</span>
-                                        <span className="sg-green">{formatRp(selectedSlip.earnings.bonus)}</span>
+                                        <span className="text-[#059669]">{formatRp(selectedSlip.earnings.bonus)}</span>
                                     </div>
                                 )}
-                                <div className="sg-table-divider" />
+                                <div className="border-t border-dashed border-border my-1.5" />
                                 {selectedSlip.earnings.deductions > 0 && (
-                                    <div className="sg-table-row">
+                                    <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                         <span>{t('slipGaji.modals.detail.earnings.deductions')}</span>
-                                        <span className="sg-red">-{formatRp(selectedSlip.earnings.deductions)}</span>
+                                        <span className="text-[#DC2626]">-{formatRp(selectedSlip.earnings.deductions)}</span>
                                     </div>
                                 )}
                                 {selectedSlip.earnings.kasbonDeduction > 0 && (
-                                    <div className="sg-table-row">
+                                    <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                         <span>{t('slipGaji.modals.detail.earnings.kasbon')}</span>
-                                        <span className="sg-red">-{formatRp(selectedSlip.earnings.kasbonDeduction)}</span>
+                                        <span className="text-[#DC2626]">-{formatRp(selectedSlip.earnings.kasbonDeduction)}</span>
                                     </div>
                                 )}
-                                <div className="sg-table-total">
+                                <div className="flex justify-between items-center pt-2.5 border-t-2 border-text-primary text-base font-extrabold text-text-primary">
                                     <span>{t('slipGaji.modals.detail.earnings.netPay')}</span>
                                     <span>{formatRp(selectedSlip.earnings.netPay)}</span>
                                 </div>
                             </div>
 
                             {/* Authorization */}
-                            <div className="sg-auth-section">
-                                <h4 className="sg-detail-table-title">{t('slipGaji.modals.detail.digitalAuth.title')}</h4>
-                                <div className="sg-auth-grid">
-                                    <div className={`sg-auth-card ${selectedSlip.authorization.directorPassphrase ? 'signed' : 'pending'}`}>
-                                        <div className="sg-auth-icon">
+                            <div className="pt-2">
+                                <h4 className="text-xs font-bold text-text-primary uppercase tracking-[0.5px] m-0 mb-3">{t('slipGaji.modals.detail.digitalAuth.title')}</h4>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className={`border border-border rounded-md p-4 text-center flex flex-col items-center gap-1.5 transition-all relative ${selectedSlip.authorization.directorPassphrase ? 'border-[#D1FAE5] bg-[#F0FDF4]' : 'border-dashed border-border-light bg-bg-secondary'}`}>
+                                        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${selectedSlip.authorization.directorPassphrase ? 'bg-[#D1FAE5] text-[#059669]' : 'bg-border-light text-text-muted'}`}>
                                             {selectedSlip.authorization.directorPassphrase ? <Unlock size={20} /> : <Lock size={20} />}
                                         </div>
-                                        <span className="sg-auth-role">{t('slipGaji.modals.detail.digitalAuth.director')}</span>
+                                        <span className="text-xs font-bold text-text-primary uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.digitalAuth.director')}</span>
                                         {selectedSlip.authorization.directorPassphrase ? (
                                             <>
-                                                <span className="sg-auth-name">{selectedSlip.authorization.directorName}</span>
-                                                <span className="sg-auth-date">
+                                                <span className="text-sm font-semibold text-text-primary">{selectedSlip.authorization.directorName}</span>
+                                                <span className="text-[10px] text-text-muted">
                                                     {new Date(selectedSlip.authorization.directorSignedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </span>
-                                                <CheckCircle2 size={14} className="sg-auth-check" />
+                                                <CheckCircle2 size={14} className="text-[#059669]" />
                                             </>
                                         ) : (
                                             <>
-                                                <span className="sg-auth-pending">{t('slipGaji.modals.detail.digitalAuth.awaiting')}</span>
+                                                <span className="text-[10px] text-text-muted italic">{t('slipGaji.modals.detail.digitalAuth.awaiting')}</span>
                                                 {role === 'director' && (
-                                                    <button className="sg-auth-sign-btn" onClick={() => openAuth(selectedSlip._id)}>
+                                                    <button className="flex items-center gap-1 mt-1 text-xs px-2.5 py-1 rounded bg-[#0D9488] text-white transition-colors hover:bg-[#0F766E]" onClick={() => openAuth(selectedSlip._id)}>
                                                         <Shield size={12} /> {t('slipGaji.modals.detail.digitalAuth.btnSign')}
                                                     </button>
                                                 )}
@@ -608,24 +607,24 @@ export default function SlipGaji() {
                                         )}
                                     </div>
 
-                                    <div className={`sg-auth-card ${selectedSlip.authorization.ownerPassphrase ? 'signed' : 'pending'}`}>
-                                        <div className="sg-auth-icon">
+                                    <div className={`border border-border rounded-md p-4 text-center flex flex-col items-center gap-1.5 transition-all relative ${selectedSlip.authorization.ownerPassphrase ? 'border-[#D1FAE5] bg-[#F0FDF4]' : 'border-dashed border-border-light bg-bg-secondary'}`}>
+                                        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${selectedSlip.authorization.ownerPassphrase ? 'bg-[#D1FAE5] text-[#059669]' : 'bg-border-light text-text-muted'}`}>
                                             {selectedSlip.authorization.ownerPassphrase ? <Unlock size={20} /> : <Lock size={20} />}
                                         </div>
-                                        <span className="sg-auth-role">{t('slipGaji.modals.detail.digitalAuth.owner')}</span>
+                                        <span className="text-xs font-bold text-text-primary uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.digitalAuth.owner')}</span>
                                         {selectedSlip.authorization.ownerPassphrase ? (
                                             <>
-                                                <span className="sg-auth-name">{selectedSlip.authorization.ownerName}</span>
-                                                <span className="sg-auth-date">
+                                                <span className="text-sm font-semibold text-text-primary">{selectedSlip.authorization.ownerName}</span>
+                                                <span className="text-[10px] text-text-muted">
                                                     {new Date(selectedSlip.authorization.ownerSignedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </span>
-                                                <CheckCircle2 size={14} className="sg-auth-check" />
+                                                <CheckCircle2 size={14} className="text-[#059669]" />
                                             </>
                                         ) : (
                                             <>
-                                                <span className="sg-auth-pending">{t('slipGaji.modals.detail.digitalAuth.awaiting')}</span>
+                                                <span className="text-[10px] text-text-muted italic">{t('slipGaji.modals.detail.digitalAuth.awaiting')}</span>
                                                 {role === 'owner' && (
-                                                    <button className="sg-auth-sign-btn" onClick={() => openAuth(selectedSlip._id)}>
+                                                    <button className="flex items-center gap-1 mt-1 text-xs px-2.5 py-1 rounded bg-[#0D9488] text-white transition-colors hover:bg-[#0F766E]" onClick={() => openAuth(selectedSlip._id)}>
                                                         <Shield size={12} /> {t('slipGaji.modals.detail.digitalAuth.btnSign')}
                                                     </button>
                                                 )}
@@ -636,19 +635,19 @@ export default function SlipGaji() {
                             </div>
 
                             {selectedSlip.notes && (
-                                <div className="sg-detail-notes">
-                                    <strong>{t('slipGaji.modals.detail.notes')}</strong> {selectedSlip.notes}
+                                <div className="p-3 bg-bg-secondary rounded-xl text-sm text-text-secondary border border-border mt-1">
+                                    <strong className="text-text-primary mr-1">{t('slipGaji.modals.detail.notes')}</strong> {selectedSlip.notes}
                                 </div>
                             )}
                         </div>
 
-                        <div className="sg-modal-footer">
-                            <button className="sg-btn-cancel" onClick={() => setDetailModal(false)}>{t('slipGaji.modals.detail.btnClose')}</button>
-                            <button className="sg-btn-export" onClick={() => handleExportPdf(selectedSlip)}>
+                        <div className="flex justify-end gap-3 px-5 pb-5 pt-0">
+                            <button className="px-5 py-2.5 border border-border bg-bg-white rounded-md text-sm font-semibold text-text-secondary cursor-pointer transition-colors hover:bg-bg-secondary" onClick={() => setDetailModal(false)}>{t('slipGaji.modals.detail.btnClose')}</button>
+                            <button className="flex items-center gap-1.5 px-6 py-2.5 border-none rounded-md bg-gradient-to-br from-[#10B981] to-[#34D399] text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(16,185,129,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_5px_18px_rgba(16,185,129,0.35)] disabled:opacity-60 disabled:cursor-not-allowed" onClick={() => handleExportPdf(selectedSlip)}>
                                 <Download size={16} /> {t('slipGaji.modals.detail.btnExport')}
                             </button>
                             {canSign(selectedSlip) && (
-                                <button className="sg-btn-primary" onClick={() => openAuth(selectedSlip._id)}>
+                                <button className="flex items-center gap-1.5 px-6 py-2.5 border-none rounded-md bg-gradient-to-br from-indigo-500 to-indigo-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(99,102,241,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_5px_18px_rgba(99,102,241,0.35)] disabled:opacity-60 disabled:cursor-not-allowed" onClick={() => openAuth(selectedSlip._id)}>
                                     <Lock size={16} /> {t('slipGaji.modals.detail.btnAuthorize')}
                                 </button>
                             )}
@@ -660,20 +659,20 @@ export default function SlipGaji() {
             {/* ===== Authorization Modal ===== */}
             {authModal && (
                 <div className="modal-overlay" onClick={() => setAuthModal(false)}>
-                    <div className="sg-modal sg-modal-auth" onClick={(e) => e.stopPropagation()}>
-                        <div className="sg-auth-modal-body">
-                            <div className="sg-auth-lock-icon">
+                    <div className="bg-bg-white rounded-xl w-[90%] max-w-[420px] shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-8 flex flex-col items-center text-center">
+                            <div className="w-[60px] h-[60px] rounded-full bg-[#EEF2FF] text-primary flex items-center justify-center mb-5 shrink-0">
                                 <Lock size={32} />
                             </div>
-                            <h3 className="sg-auth-modal-title">{t('slipGaji.modals.auth.title')}</h3>
-                            <p className="sg-auth-modal-desc">
-                                {t('slipGaji.modals.auth.desc')} <strong>{role}</strong>
+                            <h3 className="text-xl font-bold text-text-primary mb-2 mt-0">{t('slipGaji.modals.auth.title')}</h3>
+                            <p className="text-sm text-text-muted mt-0 mb-6 leading-[1.6]">
+                                {t('slipGaji.modals.auth.desc')} <strong className="text-text-primary uppercase tracking-[0.5px]">{role}</strong>
                             </p>
-                            <div className="sg-auth-input-wrap">
-                                <Shield size={16} className="sg-auth-input-icon" />
+                            <div className="w-full relative flex items-center mb-4">
+                                <Shield size={16} className="absolute left-3.5 text-text-muted" />
                                 <input
                                     type="password"
-                                    className={`sg-auth-input ${passphraseError ? 'sg-auth-input-error' : ''}`}
+                                    className={`w-full py-3.5 pr-4 pl-10 border border-border rounded-lg text-base text-text-primary bg-bg-secondary outline-none transition-all placeholder:text-text-muted focus:bg-bg-white focus:border-primary focus:shadow-[0_0_0_4px_rgba(99,102,241,0.15)] ${passphraseError ? '!border-danger focus:!shadow-[0_0_0_4px_rgba(220,38,38,0.15)] bg-[#FEF2F2]' : ''}`}
                                     value={passphrase}
                                     onChange={(e) => { setPassphrase(e.target.value); setPassphraseError(''); }}
                                     placeholder={t('slipGaji.modals.auth.placeholder')}
@@ -681,16 +680,16 @@ export default function SlipGaji() {
                                     onKeyDown={(e) => e.key === 'Enter' && handleAuthorize()}
                                 />
                             </div>
-                            {passphraseError && <p className="sg-auth-error">{passphraseError}</p>}
-                            <div className="sg-auth-modal-actions">
-                                <button className="sg-btn-cancel" onClick={() => { setAuthModal(false); setPassphraseError(''); }}>{t('slipGaji.modals.auth.btnCancel')}</button>
+                            {passphraseError && <p className="text-sm font-medium text-danger mt-[-8px] mb-4 text-left w-full pl-2 animate-in slide-in-from-top-1">{passphraseError}</p>}
+                            <div className="flex w-full gap-3 mt-2">
+                                <button className="flex-[0.8] py-3 border border-border bg-bg-white rounded-lg text-sm font-semibold text-text-secondary cursor-pointer transition-colors hover:bg-bg-secondary" onClick={() => { setAuthModal(false); setPassphraseError(''); }}>{t('slipGaji.modals.auth.btnCancel')}</button>
                                 <button
-                                    className="sg-btn-authorize"
+                                    className="flex-[1.2] flex items-center justify-center gap-2 py-3 border-none rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-400 text-white text-sm font-semibold cursor-pointer shadow-[0_4px_14px_rgba(99,102,241,0.35)] transition-all hover:shadow-[0_6px_20px_rgba(99,102,241,0.4)] hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
                                     onClick={handleAuthorize}
                                     disabled={passphrase.length < 4 || authorizing}
                                 >
                                     {authorizing ? (
-                                        <><Loader2 size={16} className="sg-spinner" /> {t('slipGaji.modals.auth.btnAuthorizing')}</>
+                                        <><Loader2 size={16} className="animate-spin" /> {t('slipGaji.modals.auth.btnAuthorizing')}</>
                                     ) : (
                                         <><Unlock size={16} /> {t('slipGaji.modals.auth.btnAuthorize')}</>
                                     )}

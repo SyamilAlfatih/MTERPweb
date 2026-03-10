@@ -1,5 +1,4 @@
 import React from 'react';
-import './Card.css';
 
 interface CardProps {
   children: React.ReactNode;
@@ -11,7 +10,9 @@ interface CardProps {
 export default function Card({ children, onClick, style, className = '' }: CardProps) {
   return (
     <div
-      className={`card-component ${onClick ? 'card-clickable' : ''} ${className}`}
+      className={`bg-bg-white rounded-[20px] p-4 shadow-sm border border-border-light transition-all duration-200 ${
+        onClick ? 'cursor-pointer hover:-translate-y-[2px] hover:shadow-md' : ''
+      } ${className}`}
       onClick={onClick}
       style={style}
     >

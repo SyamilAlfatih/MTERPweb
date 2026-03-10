@@ -9,7 +9,6 @@ import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, Input } from '../components/shared';
-import './ProjectTools.css';
 
 interface ToolData {
   _id: string;
@@ -196,8 +195,8 @@ export default function ProjectTools() {
 
   if (loading) {
     return (
-      <div className="project-tools-container">
-        <div className="loading-state">
+      <div className="p-6 max-w-[900px] mx-auto max-lg:p-4 max-sm:p-3">
+        <div className="flex flex-col items-center justify-center p-12 gap-4 text-text-muted">
           <div className="spinner" />
           <span>{t('projectTools.loading')}</span>
         </div>
@@ -206,15 +205,15 @@ export default function ProjectTools() {
   }
 
   return (
-    <div className="project-tools-container">
+    <div className="p-6 max-w-[900px] mx-auto max-lg:p-4 max-sm:p-3">
       {/* Header */}
-      <div className="pt-header">
-        <button className="back-btn" onClick={() => navigate(-1)}>
+      <div className="flex items-center gap-4 mb-5 max-sm:flex-col max-sm:items-start max-sm:gap-3">
+        <button className="p-2 border-none bg-bg-secondary rounded-md cursor-pointer flex items-center justify-center text-text-primary transition-colors duration-150 hover:bg-bg-tertiary" onClick={() => navigate(-1)}>
           <ArrowLeft size={20} />
         </button>
-        <div className="pt-header-info">
-          <h1 className="pt-title">{t('projectTools.title')}</h1>
-          <p className="pt-subtitle">{project?.nama || t('projectTools.fallbackProject')}</p>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-bold text-text-primary m-0">{t('projectTools.title')}</h1>
+          <p className="text-sm text-text-muted m-0">{project?.nama || t('projectTools.fallbackProject')}</p>
         </div>
         {canManageTools && (
           <Button
@@ -229,29 +228,29 @@ export default function ProjectTools() {
 
       {/* Mini Stats */}
       {tools.length > 0 && (
-        <div className="pt-stats-row">
-          <div className="pt-stat">
+        <div className="flex items-center gap-4 py-3 px-5 bg-bg-white rounded-lg border border-border-light shadow-sm mb-4 overflow-x-auto max-sm:gap-3 max-sm:p-3">
+          <div className="flex items-center gap-2 whitespace-nowrap">
             <Package size={16} color="var(--primary)" />
-            <span className="pt-stat-value">{tools.length}</span>
-            <span className="pt-stat-label">{t('projectTools.stats.total')}</span>
+            <span className="text-lg font-bold text-text-primary">{tools.length}</span>
+            <span className="text-xs font-semibold text-text-muted uppercase tracking-[0.5px] max-sm:hidden">{t('projectTools.stats.total')}</span>
           </div>
-          <div className="pt-stat-divider" />
-          <div className="pt-stat">
+          <div className="w-px h-7 bg-border-light shrink-0" />
+          <div className="flex items-center gap-2 whitespace-nowrap">
             <CheckCircle2 size={16} color="#059669" />
-            <span className="pt-stat-value" style={{ color: '#059669' }}>{statsGood}</span>
-            <span className="pt-stat-label">{t('projectTools.stats.good')}</span>
+            <span className="text-lg font-bold text-text-primary" style={{ color: '#059669' }}>{statsGood}</span>
+            <span className="text-xs font-semibold text-text-muted uppercase tracking-[0.5px] max-sm:hidden">{t('projectTools.stats.good')}</span>
           </div>
-          <div className="pt-stat-divider" />
-          <div className="pt-stat">
+          <div className="w-px h-7 bg-border-light shrink-0" />
+          <div className="flex items-center gap-2 whitespace-nowrap">
             <AlertTriangle size={16} color="#D97706" />
-            <span className="pt-stat-value" style={{ color: '#D97706' }}>{statsMaint}</span>
-            <span className="pt-stat-label">{t('projectTools.stats.attention')}</span>
+            <span className="text-lg font-bold text-text-primary" style={{ color: '#D97706' }}>{statsMaint}</span>
+            <span className="text-xs font-semibold text-text-muted uppercase tracking-[0.5px] max-sm:hidden">{t('projectTools.stats.attention')}</span>
           </div>
-          <div className="pt-stat-divider" />
-          <div className="pt-stat">
+          <div className="w-px h-7 bg-border-light shrink-0" />
+          <div className="flex items-center gap-2 whitespace-nowrap">
             <User size={16} color="#2563EB" />
-            <span className="pt-stat-value" style={{ color: '#2563EB' }}>{statsAssigned}</span>
-            <span className="pt-stat-label">{t('projectTools.stats.assigned')}</span>
+            <span className="text-lg font-bold text-text-primary" style={{ color: '#2563EB' }}>{statsAssigned}</span>
+            <span className="text-xs font-semibold text-text-muted uppercase tracking-[0.5px] max-sm:hidden">{t('projectTools.stats.assigned')}</span>
           </div>
         </div>
       )}
@@ -287,53 +286,53 @@ export default function ProjectTools() {
 
       {/* Tools List */}
       {filteredTools.length > 0 && (
-        <div className="pt-tools-list">
+        <div className="flex flex-col gap-3">
           {filteredTools.map((tool, index) => {
             const condStyle = getConditionStyle(tool.kondisi);
             const CondIcon = condStyle.icon;
             return (
               <Card
                 key={tool._id}
-                className="pt-tool-card"
+                className="group p-4 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-lg animate-[fade-in-up_0.35s_ease_both]"
                 style={{
                   borderLeft: `4px solid ${condStyle.color}`,
                   animationDelay: `${index * 0.04}s`,
                 }}
               >
-                <div className="pt-tool-body">
-                  <div className="pt-tool-icon" style={{ backgroundColor: condStyle.bg }}>
+                <div className="flex items-start gap-4 max-sm:flex-col">
+                  <div className="w-12 h-12 rounded-md flex items-center justify-center shrink-0 max-sm:w-10 max-sm:h-10" style={{ backgroundColor: condStyle.bg }}>
                     <Wrench size={22} color={condStyle.color} />
                   </div>
-                  <div className="pt-tool-content">
-                    <div className="pt-tool-top">
-                      <h3 className="pt-tool-name">{tool.nama}</h3>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <h3 className="text-base font-bold text-text-primary m-0">{tool.nama}</h3>
                       <span
-                        className="pt-condition-badge"
+                        className="text-xs font-bold py-[2px] px-2 rounded-full flex items-center gap-1"
                         style={{ backgroundColor: condStyle.bg, color: condStyle.color }}
                       >
                         <CondIcon size={12} />
                         {condStyle.label}
                       </span>
                     </div>
-                    <div className="pt-tool-meta">
+                    <div className="flex flex-wrap gap-3">
                       {tool.kategori && (
-                        <span className="pt-meta-item">
+                        <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
                           <Package size={13} />
                           {tool.kategori}
                         </span>
                       )}
-                      <span className="pt-meta-item">
+                      <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
                         <MapPin size={13} />
                         {tool.stok} {tool.satuan}
                       </span>
                       {tool.assignedTo && (
-                        <span className="pt-meta-item pt-meta-user">
+                        <span className="flex items-center gap-1 text-sm whitespace-nowrap !text-primary font-medium">
                           <User size={13} />
                           {tool.assignedTo.fullName}
                         </span>
                       )}
                       {tool.lastChecked && (
-                        <span className="pt-meta-item">
+                        <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
                           <Calendar size={13} />
                           {formatDate(tool.lastChecked)}
                         </span>
@@ -341,7 +340,7 @@ export default function ProjectTools() {
                     </div>
                   </div>
                   {canManageTools && (
-                    <div className="pt-tool-actions">
+                    <div className="flex flex-col gap-2 shrink-0 max-sm:flex-row max-sm:w-full [&>button]:max-sm:flex-1">
                       <Button
                         title={tool.assignedTo ? t('projectTools.actions.reassign') : t('projectTools.actions.assign')}
                         icon={User}
@@ -385,16 +384,16 @@ export default function ProjectTools() {
 
       {/* Add Tool Modal */}
       {showAddModal && (
-        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{t('projectTools.modal.addTitle')}</h2>
-              <button className="modal-close" onClick={() => setShowAddModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => setShowAddModal(false)}>
+          <div className="bg-bg-white rounded-xl w-full max-w-[480px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-border-light">
+              <h2 className="m-0 font-bold text-lg text-text-primary">{t('projectTools.modal.addTitle')}</h2>
+              <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted rounded-md flex hover:bg-bg-secondary hover:text-text-primary" onClick={() => setShowAddModal(false)}>
                 <X size={24} />
               </button>
             </div>
 
-            <div className="modal-body">
+            <div className="p-5">
               {availableTools.length === 0 ? (
                 <EmptyState
                   icon={Package}
@@ -402,13 +401,13 @@ export default function ProjectTools() {
                   description={t('projectTools.empty.allAssigned')}
                 />
               ) : (
-                <div className="form-group">
-                  <label className="form-label">{t('projectTools.modal.selectTool')}</label>
-                  <div className="select-wrapper">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-text-primary">{t('projectTools.modal.selectTool')}</label>
+                  <div className="relative">
                     <select
                       value={selectedToolToAdd}
                       onChange={(e) => setSelectedToolToAdd(e.target.value)}
-                      className="form-select"
+                      className="w-full p-3 px-4 pr-10 border border-border rounded-md text-base text-text-primary bg-bg-white appearance-none cursor-pointer focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
                     >
                       <option value="">{t('projectTools.modal.chooseTool')}</option>
                       {availableTools.map(t => (
@@ -417,13 +416,13 @@ export default function ProjectTools() {
                         </option>
                       ))}
                     </select>
-                    <ChevronDown size={16} className="select-icon" />
+                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="modal-footer">
+            <div className="flex justify-end gap-3 p-5 border-t border-border-light">
               <Button
                 title={t('projectTools.actions.cancel')}
                 onClick={() => setShowAddModal(false)}
@@ -443,28 +442,28 @@ export default function ProjectTools() {
 
       {/* Assign User Modal */}
       {showAssignModal && selectedTool && (
-        <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{t('projectTools.modal.assignTitle')}</h2>
-              <button className="modal-close" onClick={() => setShowAssignModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => setShowAssignModal(false)}>
+          <div className="bg-bg-white rounded-xl w-full max-w-[480px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-border-light">
+              <h2 className="m-0 font-bold text-lg text-text-primary">{t('projectTools.modal.assignTitle')}</h2>
+              <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted rounded-md flex hover:bg-bg-secondary hover:text-text-primary" onClick={() => setShowAssignModal(false)}>
                 <X size={24} />
               </button>
             </div>
 
-            <div className="modal-body">
-              <div className="selected-tool-info">
+            <div className="p-5">
+              <div className="flex items-center gap-3 p-3 bg-bg-secondary rounded-md mb-4 font-semibold text-text-primary">
                 <Wrench size={20} color="var(--primary)" />
                 <span>{selectedTool.nama}</span>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">{t('projectTools.modal.assignTo')}</label>
-                <div className="select-wrapper">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-text-primary">{t('projectTools.modal.assignTo')}</label>
+                <div className="relative">
                   <select
                     value={selectedUser}
                     onChange={(e) => setSelectedUser(e.target.value)}
-                    className="form-select"
+                    className="w-full p-3 px-4 pr-10 border border-border rounded-md text-base text-text-primary bg-bg-white appearance-none cursor-pointer focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
                   >
                     <option value="">{t('projectTools.modal.unassigned')}</option>
                     {users.map(u => (
@@ -473,12 +472,12 @@ export default function ProjectTools() {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown size={16} className="select-icon" />
+                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
                 </div>
               </div>
             </div>
 
-            <div className="modal-footer">
+            <div className="flex justify-end gap-3 p-5 border-t border-border-light">
               <Button
                 title={t('projectTools.actions.cancel')}
                 onClick={() => setShowAssignModal(false)}

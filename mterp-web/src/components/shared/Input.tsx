@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { LucideIcon, Eye, EyeOff } from 'lucide-react';
-import './Input.css';
 
 interface InputProps {
   label?: string;
@@ -50,12 +49,12 @@ export default function Input({
 
   if (multiline) {
     return (
-      <div className={`input-wrapper ${className}`} style={style}>
-        {label && <label className="input-label">{label}</label>}
-        <div className={`input-container ${error ? 'input-error' : ''} ${disabled ? 'input-disabled' : ''}`}>
-          {Icon && <Icon size={20} className="input-icon" />}
+      <div className={`mb-4 ${className}`} style={style}>
+        {label && <label className="block text-xs font-bold text-text-muted uppercase tracking-[1px] mb-2">{label}</label>}
+        <div className={`flex items-center gap-3 bg-bg-white border rounded-md px-4 transition-all duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${error ? '!border-semantic-danger' : 'border-border'} ${disabled ? 'bg-bg-secondary cursor-not-allowed' : ''}`}>
+          {Icon && <Icon size={20} className="text-text-muted shrink-0" />}
           <textarea
-            className="input-field input-textarea"
+            className="flex-1 border-none bg-transparent py-4 text-base text-text-primary outline-none w-full placeholder:text-text-muted disabled:cursor-not-allowed disabled:text-text-muted resize-y min-h-[80px]"
             placeholder={placeholder}
             value={value}
             onChange={handleChange}
@@ -64,19 +63,19 @@ export default function Input({
             rows={numberOfLines}
           />
         </div>
-        {error && <span className="input-error-text">{error}</span>}
+        {error && <span className="block text-sm text-semantic-danger mt-1">{error}</span>}
       </div>
     );
   }
 
   return (
-    <div className={`input-wrapper ${className}`} style={style}>
-      {label && <label className="input-label">{label}</label>}
-      <div className={`input-container ${error ? 'input-error' : ''} ${disabled ? 'input-disabled' : ''}`}>
-        {Icon && <Icon size={20} className="input-icon" />}
+    <div className={`mb-4 ${className}`} style={style}>
+      {label && <label className="block text-xs font-bold text-text-muted uppercase tracking-[1px] mb-2">{label}</label>}
+      <div className={`flex items-center gap-3 bg-bg-white border rounded-md px-4 transition-all duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${error ? '!border-semantic-danger' : 'border-border'} ${disabled ? 'bg-bg-secondary cursor-not-allowed' : ''}`}>
+        {Icon && <Icon size={20} className="text-text-muted shrink-0" />}
         <input
           type={inputType}
-          className="input-field"
+          className="flex-1 border-none bg-transparent py-4 text-base text-text-primary outline-none w-full placeholder:text-text-muted disabled:cursor-not-allowed disabled:text-text-muted"
           placeholder={placeholder}
           value={value}
           onChange={handleChange}
@@ -86,14 +85,14 @@ export default function Input({
         {type === 'password' && (
           <button
             type="button"
-            className="input-toggle"
+            className="flex items-center justify-center p-1 text-text-muted cursor-pointer transition-colors duration-200 hover:text-text-secondary"
             onClick={() => setShowPassword(!showPassword)}
           >
             {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
           </button>
         )}
       </div>
-      {error && <span className="input-error-text">{error}</span>}
+      {error && <span className="block text-sm text-semantic-danger mt-1">{error}</span>}
     </div>
   );
 }

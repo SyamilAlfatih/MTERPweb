@@ -1,6 +1,5 @@
 import React from 'react';
 import { LucideIcon } from 'lucide-react';
-import './IconButton.css';
 
 interface IconButtonProps {
   icon: LucideIcon;
@@ -25,10 +24,12 @@ export default function IconButton({
   style,
   className = '',
 }: IconButtonProps) {
+  const hoverClass = variant === 'ghost' ? 'hover:bg-bg-secondary' : 'hover:opacity-80 hover:scale-105';
+  
   return (
     <button
       type="button"
-      className={`icon-button icon-button-${variant} ${disabled ? 'icon-button-disabled' : ''} ${className}`}
+      className={`flex items-center justify-center w-10 h-10 rounded-md cursor-pointer transition-all duration-200 ${disabled ? 'opacity-50 cursor-not-allowed' : hoverClass} ${className}`}
       onClick={onClick}
       disabled={disabled}
       style={{ backgroundColor: variant === 'ghost' ? 'transparent' : backgroundColor, ...style }}

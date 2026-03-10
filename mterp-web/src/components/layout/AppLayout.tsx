@@ -6,7 +6,6 @@ import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import { useAuth } from '../../contexts/AuthContext';
 import { Badge, IconButton } from '../shared';
-import './AppLayout.css';
 
 export default function AppLayout() {
   const { t } = useTranslation();
@@ -22,7 +21,7 @@ export default function AppLayout() {
 
   if (isLoading) {
     return (
-      <div className="app-loading">
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4 text-text-muted">
         <div className="spinner"></div>
         <span>{t('home.updates.loading')}</span>
       </div>
@@ -38,20 +37,20 @@ export default function AppLayout() {
   };
 
   return (
-    <div className="app-layout">
+    <div className="flex min-h-screen">
       <Sidebar />
-      <div className="app-main">
-        <header className="app-header">
-          <div className="app-header-left">
-            <span className="app-greeting">{t(getGreetingKey())}</span>
-            <span className="app-username">{user?.fullName || 'User'}</span>
+      <div className="flex-1 flex flex-col bg-bg-primary ml-[260px] max-lg:ml-0">
+        <header className="flex justify-between items-center p-4 lg:px-6 bg-bg-white border-b-2 border-border-light transition-colors">
+          <div className="flex items-center gap-3">
+            <span className="text-text-muted text-sm max-sm:text-xs">{t(getGreetingKey())}</span>
+            <span className="text-text-primary text-base font-bold max-sm:text-sm">{user?.fullName || 'User'}</span>
             <Badge 
               label={user?.role?.toUpperCase() || 'STAFF'} 
               variant="neutral"
               size="small"
             />
           </div>
-          <div className="app-header-right">
+          <div className="flex items-center gap-3">
             <IconButton
               icon={LogOut}
               onClick={handleLogout}
@@ -61,7 +60,7 @@ export default function AppLayout() {
             />
           </div>
         </header>
-        <main className="app-content">
+        <main className="flex-1 overflow-y-auto max-sm:pb-[80px]">
           <Outlet />
         </main>
       </div>

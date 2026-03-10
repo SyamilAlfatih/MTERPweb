@@ -6,7 +6,6 @@ import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, ProgressBar, Button, Input, EmptyState, LoadingOverlay } from '../components/shared';
 import { ProjectData } from '../types';
-import './Projects.css';
 
 export default function Projects() {
   const { t } = useTranslation();
@@ -77,12 +76,12 @@ export default function Projects() {
   };
 
   return (
-    <div className="projects-container">
+    <div className="p-6 max-w-[900px] max-lg:p-4 max-sm:p-3">
       <LoadingOverlay visible={loading} />
 
       {/* Header */}
-      <div className="projects-header">
-        <h1 className="projects-title">{t('projects.title')}</h1>
+      <div className="flex justify-between items-center mb-6 max-sm:flex-col max-sm:items-start max-sm:gap-3">
+        <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{t('projects.title')}</h1>
         {userRole === 'owner' && (
           <Button
             title={t('projects.add')}
@@ -96,14 +95,14 @@ export default function Projects() {
 
       {/* Summary Card for Director/Owner */}
       {['director', 'owner'].includes(userRole) && projects.length > 0 && (
-        <Card className="projects-summary">
-          <div className="summary-row">
-            <span className="summary-label">{t('projects.summary.totalProjects')}</span>
-            <span className="summary-value">{projects.length}</span>
+        <Card className="bg-gradient-to-br from-primary to-primary-light text-white mb-6">
+          <div className="flex justify-between items-center py-2 max-sm:flex-col max-sm:gap-2">
+            <span className="text-sm opacity-80">{t('projects.summary.totalProjects')}</span>
+            <span className="text-xl font-bold">{projects.length}</span>
           </div>
-          <div className="summary-row">
-            <span className="summary-label">{t('projects.summary.avgProgress')}</span>
-            <span className="summary-value">
+          <div className="flex justify-between items-center py-2 max-sm:flex-col max-sm:gap-2">
+            <span className="text-sm opacity-80">{t('projects.summary.avgProgress')}</span>
+            <span className="text-xl font-bold">
               {Math.round(projects.reduce((a, p) => a + (p.progress || 0), 0) / projects.length)}%
             </span>
           </div>
@@ -118,15 +117,15 @@ export default function Projects() {
           description={t('projects.empty.desc')}
         />
       ) : (
-        <div className="projects-list">
+        <div className="flex flex-col gap-4">
           {projects.map((project) => (
-            <Card key={project._id} className="project-card" onClick={() => navigate(`/project/${project._id}`)}>
-              <div className="project-header">
+            <Card key={project._id} className="cursor-pointer" onClick={() => navigate(`/project/${project._id}`)}>
+              <div className="flex justify-between items-start max-sm:flex-col max-sm:gap-2">
                 <div>
-                  <h3 className="project-name">{project.nama || project.name}</h3>
-                  <p className="project-location">{project.lokasi || project.location}</p>
+                  <h3 className="text-base font-bold text-text-primary m-0">{project.nama || project.name}</h3>
+                  <p className="text-sm text-text-muted mt-0.5 mb-0 mx-0">{project.lokasi || project.location}</p>
                 </div>
-                <div className="project-actions">
+                <div className="flex gap-2">
                   {getStatusBadge(project.progress || 0)}
                 </div>
               </div>
@@ -136,9 +135,9 @@ export default function Projects() {
                 showLabel={false}
                 style={{ marginTop: 12 }}
               />
-              <span className="project-progress-label">{project.progress || 0}% {t('projects.status.complete')}</span>
+              <span className="text-sm text-text-muted font-medium">{project.progress || 0}% {t('projects.status.complete')}</span>
 
-              <div className="project-footer">
+              <div className="flex items-center justify-end gap-3 mt-4 pt-3 border-t border-border-light max-sm:flex-wrap">
                 {userRole === 'owner' && (
                   <Button
                     title=""
@@ -160,27 +159,31 @@ export default function Projects() {
 
       {/* Update Progress Modal */}
       {modalOpen && (
-        <div className="modal-overlay" onClick={() => setModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>{t('projects.actions.updateProgress')}</h3>
-            <p>{selectedProject?.nama || selectedProject?.name}</p>
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setModalOpen(false)}>
+          <div className="bg-bg-white p-6 rounded-xl w-full max-w-md shadow-xl text-text-primary animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-text-primary m-0 mb-1">{t('projects.actions.updateProgress')}</h3>
+            <p className="text-sm text-text-muted m-0 mb-4">{selectedProject?.nama || selectedProject?.name}</p>
             <Input
               type="number"
               placeholder={t('projects.form.progressPlaceholder')}
               value={progressInput}
               onChangeText={setProgressInput}
             />
-            <div className="modal-actions">
-              <Button
-                title={t('projects.actions.cancel')}
-                onClick={() => setModalOpen(false)}
-                variant="outline"
-              />
-              <Button
-                title={t('projects.actions.save')}
-                onClick={handleUpdateProgress}
-                loading={updating}
-              />
+            <div className="flex gap-3 mt-4 justify-end max-sm:flex-col [&_button]:max-sm:w-full">
+              <div className="max-sm:w-full">
+                <Button
+                  title={t('projects.actions.cancel')}
+                  onClick={() => setModalOpen(false)}
+                  variant="outline"
+                />
+              </div>
+              <div className="max-sm:w-full">
+                <Button
+                  title={t('projects.actions.save')}
+                  onClick={handleUpdateProgress}
+                  loading={updating}
+                />
+              </div>
             </div>
           </div>
         </div>
