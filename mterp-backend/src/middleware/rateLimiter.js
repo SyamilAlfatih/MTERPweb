@@ -5,9 +5,10 @@ const rateLimit = require('express-rate-limit');
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10,
-  keyGenerator: (req) => {
-    // Rate limit per authenticated user (fall back to IP)
-    return req.user?._id?.toString() || req.ip;
+  keyGenerator: (req, res) => {
+    // Rate limit per authenticated user. If not authenticated, let it fall back
+    // to the default IP-based keyGenerator by returning undefined/a default string
+    return req.user?._id?.toString() || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   },
   message: { msg: 'Too many uploads. Please try again after 15 minutes.' },
   standardHeaders: true,

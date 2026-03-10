@@ -103,6 +103,7 @@ mongoose.connect(MONGODB_URI)
       console.log(`✅ Server running on port ${PORT}`);
       console.log(`   API: http://localhost:${PORT}/api`);
       console.log(`   Health: http://localhost:${PORT}/api/health`);
+      console.log(`   Allowed Origins: ${allowedOrigins.join(', ')}`);
     });
   })
   .catch((err) => {
