@@ -49,9 +49,9 @@ export default function Button({
   const baseClasses = "inline-flex items-center justify-center font-bold outline-none transition-all duration-200";
   
   const sizeClasses = {
-    small: "px-3 py-2 text-sm rounded-md",
-    medium: "px-4 py-3 text-base rounded-lg",
-    large: "px-5 py-4 text-lg rounded-xl",
+    small: "min-h-[40px] px-3 py-2 text-sm rounded-md",
+    medium: "min-h-[48px] px-4 py-3 text-base rounded-lg",
+    large: "min-h-[56px] px-6 py-4 text-lg rounded-xl",
   };
 
   const variantClasses = {

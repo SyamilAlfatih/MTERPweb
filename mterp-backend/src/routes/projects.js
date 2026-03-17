@@ -169,7 +169,7 @@ router.put('/:id/progress', auth, authorize('owner', 'director', 'supervisor', '
 });
 
 // POST /api/projects/:id/daily-report - Add daily report with per-item progress (supports photo uploads)
-router.post('/:id/daily-report', auth, authorize('supervisor', 'asset_admin', 'owner', 'director'), uploadLimiter,
+router.post('/:id/daily-report', auth, authorize('supervisor', 'asset_admin', 'owner', 'director', 'foreman'), uploadLimiter,
   upload.array('photos', 5),
   async (req, res) => {
   try {

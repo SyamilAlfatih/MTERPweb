@@ -240,25 +240,24 @@ export default function Attendance() {
       />
 
       {/* Header with live clock */}
-      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap max-sm:flex-col max-sm:items-start">
-        <div className="flex items-center gap-3">
-          <div className="w-[46px] h-[46px] rounded-lg bg-gradient-to-br from-primary to-primary-light flex items-center justify-center shadow-primary shrink-0">
-            <Clock size={22} color="white" />
+      <div className="flex flex-col mb-8 p-6 rounded-2xl bg-bg-white border-2 border-border-light shadow-sm">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs font-bold text-text-muted uppercase tracking-widest">
+            {liveTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-text-primary m-0">{t('attendance.title')}</h1>
-            <span className="text-xs text-text-muted">
-              {liveTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </span>
+          <div className="flex items-center gap-1">
+             <div className={`w-2 h-2 rounded-full ${isWorkingHours ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
+             <span className="text-[10px] font-bold text-text-muted uppercase tracking-tight">System Online</span>
           </div>
         </div>
-        <div className="text-right max-sm:text-left">
-          <div className="text-2xl font-extrabold text-text-primary tabular-nums tracking-[1px] leading-[1.1] max-sm:text-xl">
-            {liveTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        <div className="flex items-baseline justify-between gap-4">
+          <div className="text-5xl font-extrabold text-text-primary tabular-nums tracking-tighter leading-none">
+            {liveTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+            <span className="text-2xl opacity-40 ml-1">{liveTime.toLocaleTimeString('id-ID', { second: '2-digit' })}</span>
           </div>
-          <span className={`text-[10px] font-bold uppercase tracking-[0.5px] px-2 py-[2px] rounded-full inline-block mt-1 ${isWorkingHours ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-            {isWorkingHours ? t('attendance.workingHours') : t('attendance.outsideHours')}
-          </span>
+          <div className={`px-3 py-1.5 rounded-lg text-sm font-black uppercase ${isWorkingHours ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+            {isWorkingHours ? "Working" : "After Hours"}
+          </div>
         </div>
       </div>
 
@@ -352,24 +351,46 @@ export default function Attendance() {
             <div className="w-[42px] h-[42px] rounded-md flex items-center justify-center text-white shrink-0 bg-gradient-to-br from-emerald-600 to-emerald-400">
               <MapPin size={20} />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-text-primary m-0">{t('attendance.actions.readyToWork')}</h3>
-              <p className="text-xs text-text-muted m-0">{t('attendance.actions.selectProject')}</p>
-            </div>
           </div>
-
-          <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-md mb-4">
-            <Building size={16} color="var(--text-muted)" />
-            <select
-              className="flex-1 border-none bg-transparent text-sm font-medium text-text-primary cursor-pointer outline-none py-1"
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-            >
-              <option value="">{t('attendance.actions.selectProjectPlaceholder')}</option>
-              {projects.map((p) => (
-                <option key={p._id} value={p._id}>{p.nama || p.name}</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 gap-3 mb-6">
+            <span className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1">{t('attendance.actions.selectProject')}</span>
+            {projects.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {projects.map((p) => (
+                  <button
+                    key={p._id}
+                    onClick={() => setSelectedProjectId(p._id)}
+                    className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${
+                      selectedProjectId === p._id
+                        ? 'border-primary bg-primary-bg'
+                        : 'border-border-light bg-bg-white hover:border-primary/50'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      selectedProjectId === p._id ? 'bg-primary text-white' : 'bg-bg-secondary text-text-muted'
+                    }`}>
+                      <Building size={20} />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className={`text-base font-bold m-0 ${selectedProjectId === p._id ? 'text-primary' : 'text-text-primary'}`}>
+                        {p.nama || p.name}
+                      </h4>
+                      <p className="text-xs text-text-muted m-0">Project Site</p>
+                    </div>
+                    {selectedProjectId === p._id && (
+                      <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white">
+                        <Check size={14} />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center border-2 border-dashed border-border-light rounded-xl text-text-muted">
+                <Loader size={24} className="animate-spin mx-auto mb-2" />
+                <p className="text-sm font-medium">Loading project sites...</p>
+              </div>
+            )}
           </div>
 
           <button

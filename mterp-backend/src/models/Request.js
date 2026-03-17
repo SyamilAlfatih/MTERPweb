@@ -7,9 +7,8 @@ const requestSchema = new mongoose.Schema({
     trim: true,
   },
   qty: {
-    type: Number,
+    type: String,
     required: true,
-    min: 0,
   },
   dateNeeded: String,
   purpose: String,

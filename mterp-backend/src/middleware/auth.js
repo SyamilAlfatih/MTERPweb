@@ -31,7 +31,24 @@ const auth = async (req, res, next) => {
 // Role-based access control middleware
 const authorize = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
+    let expandedRoles = new Set(roles);
+
+    // Expand equivalent/higher roles based on new role hierarchy
+    if (roles.includes('director')) {
+      expandedRoles.add('president_director');
+      expandedRoles.add('operational_director');
+    }
+
+    if (roles.includes('supervisor')) {
+      expandedRoles.add('site_manager');
+      expandedRoles.add('admin_project');
+    }
+
+    if (roles.includes('admin')) {
+      expandedRoles.add('admin_project');
+    }
+
+    if (!Array.from(expandedRoles).includes(req.user.role)) {
       return res.status(403).json({ 
         msg: 'Access denied. Insufficient permissions.' 
       });

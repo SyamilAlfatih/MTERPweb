@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     BarChart3,
     TrendingUp,
@@ -12,6 +13,10 @@ import {
     Clock,
     UserCheck,
     Wallet,
+    Calendar,
+    LogIn,
+    PlusCircle,
+    HardHat,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -122,6 +127,7 @@ const formatTime = (dateStr: string | null): string => {
 
 export default function Dashboard() {
     const { t } = useTranslation();
+    const navigate = useNavigate();
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
     const [selectedProject, setSelectedProject] = useState('');
@@ -182,35 +188,86 @@ export default function Dashboard() {
     const formattedDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     return (
-        <div className="p-6 max-w-[1100px] max-lg:p-4 max-sm:p-3">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6 gap-4 flex-wrap max-sm:flex-col max-sm:items-start">
-                <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-primary-light flex items-center justify-center shadow-primary">
-                        <BarChart3 size={24} color="white" />
+        <div className="p-6 max-w-[1200px] mx-auto max-lg:p-4 max-sm:p-3">
+            {/* Field Header / Greetings */}
+            <div className="mb-8 p-6 rounded-2xl bg-gradient-to-r from-primary to-primary-light text-white shadow-lg overflow-hidden relative">
+                <div className="relative z-10">
+                    <div className="flex items-center gap-2 mb-2 opacity-90">
+                        <HardHat size={18} />
+                        <span className="text-xs font-bold uppercase tracking-wider">{formattedDate}</span>
                     </div>
-                    <div>
-                        <h1 className="text-xl font-bold text-text-primary m-0">Dashboard</h1>
-                        <p className="text-sm text-text-muted m-0">Project analytics overview</p>
-                    </div>
+                    <h1 className="text-3xl font-extrabold m-0 mb-1">Welcome back, {userName}</h1>
+                    <p className="text-sm opacity-90 font-medium">Ready for another productive day in the field?</p>
                 </div>
+                <div className="absolute top-[-20px] right-[-20px] opacity-10 rotate-[15deg]">
+                    <HardHat size={180} />
+                </div>
+            </div>
 
-                {/* Project Selector */}
+            {/* Field Quick Actions - HIGH PRIORITY FOR CONSTRUCTION PERSONNEL */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <button 
+                    onClick={() => navigate('/attendance')}
+                    className="flex items-center gap-4 p-5 bg-bg-white border-2 border-border-light rounded-xl cursor-pointer transition-all hover:border-primary hover:shadow-lg hover:-translate-y-1 group"
+                >
+                    <div className="w-14 h-14 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                        <LogIn size={28} />
+                    </div>
+                    <div className="text-left">
+                        <h3 className="text-lg font-bold text-text-primary m-0">Clock In/Out</h3>
+                        <p className="text-xs text-text-muted m-0">Tap to record attendance</p>
+                    </div>
+                </button>
+
+                <button 
+                    onClick={() => navigate('/daily-report')}
+                    className="flex items-center gap-4 p-5 bg-bg-white border-2 border-border-light rounded-xl cursor-pointer transition-all hover:border-primary hover:shadow-lg hover:-translate-y-1 group"
+                >
+                    <div className="w-14 h-14 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                        <PlusCircle size={28} />
+                    </div>
+                    <div className="text-left">
+                        <h3 className="text-lg font-bold text-text-primary m-0">Daily Report</h3>
+                        <p className="text-xs text-text-muted m-0">Log work progress today</p>
+                    </div>
+                </button>
+
+                <button 
+                    onClick={() => navigate('/materials')}
+                    className="flex items-center gap-4 p-5 bg-bg-white border-2 border-border-light rounded-xl cursor-pointer transition-all hover:border-primary hover:shadow-lg hover:-translate-y-1 group"
+                >
+                    <div className="w-14 h-14 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                        <Package size={28} />
+                    </div>
+                    <div className="text-left">
+                        <h3 className="text-lg font-bold text-text-primary m-0">Materials</h3>
+                        <p className="text-xs text-text-muted m-0">Update supply status</p>
+                    </div>
+                </button>
+            </div>
+
+            {/* Project Selector - Sticky or Floating for easy reach */}
+            <div className="flex items-center justify-between mb-6 gap-4 border-b border-border-light pb-4">
+                <div className="flex items-center gap-2">
+                    <BarChart3 size={20} className="text-primary" />
+                    <h2 className="text-lg font-bold text-text-primary m-0">Project Insights</h2>
+                </div>
+                
                 <div className="relative">
                     <button
-                        className="flex items-center gap-2 px-4 py-2 bg-bg-white border border-border rounded-full cursor-pointer text-sm font-semibold text-text-primary transition-all shadow-sm hover:border-primary hover:shadow-md"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-bg-white border-2 border-primary rounded-lg cursor-pointer text-sm font-bold text-primary transition-all shadow-sm hover:shadow-md active:scale-95"
                         onClick={() => setDropdownOpen(!dropdownOpen)}
                     >
                         <span>{selectedProjectName}</span>
                         <ChevronDown
                             size={16}
-                            className={`transition-transform text-text-muted ${dropdownOpen ? 'rotate-180' : ''}`}
+                            className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
                         />
                     </button>
                     {dropdownOpen && (
-                        <div className="absolute top-[calc(100%+6px)] right-0 min-w-[220px] max-h-[300px] overflow-y-auto bg-bg-white border border-border rounded-lg shadow-lg z-[100] animate-fade-in origin-top">
+                        <div className="absolute top-[calc(100%+6px)] right-0 min-w-[240px] max-h-[300px] overflow-y-auto bg-bg-white border-2 border-border rounded-xl shadow-xl z-[100] animate-fade-in origin-top">
                             <button
-                                className={`block w-full px-4 py-3 text-left text-sm text-text-secondary bg-transparent border-none cursor-pointer transition-all hover:bg-bg-primary hover:text-text-primary ${!selectedProject ? 'bg-primary-bg text-primary font-semibold' : ''}`}
+                                className={`block w-full px-5 py-4 text-left text-sm font-semibold border-none cursor-pointer border-b border-border-light hover:bg-primary-bg ${!selectedProject ? 'text-primary' : 'text-text-secondary'}`}
                                 onClick={() => { setSelectedProject(''); setDropdownOpen(false); }}
                             >
                                 All Projects
@@ -218,7 +275,7 @@ export default function Dashboard() {
                             {data.projectList.map((p) => (
                                 <button
                                     key={p._id}
-                                    className={`block w-full px-4 py-3 text-left text-sm text-text-secondary bg-transparent border-none cursor-pointer transition-all hover:bg-bg-primary hover:text-text-primary ${selectedProject === p._id ? 'bg-primary-bg text-primary font-semibold' : ''}`}
+                                    className={`block w-full px-5 py-4 text-left text-sm font-semibold border-none cursor-pointer border-b border-border-light last:border-0 hover:bg-primary-bg ${selectedProject === p._id ? 'text-primary' : 'text-text-secondary'}`}
                                     onClick={() => { setSelectedProject(p._id); setDropdownOpen(false); }}
                                 >
                                     {p.nama}
@@ -229,82 +286,75 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {/* KPI Cards */}
+            {/* KPI Cards - BIG NUMBER STYLE */}
             <div className="grid grid-cols-4 gap-4 mb-6 max-lg:grid-cols-2 max-sm:grid-cols-1">
-                <Card className="relative !p-5 flex flex-col gap-3 overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg">
-                    <div className="w-10 h-10 rounded-md flex items-center justify-center text-white bg-gradient-to-br from-[#6366F1] to-[#818CF8]">
-                        <BarChart3 size={20} />
+                <Card className="relative !p-6 flex flex-col gap-2 overflow-hidden border-2 border-border-light hover:border-primary transition-all">
+                    <span className="text-xs font-bold text-text-muted uppercase tracking-wider">{t('dashboard.activeProjects')}</span>
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-4xl font-extrabold text-text-primary leading-none tracking-tight">{data.totalProjects}</span>
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-2xl font-extrabold text-text-primary leading-[1.1]">{data.totalProjects}</span>
-                        <span className="text-xs text-text-muted font-semibold uppercase tracking-[0.5px] mt-0.5">{t('dashboard.activeProjects')}</span>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-2 mt-2">
                         {data.statusCounts['In Progress'] > 0 && (
-                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-[0.3px] bg-blue-100 text-blue-600">{data.statusCounts['In Progress']} Active</span>
+                            <span className="text-[10px] font-bold px-2 py-1 rounded bg-blue-100 text-blue-700">{data.statusCounts['In Progress']} Active</span>
                         )}
                         {data.statusCounts['Completed'] > 0 && (
-                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-[0.3px] bg-green-100 text-green-600">{data.statusCounts['Completed']} Done</span>
+                            <span className="text-[10px] font-bold px-2 py-1 rounded bg-green-100 text-green-700">{data.statusCounts['Completed']} Done</span>
                         )}
+                    </div>
+                    <div className="absolute right-[-10px] bottom-[-10px] opacity-10">
+                        <BarChart3 size={80} />
                     </div>
                 </Card>
 
-                <Card className="relative !p-5 flex flex-col gap-3 overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg">
-                    <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-sm font-bold text-text-primary m-0">{t('dashboard.quickActions')}</h3>
+                <Card className="relative !p-6 flex flex-col gap-2 overflow-hidden border-2 border-border-light hover:border-primary transition-all">
+                    <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Budget Spent</span>
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-extrabold text-text-primary leading-none tracking-tight">{formatCurrency(data.actualSpend)}</span>
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-2xl font-extrabold text-text-primary leading-[1.1]">{formatCurrency(data.actualSpend)}</span>
-                        <span className="text-xs text-text-muted font-semibold uppercase tracking-[0.5px] mt-0.5">Budget Used</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <div className="w-full h-1.5 bg-bg-secondary rounded-full overflow-hidden">
+                    <div className="mt-3">
+                        <div className="w-full h-2.5 bg-bg-secondary rounded-full overflow-hidden">
                             <div
-                                className="h-full bg-gradient-to-r from-[#059669] to-[#34D399] rounded-full transition-all duration-700 ease-out"
+                                className="h-full bg-primary rounded-full transition-all duration-700 ease-out"
                                 style={{ width: `${budgetPercent}%` }}
                             />
                         </div>
-                        <span className="text-[9px] text-text-muted font-medium">
-                            {budgetPercent}% of {formatCurrency(data.totalBudget)}
-                        </span>
+                        <div className="flex justify-between mt-1.5">
+                            <span className="text-[10px] font-bold text-primary">{budgetPercent}% used</span>
+                            <span className="text-[10px] font-bold text-text-muted">Total: {formatCurrency(data.totalBudget)}</span>
+                        </div>
                     </div>
                 </Card>
 
-                <Card className="relative !p-5 flex flex-col gap-3 overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg">
-                    <div className="w-10 h-10 rounded-md flex items-center justify-center text-white bg-gradient-to-br from-primary to-primary-light">
-                        <TrendingUp size={20} />
+                <Card className="relative !p-6 flex flex-col gap-2 overflow-hidden border-2 border-border-light hover:border-primary transition-all">
+                    <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Overall Progress</span>
+                    <div className="flex items-center gap-4">
+                        <span className="text-4xl font-extrabold text-text-primary leading-none tracking-tight">{data.avgProgress}%</span>
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-2xl font-extrabold text-text-primary leading-[1.1]">{data.avgProgress}%</span>
-                        <span className="text-xs text-text-muted font-semibold uppercase tracking-[0.5px] mt-0.5">Avg. Progress</span>
+                    <div className="mt-auto pt-2">
+                         <div className="flex items-center gap-1.5 text-success font-bold text-[10px]">
+                            <TrendingUp size={12} />
+                            <span>On Track</span>
+                        </div>
                     </div>
-                    <div className="absolute top-4 right-4 w-11 h-11">
-                        <svg className="w-full h-full -rotate-90" viewBox="0 0 44 44">
-                            <circle className="fill-none stroke-bg-secondary stroke-[3]" cx="22" cy="22" r="18" />
-                            <circle
-                                className="fill-none stroke-primary stroke-[3] stroke-linecap-round transition-all duration-[0.8s] ease-out"
-                                cx="22" cy="22" r="18"
-                                strokeDasharray={`${(data.avgProgress / 100) * 113} 113`}
-                            />
-                        </svg>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-20">
+                         <div className="w-16 h-16 rounded-full border-[6px] border-primary-bg flex items-center justify-center relative">
+                            <div className="absolute inset-0 rounded-full border-[6px] border-primary border-t-transparent border-r-transparent rotate-45" style={{ opacity: data.avgProgress / 100 }}></div>
+                            <HardHat size={20} className="text-primary" />
+                         </div>
                     </div>
                 </Card>
 
-                <Card className="relative !p-5 flex flex-col gap-3 overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg">
-                    <div className="w-10 h-10 rounded-md flex items-center justify-center text-white bg-gradient-to-br from-[#F59E0B] to-[#FBBF24]">
-                        <ClipboardList size={20} />
+                <Card className="relative !p-6 flex flex-col gap-2 overflow-hidden border-2 border-border-light hover:border-primary transition-all">
+                    <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Active Tasks</span>
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-4xl font-extrabold text-text-primary leading-none tracking-tight">{data.totalTasks}</span>
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-2xl font-extrabold text-text-primary leading-[1.1]">{data.totalTasks}</span>
-                        <span className="text-xs text-text-muted font-semibold uppercase tracking-[0.5px] mt-0.5">{t('dashboard.toolsInUse')}</span>
+                    <div className="flex gap-2 mt-2">
+                        <span className="text-[10px] font-bold px-2 py-1 rounded bg-amber-100 text-amber-700">{data.taskStatusCounts.in_progress || 0} In Progress</span>
+                        <span className="text-[10px] font-bold px-2 py-1 rounded bg-slate-100 text-slate-700">{data.taskStatusCounts.pending || 0} Pending</span>
                     </div>
-                    <div className="flex gap-2 flex-wrap">
-                        {data.taskStatusCounts.in_progress > 0 && (
-                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-[0.3px] bg-blue-100 text-blue-600">{data.taskStatusCounts.in_progress} Active</span>
-                        )}
-                        {data.taskStatusCounts.pending > 0 && (
-                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full tracking-[0.3px] bg-yellow-100 text-yellow-600">{data.taskStatusCounts.pending} Pending</span>
-                        )}
+                    <div className="absolute right-[-10px] bottom-[-10px] opacity-10">
+                        <ClipboardList size={80} />
                     </div>
                 </Card>
             </div>

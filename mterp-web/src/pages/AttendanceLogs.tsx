@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, User, Clock, Filter,
   ChevronDown, DollarSign, X, Check, Building, Users,
-  Wallet, TrendingUp, Loader, FileText, CalendarOff, Eye,
+  Wallet, Loader, FileText, CalendarOff, Eye,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/api';
@@ -58,11 +58,6 @@ interface RecapSummary {
   totalPayment: number;
 }
 
-const WAGE_OPTIONS = [
-  { label: 'Harian Biasa', value: 'daily', multiplier: 1 },
-  { label: 'Lembur 1.5x', value: 'overtime_1.5', multiplier: 1.5 },
-  { label: 'Lembur 2x', value: 'overtime_2', multiplier: 2 },
-];
 
 const STATUS_STYLES: Record<string, { color: string; bg: string }> = {
   Present: { color: '#059669', bg: '#D1FAE5' },
@@ -115,10 +110,6 @@ export default function AttendanceLogs() {
     fetchUsers();
   }, []);
 
-  useEffect(() => {
-    if (startDate && endDate) fetchRecords();
-  }, [startDate, endDate, selectedUser, paymentStatus]);
-
   const fetchUsers = async () => {
     try {
       const response = await api.get('/attendance/users');
@@ -129,7 +120,7 @@ export default function AttendanceLogs() {
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      const params: any = { startDate, endDate };
+      const params: Record<string, string> = { startDate, endDate };
       if (selectedUser) params.userId = selectedUser;
       const response = await api.get('/attendance/recap', { params });
       let fetchedRecords = response.data.records;
@@ -143,6 +134,11 @@ export default function AttendanceLogs() {
     } catch (err) { console.error('Failed to fetch attendance', err); }
     finally { setLoading(false); }
   };
+
+  useEffect(() => {
+    if (startDate && endDate) fetchRecords();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate, selectedUser, paymentStatus]);
 
   const handleDateRangeChange = (range: 'week' | 'month' | 'custom') => {
     setDateRange(range);
@@ -220,14 +216,7 @@ export default function AttendanceLogs() {
   const formatTime = (dateStr: string) =>
     new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
-  const getWageLabel = (wageType: string) => {
-    let baseLabel = wageType;
-    if (wageType === 'daily') baseLabel = t('attendanceLogs.wageOptions.daily');
-    else if (wageType === 'overtime_1.5') baseLabel = t('attendanceLogs.wageOptions.overtime15');
-    else if (wageType === 'overtime_2') baseLabel = t('attendanceLogs.wageOptions.overtime2');
-    
-    return baseLabel;
-  };
+
 
   const WAGE_OPTIONS_TRANSLATED = [
     { label: t('attendanceLogs.wageOptions.daily'), value: 'daily', multiplier: 1 },
@@ -243,48 +232,56 @@ export default function AttendanceLogs() {
   return (
     <div className="p-6 max-w-[900px] mx-auto max-lg:p-4 max-sm:p-3">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6 max-sm:flex-wrap">
-        <button className="w-9 h-9 border border-border bg-bg-white rounded-md cursor-pointer flex items-center justify-center text-text-primary transition-all duration-150 shrink-0 hover:bg-bg-secondary hover:border-primary hover:text-primary" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <div className="w-[42px] h-[42px] rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-400 flex items-center justify-center shadow-[0_4px_12px_rgba(99,102,241,0.3)] shrink-0">
-          <Users size={20} color="white" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-text-primary m-0 max-sm:text-lg">{t('attendanceLogs.title')}</h1>
-          <p className="text-xs text-text-muted m-0">{t('attendanceLogs.subtitle')}</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 mb-8">
+        <div className="flex items-center gap-3">
+          <button 
+            className="w-12 h-12 rounded-xl bg-bg-secondary flex items-center justify-center cursor-pointer transition-all border-none text-text-primary hover:bg-border active:scale-95 shrink-0" 
+            onClick={() => navigate(-1)}
+          >
+            <ArrowLeft size={24} />
+          </button>
+          <div>
+            <h1 className="text-2xl font-black text-text-primary m-0 tracking-tight uppercase">{t('attendanceLogs.title')}</h1>
+            <span className="text-xs font-bold text-text-muted uppercase tracking-widest">{t('attendanceLogs.subtitle')}</span>
+          </div>
         </div>
       </div>
 
       {/* View Mode Toggle */}
-      <div className="flex gap-2 mb-4 bg-bg-secondary rounded-lg p-1">
+      <div className="flex gap-2 mb-6 bg-bg-secondary rounded-xl p-1.5 border-2 border-border-light">
         <button
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 border-none bg-transparent rounded-md text-sm font-semibold text-text-muted cursor-pointer transition-all duration-200 hover:text-text-primary ${viewMode === 'attendance' ? 'bg-bg-white text-text-primary shadow-[0_1px_3px_rgba(0,0,0,0.1)]' : ''}`}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 border-none rounded-lg text-sm font-black uppercase tracking-wider cursor-pointer transition-all duration-200 ${viewMode === 'attendance' ? 'bg-bg-white text-primary shadow-sm' : 'bg-transparent text-text-muted hover:text-text-primary'}`}
           onClick={() => setViewMode('attendance')}
         >
-          <Users size={16} />
+          <Users size={20} />
           {t('attendanceLogs.viewMode.attendance')}
         </button>
         <button
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 border-none bg-transparent rounded-md text-sm font-semibold text-text-muted cursor-pointer transition-all duration-200 hover:text-text-primary ${viewMode === 'permits' ? 'bg-bg-white text-text-primary shadow-[0_1px_3px_rgba(0,0,0,0.1)]' : ''}`}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 border-none rounded-lg text-sm font-black uppercase tracking-wider cursor-pointer transition-all duration-200 ${viewMode === 'permits' ? 'bg-bg-white text-primary shadow-sm' : 'bg-transparent text-text-muted hover:text-text-primary'}`}
           onClick={() => setViewMode('permits')}
         >
-          <CalendarOff size={16} />
+          <CalendarOff size={20} />
           {t('attendanceLogs.viewMode.permits')}
-          {permitRecords.length > 0 && <span className="inline-flex items-center justify-center min-w-[20px] h-[20px] px-[6px] rounded-full bg-purple-600 text-white text-[10px] font-bold">{permitRecords.length}</span>}
+          {permitRecords.length > 0 && <span className="inline-flex items-center justify-center min-w-[24px] h-[24px] px-[8px] rounded-full bg-red-500 text-white text-[11px] font-black">{permitRecords.length}</span>}
         </button>
       </div>
 
-      {/* Filters */}
-      <Card className="mb-5 p-5">
-        <div className="mb-4">
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-text-muted uppercase tracking-[0.3px]">{t('attendanceLogs.filters.dateRange')}</label>
-            <div className="flex gap-2 max-sm:flex-wrap">
+      {/* Filters - Section Wrapper */}
+      <div className="mb-10 last:mb-0">
+        <div className="flex items-center gap-3 mb-4 px-1">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Filter size={22} strokeWidth={2.5} />
+          </div>
+          <h3 className="text-xl font-black text-text-primary tracking-tight uppercase m-0 leading-none">{t('attendanceLogs.filters.title', 'Filters')}</h3>
+        </div>
+        <Card className="!p-5 border-2 border-border-light">
+          <div className="mb-5">
+            <label className="block text-xs font-bold text-text-muted uppercase mb-3">{t('attendanceLogs.filters.dateRange')}</label>
+            <div className="grid grid-cols-3 gap-2">
               {(['week', 'month', 'custom'] as const).map(r => (
                 <button
                   key={r}
-                  className={`px-4 py-2 border border-border bg-bg-white rounded-full text-sm font-semibold text-text-secondary cursor-pointer transition-all duration-150 hover:border-primary hover:text-primary focus:outline-none ${dateRange === r ? '!bg-primary !border-primary !text-white shadow-[0_2px_8px_rgba(99,102,241,0.3)]' : ''}`}
+                  className={`py-3 rounded-xl text-xs font-black uppercase transition-all border-2 ${dateRange === r ? 'bg-primary border-primary text-white shadow-md' : 'bg-bg-white border-border-light text-text-secondary hover:border-primary/50'}`}
                   onClick={() => handleDateRangeChange(r)}
                 >
                   {r === 'week' ? t('attendanceLogs.filters.tabs.week') : r === 'month' ? t('attendanceLogs.filters.tabs.month') : t('attendanceLogs.filters.tabs.custom')}
@@ -292,75 +289,86 @@ export default function AttendanceLogs() {
               ))}
             </div>
           </div>
-        </div>
 
-        {dateRange === 'custom' && (
-          <div className="flex gap-4 mb-4 max-sm:flex-col">
-            <div className="flex-1 flex flex-col gap-1">
-              <label className="text-xs text-text-muted font-medium">{t('attendanceLogs.filters.customStart')}</label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-3 py-2 border border-border rounded-md text-sm bg-bg-white" />
+          {dateRange === 'custom' && (
+            <div className="grid grid-cols-2 gap-4 mb-5">
+              <div>
+                <label className="block text-[10px] font-bold text-text-muted uppercase mb-2">{t('attendanceLogs.filters.customStart')}</label>
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-3 border-2 border-border-light rounded-xl font-bold focus:border-primary outline-none" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-text-muted uppercase mb-2">{t('attendanceLogs.filters.customEnd')}</label>
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-3 border-2 border-border-light rounded-xl font-bold focus:border-primary outline-none" />
+              </div>
             </div>
-            <div className="flex-1 flex flex-col gap-1">
-              <label className="text-xs text-text-muted font-medium">{t('attendanceLogs.filters.customEnd')}</label>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-2 border border-border rounded-md text-sm bg-bg-white" />
-            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {users.length > 0 && (
+              <div>
+                <label className="block text-[10px] font-bold text-text-muted uppercase mb-2">{t('attendanceLogs.filters.worker')}</label>
+                <div className="relative">
+                  <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                  <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="w-full py-4 pr-10 pl-11 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-sm font-bold cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-sm">
+                    <option value="">{t('attendanceLogs.filters.allWorkers')}</option>
+                    {users.map(u => <option key={u._id} value={u._id}>{u.fullName}</option>)}
+                  </select>
+                  <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                </div>
+              </div>
+            )}
+
+            {viewMode === 'attendance' && (
+              <div>
+                <label className="block text-[10px] font-bold text-text-muted uppercase mb-2">{t('attendanceLogs.filters.payment')}</label>
+                <div className="relative">
+                  <Wallet size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                  <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as 'All' | 'Unpaid' | 'Paid')} className="w-full py-4 pr-10 pl-11 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-sm font-bold cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-sm">
+                    <option value="Unpaid">{t('attendanceLogs.filters.paymentOptions.unpaid')}</option>
+                    <option value="Paid">{t('attendanceLogs.filters.paymentOptions.paid')}</option>
+                    <option value="All">{t('attendanceLogs.filters.paymentOptions.all')}</option>
+                  </select>
+                  <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                </div>
+              </div>
+            )}
           </div>
-        )}
-
-        <div className="flex gap-4 max-sm:flex-col">
-          {users.length > 0 && (
-            <div className="flex-1 flex flex-col gap-2">
-              <label className="text-xs font-semibold text-text-muted uppercase tracking-[0.3px]">{t('attendanceLogs.filters.worker')}</label>
-              <div className="relative flex items-center">
-                <User size={14} className="absolute left-3 text-text-muted pointer-events-none z-10" />
-                <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="w-full py-2 px-9 border border-border rounded-md text-sm font-medium text-text-primary bg-bg-white appearance-none cursor-pointer transition-colors duration-150 focus:outline-none focus:border-primary">
-                  <option value="">{t('attendanceLogs.filters.allWorkers')}</option>
-                  {users.map(u => <option key={u._id} value={u._id}>{u.fullName} ({u.role})</option>)}
-                </select>
-                <ChevronDown size={14} className="absolute right-3 text-text-muted pointer-events-none" />
-              </div>
-            </div>
-          )}
-
-          {viewMode === 'attendance' && (
-            <div className="flex-1 flex flex-col gap-2">
-              <label className="text-xs font-semibold text-text-muted uppercase tracking-[0.3px]">{t('attendanceLogs.filters.payment')}</label>
-              <div className="relative flex items-center">
-                <Wallet size={14} className="absolute left-3 text-text-muted pointer-events-none z-10" />
-                <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as any)} className="w-full py-2 px-9 border border-border rounded-md text-sm font-medium text-text-primary bg-bg-white appearance-none cursor-pointer transition-colors duration-150 focus:outline-none focus:border-primary">
-                  <option value="Unpaid">{t('attendanceLogs.filters.paymentOptions.unpaid')}</option>
-                  <option value="Paid">{t('attendanceLogs.filters.paymentOptions.paid')}</option>
-                  <option value="All">{t('attendanceLogs.filters.paymentOptions.all')}</option>
-                </select>
-                <ChevronDown size={14} className="absolute right-3 text-text-muted pointer-events-none" />
-              </div>
-            </div>
-          )}
-        </div>
-      </Card>
+        </Card>
+      </div>
 
       {/* Summary - only in attendance mode */}
       {viewMode === 'attendance' && summary && (
-        <div className="grid grid-cols-4 gap-3 mb-5 max-lg:grid-cols-2 max-sm:grid-cols-2">
-          <Card className="flex flex-col items-center gap-[6px] p-4 text-center transition-transform duration-150 hover:-translate-y-[2px]">
-            <Calendar size={16} color="#6366F1" />
-            <span className="text-xl font-extrabold text-text-primary leading-[1.1]">{summary.total}</span>
-            <span className="text-xs text-text-muted font-medium">{t('attendanceLogs.summary.totalDays')}</span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+          <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center">
+            <span className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mb-2">
+              <Calendar size={20} />
+            </span>
+            <span className="text-2xl font-black text-text-primary">{summary.total}</span>
+            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{t('attendanceLogs.summary.totalDays')}</span>
           </Card>
-          <Card className="flex flex-col items-center gap-[6px] p-4 text-center transition-transform duration-150 hover:-translate-y-[2px]">
-            <Check size={16} color="#059669" />
-            <span className="text-xl font-extrabold text-text-primary leading-[1.1]">{summary.present}</span>
-            <span className="text-xs text-text-muted font-medium">{t('attendanceLogs.summary.present')}</span>
+
+          <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center">
+            <span className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 mb-2">
+              <Check size={20} />
+            </span>
+            <span className="text-2xl font-black text-text-primary">{summary.present}</span>
+            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{t('attendanceLogs.summary.present')}</span>
           </Card>
-          <Card className="flex flex-col items-center gap-[6px] p-4 text-center transition-transform duration-150 hover:-translate-y-[2px]">
-            <Clock size={16} color="#D97706" />
-            <span className="text-xl font-extrabold text-text-primary leading-[1.1]">{summary.totalHours.toFixed(1)}h</span>
-            <span className="text-xs text-text-muted font-medium">{t('attendanceLogs.summary.totalHours')}</span>
+
+          <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center">
+             <span className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 mb-2">
+               <Clock size={20} />
+             </span>
+             <span className="text-2xl font-black text-text-primary">{summary.totalHours.toFixed(1)}h</span>
+             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{t('attendanceLogs.summary.totalHours')}</span>
           </Card>
-          <Card className="flex flex-col items-center gap-[6px] p-4 text-center transition-transform duration-150 hover:-translate-y-[2px]">
-            <DollarSign size={16} color="var(--primary)" />
-            <span className="text-xl font-extrabold text-text-primary leading-[1.1] !text-base !text-primary">{formatRp(summary.totalPayment || 0)}</span>
-            <span className="text-xs text-text-muted font-medium">{t('attendanceLogs.summary.totalPayment')}</span>
+
+          <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center">
+             <span className="w-10 h-10 rounded-full bg-primary-bg flex items-center justify-center text-primary mb-2">
+               <DollarSign size={20} />
+             </span>
+             <span className="text-lg font-black text-primary">{formatRp(summary.totalPayment || 0)}</span>
+             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{t('attendanceLogs.summary.totalPayment')}</span>
           </Card>
         </div>
       )}
@@ -383,9 +391,9 @@ export default function AttendanceLogs() {
       {viewMode === 'attendance' && (
         <>
           {loading ? (
-            <div className="flex flex-col items-center justify-center p-10 gap-3 text-text-muted text-sm">
-              <Loader size={24} className="animate-spin text-primary" />
-              <span>{t('attendanceLogs.loading')}</span>
+            <div className="py-12 text-center text-text-muted">
+              <Loader size={32} className="animate-spin mx-auto mb-4 text-primary" />
+              <p className="font-bold uppercase tracking-wider">{t('attendanceLogs.loading')}</p>
             </div>
           ) : records.length === 0 ? (
             <EmptyState
@@ -394,81 +402,80 @@ export default function AttendanceLogs() {
               description={t('attendanceLogs.empty.desc')}
             />
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 gap-4">
               {records.map((record) => {
                 const statusStyle = STATUS_STYLES[record.status] || STATUS_STYLES.Present;
                 const totalPay = (record.dailyRate || 0) + (record.overtimePay || 0);
                 return (
-                  <Card key={record._id} className="p-4 transition-all duration-150 hover:-translate-y-[1px] hover:shadow-md">
-                    {/* Top row: Date + Status + Wage badge */}
-                    <div className="flex justify-between items-center mb-3">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-                        <Calendar size={14} />
-                        <span>{formatDate(record.date)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-bold px-2 py-[2px] rounded-full whitespace-nowrap" style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}>
-                          {record.status}
-                        </span>
-                        <Badge label={getWageLabel(record.wageType)} variant={record.wageType === 'daily' ? 'neutral' : record.wageType === 'overtime_1.5' ? 'warning' : 'danger'} size="small" />
-                      </div>
-                    </div>
-
-                    {/* Worker info */}
-                    <div className="flex items-center gap-3 pb-3 border-b border-border-light mb-3">
-                      <div className="w-[34px] h-[34px] rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}>
-                        {record.userId.fullName.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="block text-sm font-semibold text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{record.userId.fullName}</span>
-                        <span className="block text-[10px] text-text-muted capitalize">{record.userId.role}</span>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0 max-sm:hidden">
-                        <span className="text-sm font-semibold text-text-secondary tabular-nums">{record.checkIn?.time ? formatTime(record.checkIn.time) : '--:--'}</span>
-                        <span className="text-[10px] text-text-muted">→</span>
-                        <span className="text-sm font-semibold text-text-secondary tabular-nums">{record.checkOut?.time ? formatTime(record.checkOut.time) : '--:--'}</span>
-                      </div>
-                    </div>
-
-                    {/* Financials row */}
-                    <div className="flex items-center gap-4 mb-3 max-sm:flex-wrap max-sm:gap-2">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('attendanceLogs.record.daily')}</span>
-                        <span className="text-sm font-semibold text-text-primary">{formatRp(record.dailyRate || 0)}</span>
-                      </div>
-                      {record.overtimePay > 0 && (
-                        <div className="flex flex-col">
-                          <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('attendanceLogs.record.overtime')}</span>
-                          <span className="text-sm font-semibold text-text-primary">{formatRp(record.overtimePay)}</span>
+                  <Card key={record._id} className="!p-5 border-2 border-border-light hover:border-primary transition-all">
+                    {/* Top row: Worker & Status Base */}
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                         <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shrink-0" style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}>
+                          {record.userId.fullName.charAt(0).toUpperCase()}
                         </div>
-                      )}
-                      <div className="ml-auto flex items-center gap-2 text-sm font-bold text-primary">
-                        <span>{formatRp(totalPay)}</span>
-                        <Badge
-                          label={record.paymentStatus === 'Paid' ? t('attendanceLogs.filters.paymentOptions.paid') : t('attendanceLogs.filters.paymentOptions.unpaid')}
-                          variant={record.paymentStatus === 'Paid' ? 'success' : 'warning'}
-                          size="small"
-                        />
+                        <div>
+                          <h4 className="text-base font-black text-text-primary tracking-tight m-0">{record.userId.fullName}</h4>
+                          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{record.userId.role}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Badge label={record.status} variant={record.status === 'Present' ? 'success' : record.status === 'Absent' ? 'danger' : 'warning'} className="mb-1" />
+                        <span className="block text-[10px] font-bold text-text-muted uppercase">{formatDate(record.date)}</span>
                       </div>
                     </div>
 
-                    {/* Project + Action */}
-                    <div className="flex items-center justify-between max-sm:flex-col max-sm:items-start max-sm:gap-2 [&>button]:max-sm:w-full">
-                      {record.projectId && (
-                        <div className="flex items-center gap-1 text-xs text-text-muted">
-                          <Building size={12} />
-                          <span>{record.projectId.nama}</span>
-                        </div>
-                      )}
-                      {isSupervisor && (
-                        <Button
-                          title={t('attendanceLogs.actions.setWage')}
-                          icon={DollarSign}
-                          onClick={() => openWageModal(record)}
-                          variant="outline"
-                          size="small"
-                        />
-                      )}
+                    {/* Time Log */}
+                    <div className="flex items-center gap-2 bg-bg-secondary p-3 rounded-xl mb-4 border-2 border-transparent">
+                      <Clock size={16} className="text-text-muted" />
+                      <span className="text-sm font-black text-text-primary tabular-nums">{record.checkIn?.time ? formatTime(record.checkIn.time) : '--:--'}</span>
+                      <span className="text-sm text-text-muted px-2">→</span>
+                      <span className="text-sm font-black text-text-primary tabular-nums">{record.checkOut?.time ? formatTime(record.checkOut.time) : '--:--'}</span>
+                    </div>
+
+                    {/* Wage Display Panel */}
+                    <div className="bg-primary-bg rounded-xl border-2 border-primary/20 p-4 mb-4 grid grid-cols-2 gap-4">
+                       <div>
+                          <span className="block text-[10px] font-bold text-primary uppercase mb-1">{t('attendanceLogs.record.daily')}</span>
+                          <span className="text-sm font-black text-primary">{formatRp(record.dailyRate || 0)}</span>
+                       </div>
+                       {record.overtimePay > 0 && (
+                          <div>
+                            <span className="block text-[10px] font-bold text-primary uppercase mb-1">{t('attendanceLogs.record.overtime')}</span>
+                            <span className="text-sm font-black text-primary">{formatRp(record.overtimePay)}</span>
+                          </div>
+                       )}
+                       <div className="col-span-2 pt-3 border-t-2 border-primary/10 flex justify-between items-center">
+                          <span className="text-xs font-bold text-primary uppercase">Total Pay</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-black text-primary">{formatRp(totalPay)}</span>
+                            <Badge
+                              label={record.paymentStatus === 'Paid' ? 'PAID' : 'UNPAID'}
+                              variant={record.paymentStatus === 'Paid' ? 'success' : 'warning'}
+                              size="small"
+                            />
+                          </div>
+                       </div>
+                    </div>
+
+                    {/* Action Footer */}
+                    <div className="flex items-center justify-between mt-2 pt-2">
+                       {record.projectId ? (
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-text-muted">
+                            <Building size={14} />
+                            <span>{record.projectId.nama}</span>
+                          </div>
+                       ) : <div/>}
+
+                       {isSupervisor && (
+                         <Button
+                           title="Edit Wage"
+                           icon={DollarSign}
+                           onClick={() => openWageModal(record)}
+                           variant="outline"
+                           className="!h-10 text-xs px-3 py-1"
+                         />
+                       )}
                     </div>
                   </Card>
                 );
@@ -482,10 +489,10 @@ export default function AttendanceLogs() {
       {viewMode === 'permits' && (
         <>
           {loading ? (
-            <div className="flex flex-col items-center justify-center p-10 gap-3 text-text-muted text-sm">
-              <Loader size={24} className="animate-spin text-primary" />
-              <span>{t('attendanceLogs.loading')}</span>
-            </div>
+             <div className="py-12 text-center text-text-muted">
+               <Loader size={32} className="animate-spin mx-auto mb-4 text-primary" />
+               <p className="font-bold uppercase tracking-wider">{t('attendanceLogs.loading')}</p>
+             </div>
           ) : permitRecords.length === 0 ? (
             <EmptyState
               icon={CalendarOff}
@@ -493,59 +500,66 @@ export default function AttendanceLogs() {
               description={t('attendanceLogs.permit.emptyDesc')}
             />
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 gap-4">
               {permitRecords.map((record) => (
-                <Card key={record._id} className="p-4 transition-all duration-150 hover:-translate-y-[1px] hover:shadow-md border-l-[3px] border-l-purple-600">
+                <Card key={record._id} className="!p-5 border-2 border-border-light hover:border-primary transition-all relative overflow-hidden">
+                   {/* Left Accent Bar */}
+                   <div className="absolute left-0 top-0 bottom-0 w-2 bg-purple-500 rounded-l-xl" />
+                   
                   {/* Top row */}
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-                      <Calendar size={14} />
-                      <span>{formatDate(record.date)}</span>
+                  <div className="flex justify-between items-start mb-4 pl-3">
+                    <div className="flex items-center gap-3">
+                       <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shrink-0 bg-purple-100 text-purple-600">
+                        {record.userId.fullName.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 className="text-base font-black text-text-primary tracking-tight m-0">{record.userId.fullName}</h4>
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{record.userId.role}</span>
+                      </div>
                     </div>
-                    <span
-                      className="text-[9px] font-bold px-2 py-[2px] rounded-full whitespace-nowrap"
-                      style={{
-                        backgroundColor: record.permit?.status === 'Approved' ? '#D1FAE5' : record.permit?.status === 'Rejected' ? '#FEE2E2' : '#FEF3C7',
-                        color: record.permit?.status === 'Approved' ? '#059669' : record.permit?.status === 'Rejected' ? '#DC2626' : '#D97706',
-                      }}
-                    >
-                      {record.permit?.status || 'Pending'}
-                    </span>
-                  </div>
-
-                  {/* Worker */}
-                  <div className="flex items-center gap-3 pb-3 border-b border-border-light mb-3">
-                    <div className="w-[34px] h-[34px] rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
-                      {record.userId.fullName.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="block text-sm font-semibold text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{record.userId.fullName}</span>
-                      <span className="block text-[10px] text-text-muted capitalize">{record.userId.role}</span>
+                    <div className="text-right">
+                      <span
+                        className="inline-block text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider mb-1"
+                        style={{
+                          backgroundColor: record.permit?.status === 'Approved' ? '#D1FAE5' : record.permit?.status === 'Rejected' ? '#FEE2E2' : '#FEF3C7',
+                          color: record.permit?.status === 'Approved' ? '#059669' : record.permit?.status === 'Rejected' ? '#DC2626' : '#D97706',
+                        }}
+                      >
+                        {record.permit?.status || 'Pending'}
+                      </span>
+                      <span className="block text-[10px] font-bold text-text-muted uppercase">
+                         {formatDate(record.date)}
+                      </span>
                     </div>
                   </div>
 
                   {/* Permit reason */}
                   {record.permit?.reason && (
-                    <div className="flex items-start gap-2 p-3 bg-purple-50 rounded-md mt-3 text-sm text-text-secondary leading-[1.5]">
-                      <FileText size={14} className="shrink-0 mt-[2px] text-purple-600" />
-                      <span>{record.permit.reason}</span>
+                    <div className="ml-3 p-4 bg-purple-50 rounded-xl mb-4 border-2 border-purple-100/50">
+                      <div className="flex items-center gap-2 mb-2">
+                         <FileText size={16} className="text-purple-600" />
+                         <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">Reason</span>
+                      </div>
+                      <p className="text-sm font-semibold text-text-secondary m-0">{record.permit.reason}</p>
                     </div>
                   )}
 
                   {/* Evidence */}
                   {record.permit?.evidence && (
                     <div
-                      className="relative mt-3 rounded-md overflow-hidden cursor-pointer max-h-[180px] group"
+                      className="ml-3 relative bg-bg-secondary rounded-xl overflow-hidden cursor-pointer aspect-video group border-2 border-border-light hover:border-primary transition-all"
                       onClick={() => setEvidenceModal({ open: true, url: getImageUrl(record.permit?.evidence), worker: record.userId.fullName })}
                     >
                       <img
                         src={getImageUrl(record.permit?.evidence)}
                         alt="Evidence"
-                        className="w-full h-[180px] object-cover block rounded-md transition-transform duration-300 group-hover:scale-105"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
-                      <div className="absolute inset-0 bg-black/35 flex flex-col items-center justify-center gap-1 text-white text-xs font-semibold opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                        <Eye size={16} />
-                        <span>{t('attendanceLogs.permit.viewEvidence')}</span>
+                      <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2 text-white opacity-0 group-hover:opacity-100 transition-all backdrop-blur-sm">
+                        <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                           <Eye size={24} />
+                        </div>
+                        <span className="text-xs font-black uppercase tracking-widest">{t('attendanceLogs.permit.viewEvidence')}</span>
                       </div>
                     </div>
                   )}
@@ -573,65 +587,100 @@ export default function AttendanceLogs() {
 
       {/* Wage Modal */}
       {wageModal && selectedRecord && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 backdrop-blur-[4px]" onClick={() => setWageModal(false)}>
-          <div className="bg-bg-white rounded-xl w-full max-w-[420px] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-1">
-              <DollarSign size={20} color="#F59E0B" />
-              <h3 className="text-lg font-bold text-text-primary m-0">{t('attendanceLogs.wageModal.title')}</h3>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[1000] p-4 sm:p-0 animate-in fade-in duration-200" onClick={() => setWageModal(false)}>
+          <div className="bg-bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-[480px] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-5 sm:slide-in-from-bottom-2" onClick={e => e.stopPropagation()}>
+            
+            {/* Modal Header */}
+            <div className="p-6 border-b-2 border-border-light bg-bg-secondary flex justify-between items-center sticky top-0">
+               <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
+                   <DollarSign size={20} strokeWidth={2.5} />
+                 </div>
+                 <h3 className="text-xl font-black text-text-primary m-0 tracking-tight uppercase">{t('attendanceLogs.wageModal.title')}</h3>
+               </div>
+               <button className="w-8 h-8 rounded-full bg-border border-none flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-border-light transition-colors cursor-pointer active:scale-95" onClick={() => setWageModal(false)}>
+                 <X size={18} />
+               </button>
             </div>
 
-            <div className="flex items-center gap-2 p-3 bg-bg-secondary rounded-md my-4 text-sm text-text-secondary">
-              <User size={14} />
-              <span>{selectedRecord.userId.fullName}</span>
-              <span className="text-text-muted">•</span>
-              <span>{formatDate(selectedRecord.date)}</span>
+            <div className="p-6 max-h-[70vh] overflow-y-auto">
+               {/* Context Banner */}
+               <div className="flex items-center gap-4 p-4 bg-primary-bg rounded-xl mb-6 border-2 border-primary/20">
+                  <div className="flex-1">
+                    <span className="block text-[10px] font-bold text-primary uppercase mb-1">{selectedRecord.userId.role}</span>
+                    <span className="text-base font-black text-primary">{selectedRecord.userId.fullName}</span>
+                  </div>
+                  <div className="text-right border-l-2 border-primary/20 pl-4">
+                     <span className="block text-[10px] font-bold text-primary uppercase mb-1">Date</span>
+                     <span className="text-sm font-black text-primary">{formatDate(selectedRecord.date)}</span>
+                  </div>
+               </div>
+
+               {/* Wage Type Selection */}
+               <div className="mb-6">
+                 <label className="block text-[10px] font-bold text-text-muted uppercase tracking-wider mb-3">Select Rate Type</label>
+                 <div className="grid grid-cols-1 gap-2">
+                   {WAGE_OPTIONS_TRANSLATED.map(opt => (
+                     <button
+                       key={opt.value}
+                       className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all duration-150 active:scale-[0.98] ${newWageType === opt.value ? 'border-primary bg-primary text-white shadow-md' : 'border-border-light bg-bg-white text-text-secondary hover:border-primary/50'}`}
+                       onClick={() => handleTypeChange(opt.value)}
+                     >
+                       <span className="flex-1 font-black text-sm text-left uppercase">{opt.label}</span>
+                       <span className={`text-xs font-bold px-2 py-1 rounded-lg ${newWageType === opt.value ? 'bg-white/20 text-white' : 'bg-bg-secondary text-text-muted'}`}>
+                          {opt.multiplier}x
+                       </span>
+                     </button>
+                   ))}
+                 </div>
+               </div>
+
+               {/* Rate Inputs */}
+               <div className="space-y-4">
+                 <div>
+                    <CostInput
+                      label={t('attendanceLogs.wageModal.ratePerDay')}
+                      value={newDailyRate}
+                      onChange={handleRateChange}
+                      placeholder={t('attendanceLogs.wageModal.ratePlaceholder')}
+                    />
+                 </div>
+
+                 {newWageType.startsWith('overtime') && (
+                   <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-100">
+                     <CostInput
+                       label={t('attendanceLogs.wageModal.overtimePay')}
+                       value={newOvertimePay}
+                       onChange={setNewOvertimePay}
+                       placeholder={t('attendanceLogs.wageModal.overtimePlaceholder')}
+                     />
+                     {selectedRecord.checkIn?.time && selectedRecord.checkOut?.time && (
+                       <div className="mt-3 flex items-center gap-2 text-orange-600 bg-orange-100/50 p-2 rounded-lg">
+                          <Clock size={14} />
+                          <span className="text-xs font-bold uppercase">
+                            {t('attendanceLogs.wageModal.duration', { hours: ((new Date(selectedRecord.checkOut.time).getTime() - new Date(selectedRecord.checkIn.time).getTime()) / (1000 * 60 * 60)).toFixed(2) })}
+                          </span>
+                       </div>
+                     )}
+                   </div>
+                 )}
+                 
+                 <p className="text-[10px] font-bold text-text-muted uppercase text-center mt-4">
+                   {t('attendanceLogs.wageModal.helper')}
+                 </p>
+               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              {WAGE_OPTIONS_TRANSLATED.map(opt => (
-                <button
-                  key={opt.value}
-                  className={`flex items-center gap-3 p-3 border border-border bg-bg-white rounded-md cursor-pointer transition-all duration-150 hover:border-primary ${newWageType === opt.value ? 'border-primary bg-primary-bg' : ''}`}
-                  onClick={() => handleTypeChange(opt.value)}
-                >
-                  {newWageType === opt.value && <Check size={16} />}
-                  <span className="flex-1 font-medium text-text-primary text-sm text-left">{opt.label}</span>
-                  <span className="text-sm text-text-muted font-semibold">{opt.multiplier}x</span>
-                </button>
-              ))}
-            </div>
-
-            <div style={{ marginTop: 20 }}>
-              <CostInput
-                label={t('attendanceLogs.wageModal.ratePerDay')}
-                value={newDailyRate}
-                onChange={handleRateChange}
-                placeholder={t('attendanceLogs.wageModal.ratePlaceholder')}
+            {/* Action Footer */}
+            <div className="p-4 sm:p-6 border-t-2 border-border-light bg-bg-white">
+              <Button 
+                 title={t('attendanceLogs.actions.save')} 
+                 onClick={handleSaveWage} 
+                 loading={submitting} 
+                 variant="primary" 
+                 fullWidth 
+                 className="!h-14 !text-lg !font-black uppercase tracking-widest shadow-lg shadow-primary/20 target-touch"
               />
-
-              {newWageType.startsWith('overtime') && (
-                <div style={{ marginTop: 16 }}>
-                  <CostInput
-                    label={t('attendanceLogs.wageModal.overtimePay')}
-                    value={newOvertimePay}
-                    onChange={setNewOvertimePay}
-                    placeholder={t('attendanceLogs.wageModal.overtimePlaceholder')}
-                  />
-                  {selectedRecord.checkIn?.time && selectedRecord.checkOut?.time && (
-                    <p className="text-xs text-text-muted mt-1 mb-0">
-                      {t('attendanceLogs.wageModal.duration', { hours: ((new Date(selectedRecord.checkOut.time).getTime() - new Date(selectedRecord.checkIn.time).getTime()) / (1000 * 60 * 60)).toFixed(2) })}
-                    </p>
-                  )}
-                </div>
-              )}
-              <p className="text-xs text-text-muted mt-1 mb-0" style={{ marginTop: 12 }}>
-                {t('attendanceLogs.wageModal.helper')}
-              </p>
-            </div>
-
-            <div className="flex gap-3 mt-5 justify-end max-sm:flex-col [&>button]:max-sm:w-full">
-              <Button title={t('attendanceLogs.actions.cancel')} onClick={() => setWageModal(false)} variant="outline" />
-              <Button title={t('attendanceLogs.actions.save')} onClick={handleSaveWage} loading={submitting} variant="primary" />
             </div>
           </div>
         </div>
