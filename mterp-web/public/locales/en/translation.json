@@ -175,6 +175,21 @@
       "back": "Back",
       "next": "Next",
       "create": "Create Project"
+    },
+    "import": {
+      "title": "Import from Spreadsheet",
+      "downloadTemplate": "Download Template",
+      "importSheet": "Import from Sheet",
+      "importing": "Importing...",
+      "previewTitle": "Import Data Preview",
+      "previewSubtitle": "Review data before filling the form",
+      "confirmImport": "Confirm & Fill Form",
+      "successTitle": "Import Successful",
+      "successMessage": "Spreadsheet data has been loaded into the form. Please review and edit before submitting.",
+      "parseFailed": "Failed to parse spreadsheet file.",
+      "downloadFailed": "Failed to download template.",
+      "noSuppliesFound": "No supply data found in spreadsheet.",
+      "noWorkItemsFound": "No work item data found in spreadsheet."
     }
   },
   "projectDetail": {

@@ -175,6 +175,21 @@
       "back": "Kembali",
       "next": "Lanjut",
       "create": "Buat Proyek"
+    },
+    "import": {
+      "title": "Impor dari Spreadsheet",
+      "downloadTemplate": "Unduh Template",
+      "importSheet": "Impor dari Sheet",
+      "importing": "Mengimpor...",
+      "previewTitle": "Pratinjau Data Impor",
+      "previewSubtitle": "Tinjau data sebelum mengisi formulir",
+      "confirmImport": "Konfirmasi & Isi Formulir",
+      "successTitle": "Impor Berhasil",
+      "successMessage": "Data dari spreadsheet telah mengisi formulir. Silakan tinjau dan edit sebelum mengirim.",
+      "parseFailed": "Gagal membaca file spreadsheet.",
+      "downloadFailed": "Gagal mengunduh template.",
+      "noSuppliesFound": "Tidak ada data suplai ditemukan di spreadsheet.",
+      "noWorkItemsFound": "Tidak ada data pekerjaan ditemukan di spreadsheet."
     }
   },
   "projectDetail": {

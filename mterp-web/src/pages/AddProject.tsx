@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronRight,
@@ -13,6 +13,11 @@ import {
   Package,
   Hash,
   Percent,
+  FileSpreadsheet,
+  Download,
+  X,
+  Eye,
+  AlertCircle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/api';
@@ -59,6 +64,13 @@ export default function AddProject() {
 
   const [supplies, setSupplies] = useState<Partial<ProjectSupply>[]>([]);
   const [workItems, setWorkItems] = useState<Partial<WorkItem>[]>([]);
+
+  // Import state
+  const [importLoading, setImportLoading] = useState(false);
+  const [showImportPreview, setShowImportPreview] = useState(false);
+  const [importPreviewTab, setImportPreviewTab] = useState(0);
+  const [importData, setImportData] = useState<{ projectData: any; supplies: any[]; workItems: any[] } | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const totalBudget = Number(projectData.totalBudget) || 0;
 
@@ -142,6 +154,81 @@ export default function AddProject() {
     return new Intl.NumberFormat('id-ID').format(num);
   };
 
+  // ===== Import Handlers =====
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await api.get('/projects/import-template', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'MTERP_Project_Template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download template', err);
+      setAlertData({ visible: true, type: 'error', title: 'Error', message: t('addProject.import.downloadFailed') });
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await api.post('/projects/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImportData(response.data);
+      setImportPreviewTab(0);
+      setShowImportPreview(true);
+    } catch (err) {
+      console.error('Failed to import spreadsheet', err);
+      setAlertData({ visible: true, type: 'error', title: 'Error', message: t('addProject.import.parseFailed') });
+    } finally {
+      setImportLoading(false);
+      // Reset file input
+      if (importFileRef.current) importFileRef.current.value = '';
+    }
+  };
+
+  const handleConfirmImport = () => {
+    if (!importData) return;
+
+    const d = importData.projectData;
+    setProjectData({
+      name: d.nama || '',
+      location: d.lokasi || '',
+      description: d.description || '',
+      totalBudget: d.totalBudget ? String(d.totalBudget) : '',
+      startDate: d.startDate || '',
+      endDate: d.endDate || '',
+    });
+
+    if (importData.supplies.length > 0) {
+      setSupplies(importData.supplies);
+    }
+    if (importData.workItems.length > 0) {
+      setWorkItems(importData.workItems);
+    }
+
+    setShowImportPreview(false);
+    setImportData(null);
+    setCurrentStep(0);
+    setAlertData({ visible: true, type: 'success', title: t('addProject.import.successTitle'), message: t('addProject.import.successMessage') });
+  };
+
+  // Helper for preview
+  const previewTabs = [
+    { label: t('addProject.steps.basicInfo'), count: importData?.projectData?.nama ? 1 : 0 },
+    { label: t('addProject.steps.supplyPlan'), count: importData?.supplies?.length || 0 },
+    { label: t('addProject.steps.workItems'), count: importData?.workItems?.length || 0 },
+  ];
+
   return (
     <div className="p-6 max-w-[700px] mx-auto max-lg:p-4 max-sm:p-3">
       <Alert
@@ -155,6 +242,34 @@ export default function AddProject() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{t('addProject.title')}</h1>
+      </div>
+
+      {/* Import Actions Bar */}
+      <div className="flex items-center gap-3 mb-6 p-4 bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-xl max-sm:flex-col max-sm:items-stretch">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <FileSpreadsheet size={20} className="text-primary shrink-0" />
+          <span className="text-sm font-semibold text-text-primary truncate">{t('addProject.import.title')}</span>
+        </div>
+        <div className="flex gap-2 max-sm:flex-col">
+          <button
+            onClick={handleDownloadTemplate}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-primary bg-bg-primary border border-primary/30 rounded-lg cursor-pointer transition-all hover:bg-primary/10 hover:border-primary/50 active:scale-[0.97]"
+          >
+            <Download size={16} />
+            {t('addProject.import.downloadTemplate')}
+          </button>
+          <label className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg cursor-pointer transition-all hover:opacity-90 active:scale-[0.97] ${importLoading ? 'opacity-60 pointer-events-none' : ''}`}>
+            <Upload size={16} />
+            {importLoading ? t('addProject.import.importing') : t('addProject.import.importSheet')}
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImportFile}
+              style={{ display: 'none' }}
+            />
+          </label>
+        </div>
       </div>
 
       {/* Step Indicator */}
@@ -488,6 +603,141 @@ export default function AddProject() {
           />
         )}
       </div>
+
+      {/* ===== Import Preview Modal ===== */}
+      {showImportPreview && importData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="bg-bg-primary rounded-2xl shadow-2xl w-full max-w-[600px] max-h-[85vh] flex flex-col overflow-hidden border border-border animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Eye size={20} className="text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-text-primary m-0">{t('addProject.import.previewTitle')}</h2>
+                  <p className="text-xs text-text-muted m-0 mt-0.5">{t('addProject.import.previewSubtitle')}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowImportPreview(false); setImportData(null); }}
+                className="w-9 h-9 rounded-full flex items-center justify-center bg-transparent text-text-muted cursor-pointer transition-all border-none hover:bg-bg-secondary hover:text-text-primary"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Preview Tabs */}
+            <div className="flex border-b border-border px-5 gap-1">
+              {previewTabs.map((tab, i) => (
+                <button
+                  key={i}
+                  onClick={() => setImportPreviewTab(i)}
+                  className={`px-4 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer bg-transparent ${
+                    importPreviewTab === i
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  {tab.label}
+                  {tab.count > 0 && (
+                    <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">{tab.count}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Preview Content */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {/* Tab 0: Basic Info */}
+              {importPreviewTab === 0 && (
+                <div className="space-y-3">
+                  {[
+                    { label: t('addProject.form.projectName'), value: importData.projectData.nama },
+                    { label: t('addProject.form.location'), value: importData.projectData.lokasi },
+                    { label: t('addProject.form.description'), value: importData.projectData.description },
+                    { label: t('addProject.form.totalBudget'), value: importData.projectData.totalBudget ? `Rp ${formatRupiah(importData.projectData.totalBudget)}` : '-' },
+                    { label: t('addProject.form.startDate'), value: importData.projectData.startDate || '-' },
+                    { label: t('addProject.form.endDate'), value: importData.projectData.endDate || '-' },
+                  ].map((field, i) => (
+                    <div key={i} className="flex justify-between items-start gap-4 py-2 border-b border-border/50 last:border-none">
+                      <span className="text-xs font-semibold text-text-muted uppercase tracking-wide shrink-0">{field.label}</span>
+                      <span className="text-sm text-text-primary text-right font-medium">{field.value || '-'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Tab 1: Supplies Preview */}
+              {importPreviewTab === 1 && (
+                <div>
+                  {importData.supplies.length === 0 ? (
+                    <div className="text-center py-8 text-text-muted text-sm">
+                      <AlertCircle size={24} className="mx-auto mb-2 opacity-40" />
+                      {t('addProject.import.noSuppliesFound')}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {importData.supplies.map((s: any, i: number) => (
+                        <div key={i} className="flex items-center gap-3 p-3 bg-bg-secondary rounded-lg border border-border/50">
+                          <span className="text-xs font-bold text-text-muted bg-bg-primary w-6 h-6 rounded-full flex items-center justify-center shrink-0">{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-text-primary truncate">{s.item}</div>
+                            <div className="text-xs text-text-muted mt-0.5">{s.qty} {s.unit} • Rp {formatRupiah(s.cost)}</div>
+                          </div>
+                          {s.startDate && <span className="text-xs text-text-muted shrink-0">{s.startDate}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 2: Work Items Preview */}
+              {importPreviewTab === 2 && (
+                <div>
+                  {importData.workItems.length === 0 ? (
+                    <div className="text-center py-8 text-text-muted text-sm">
+                      <AlertCircle size={24} className="mx-auto mb-2 opacity-40" />
+                      {t('addProject.import.noWorkItemsFound')}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {importData.workItems.map((w: any, i: number) => (
+                        <div key={i} className="flex items-center gap-3 p-3 bg-bg-secondary rounded-lg border border-border/50">
+                          <span className="text-xs font-bold text-text-muted bg-bg-primary w-6 h-6 rounded-full flex items-center justify-center shrink-0">{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-text-primary truncate">{w.name}</div>
+                            <div className="text-xs text-text-muted mt-0.5">{w.qty} {w.unit} • Rp {formatRupiah(w.cost)}</div>
+                          </div>
+                          {w.startDate && <span className="text-xs text-text-muted shrink-0">{w.startDate}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex justify-end gap-3 p-5 border-t border-border">
+              <button
+                onClick={() => { setShowImportPreview(false); setImportData(null); }}
+                className="px-5 py-2.5 text-sm font-semibold text-text-secondary bg-bg-secondary border border-border rounded-lg cursor-pointer transition-all hover:bg-bg-primary"
+              >
+                {t('addProject.actions.back')}
+              </button>
+              <button
+                onClick={handleConfirmImport}
+                className="px-5 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg cursor-pointer transition-all hover:opacity-90 active:scale-[0.97] flex items-center gap-2"
+              >
+                <Check size={16} />
+                {t('addProject.import.confirmImport')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

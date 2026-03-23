@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
+const XLSX = require('xlsx');
 
 const router = express.Router();
 
@@ -32,6 +33,171 @@ router.get('/', auth, async (req, res) => {
     res.status(500).json({ msg: 'Server error' });
   }
 });
+
+// === IMPORT FROM SPREADSHEET ===
+
+// GET /api/projects/import-template - Download a blank .xlsx template
+router.get('/import-template', auth, authorize('owner', 'director'), (req, res) => {
+  try {
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Project Info (single row)
+    const projectHeaders = ['Nama Proyek', 'Lokasi', 'Deskripsi', 'Total Anggaran', 'Tanggal Mulai', 'Tanggal Selesai'];
+    const projectExample = ['Proyek Jembatan Kali', 'Jakarta Selatan', 'Pembangunan jembatan penyeberangan', 500000000, '2026-04-01', '2026-12-31'];
+    const wsProject = XLSX.utils.aoa_to_sheet([projectHeaders, projectExample]);
+    wsProject['!cols'] = projectHeaders.map(() => ({ wch: 22 }));
+    XLSX.utils.book_append_sheet(wb, wsProject, 'Project Info');
+
+    // Sheet 2: Supplies
+    const supplyHeaders = ['Nama Barang', 'Jumlah', 'Satuan', 'Biaya', 'Tanggal Mulai', 'Tanggal Selesai'];
+    const supplyExample = ['Semen Tiga Roda', 100, 'sak', 7500000, '2026-04-01', '2026-04-15'];
+    const wsSupply = XLSX.utils.aoa_to_sheet([supplyHeaders, supplyExample]);
+    wsSupply['!cols'] = supplyHeaders.map(() => ({ wch: 18 }));
+    XLSX.utils.book_append_sheet(wb, wsSupply, 'Supplies');
+
+    // Sheet 3: Work Items
+    const workHeaders = ['Nama Pekerjaan', 'Jumlah', 'Satuan', 'Biaya', 'Tanggal Mulai', 'Tanggal Selesai'];
+    const workExample = ['Pekerjaan Pondasi', 50, 'M3', 25000000, '2026-04-01', '2026-06-30'];
+    const wsWork = XLSX.utils.aoa_to_sheet([workHeaders, workExample]);
+    wsWork['!cols'] = workHeaders.map(() => ({ wch: 18 }));
+    XLSX.utils.book_append_sheet(wb, wsWork, 'Work Items');
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="MTERP_Project_Template.xlsx"');
+    res.send(Buffer.from(buf));
+  } catch (error) {
+    console.error('Generate import template error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// POST /api/projects/import - Parse uploaded .xlsx and return structured data
+router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
+  upload.single('file'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ msg: 'No file uploaded' });
+      }
+
+      const fs = require('fs');
+      const fileData = req.file.buffer || fs.readFileSync(req.file.path);
+      const wb = XLSX.read(fileData, { type: 'buffer', cellDates: true });
+
+      // Helper to normalise header names for flexible matching
+      const norm = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+
+      const parseDate = (v) => {
+        if (!v) return '';
+        if (v instanceof Date) return v.toISOString().split('T')[0];
+        const s = String(v).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        return s;
+      };
+
+      // ---- Sheet 1: Project Info ----
+      const projectSheet = wb.Sheets[wb.SheetNames[0]];
+      const projectRows = XLSX.utils.sheet_to_json(projectSheet, { defval: '' });
+
+      let projectData = { nama: '', lokasi: '', description: '', totalBudget: 0, startDate: '', endDate: '' };
+      if (projectRows.length > 0) {
+        const row = projectRows[0];
+        const keys = Object.keys(row);
+        const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
+
+        const nameKey = find(['namaproyek', 'projectname', 'nama']);
+        const locKey = find(['lokasi', 'location']);
+        const descKey = find(['deskripsi', 'description', 'desc']);
+        const budgetKey = find(['totalanggaran', 'totalbudget', 'anggaran', 'budget']);
+        const startKey = find(['tanggalmulai', 'startdate', 'mulai', 'start']);
+        const endKey = find(['tanggalselesai', 'enddate', 'selesai', 'end']);
+
+        projectData = {
+          nama: String(row[nameKey] || ''),
+          lokasi: String(row[locKey] || ''),
+          description: String(row[descKey] || ''),
+          totalBudget: Number(row[budgetKey]) || 0,
+          startDate: parseDate(row[startKey]),
+          endDate: parseDate(row[endKey]),
+        };
+      }
+
+      // ---- Sheet 2: Supplies ----
+      const supplies = [];
+      if (wb.SheetNames.length > 1) {
+        const supplySheet = wb.Sheets[wb.SheetNames[1]];
+        const supplyRows = XLSX.utils.sheet_to_json(supplySheet, { defval: '' });
+
+        for (const row of supplyRows) {
+          const keys = Object.keys(row);
+          const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
+
+          const itemKey = find(['namabarang', 'itemname', 'item', 'nama']);
+          const qtyKey = find(['jumlah', 'qty', 'quantity']);
+          const unitKey = find(['satuan', 'unit']);
+          const costKey = find(['biaya', 'cost', 'harga']);
+          const startKey = find(['tanggalmulai', 'startdate', 'mulai', 'start']);
+          const endKey = find(['tanggalselesai', 'enddate', 'selesai', 'end']);
+
+          const item = String(row[itemKey] || '').trim();
+          if (!item) continue; // skip empty rows
+
+          supplies.push({
+            id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+            item,
+            qty: Number(row[qtyKey]) || 0,
+            unit: String(row[unitKey] || 'pcs'),
+            cost: Number(row[costKey]) || 0,
+            status: 'Pending',
+            startDate: parseDate(row[startKey]),
+            endDate: parseDate(row[endKey]),
+          });
+        }
+      }
+
+      // ---- Sheet 3: Work Items ----
+      const workItems = [];
+      if (wb.SheetNames.length > 2) {
+        const workSheet = wb.Sheets[wb.SheetNames[2]];
+        const workRows = XLSX.utils.sheet_to_json(workSheet, { defval: '' });
+
+        for (const row of workRows) {
+          const keys = Object.keys(row);
+          const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
+
+          const nameKey = find(['namapekerjaan', 'workitemname', 'name', 'nama', 'pekerjaan']);
+          const qtyKey = find(['jumlah', 'qty', 'quantity', 'volume']);
+          const unitKey = find(['satuan', 'unit']);
+          const costKey = find(['biaya', 'cost', 'harga']);
+          const startKey = find(['tanggalmulai', 'startdate', 'mulai', 'start']);
+          const endKey = find(['tanggalselesai', 'enddate', 'selesai', 'end']);
+
+          const name = String(row[nameKey] || '').trim();
+          if (!name) continue;
+
+          const unitVal = String(row[unitKey] || 'M2');
+          workItems.push({
+            id: Date.now() + Math.floor(Math.random() * 10000),
+            name,
+            qty: Number(row[qtyKey]) || 0,
+            unit: unitVal,
+            volume: unitVal,
+            cost: Number(row[costKey]) || 0,
+            startDate: parseDate(row[startKey]),
+            endDate: parseDate(row[endKey]),
+          });
+        }
+      }
+
+      res.json({ projectData, supplies, workItems });
+    } catch (error) {
+      console.error('Import project spreadsheet error:', error);
+      res.status(500).json({ msg: 'Failed to parse spreadsheet' });
+    }
+  }
+);
 
 // GET /api/projects/:id - Get single project (with supplies)
 router.get('/:id', auth, async (req, res) => {

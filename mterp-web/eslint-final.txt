@@ -1,0 +1,9 @@
+
+C:\Users\megat\Personal Space Syamil\MTERPweb\mterp-web\src\pages\Users.tsx
+  101:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  111:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  122:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  140:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+✖ 4 problems (4 errors, 0 warnings)
+
