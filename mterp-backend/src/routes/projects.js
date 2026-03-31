@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 
 const router = express.Router();
 
@@ -36,33 +36,60 @@ router.get('/', auth, async (req, res) => {
 
 // === IMPORT FROM SPREADSHEET ===
 
+// Helper: add a styled header row + data rows to an ExcelJS worksheet
+function addSheetData(ws, headers, rows, colWidth) {
+  ws.addRow(headers);
+  const headerRow = ws.getRow(1);
+  headerRow.font = { bold: true };
+  headerRow.eachCell(cell => { cell.alignment = { horizontal: 'center' }; });
+  rows.forEach(r => ws.addRow(r));
+  ws.columns = headers.map(() => ({ width: colWidth || 22 }));
+}
+
+// Helper: convert ExcelJS worksheet to array-of-objects using row 1 as headers
+function sheetToJson(ws) {
+  const rows = [];
+  const headers = [];
+  ws.eachRow((row, rowNum) => {
+    const values = row.values; // 1-indexed
+    if (rowNum === 1) {
+      for (let i = 1; i < values.length; i++) headers.push(String(values[i] || ''));
+    } else {
+      const obj = {};
+      for (let i = 0; i < headers.length; i++) obj[headers[i]] = values[i + 1] ?? '';
+      rows.push(obj);
+    }
+  });
+  return rows;
+}
+
 // GET /api/projects/import-template - Download a blank .xlsx template
-router.get('/import-template', auth, authorize('owner', 'director'), (req, res) => {
+router.get('/import-template', auth, authorize('owner', 'director'), async (req, res) => {
   try {
-    const wb = XLSX.utils.book_new();
+    const wb = new ExcelJS.Workbook();
 
-    // Sheet 1: Project Info (single row)
-    const projectHeaders = ['Nama Proyek', 'Lokasi', 'Deskripsi', 'Total Anggaran', 'Tanggal Mulai', 'Tanggal Selesai'];
-    const projectExample = ['Proyek Jembatan Kali', 'Jakarta Selatan', 'Pembangunan jembatan penyeberangan', 500000000, '2026-04-01', '2026-12-31'];
-    const wsProject = XLSX.utils.aoa_to_sheet([projectHeaders, projectExample]);
-    wsProject['!cols'] = projectHeaders.map(() => ({ wch: 22 }));
-    XLSX.utils.book_append_sheet(wb, wsProject, 'Project Info');
+    const wsProject = wb.addWorksheet('Project Info');
+    addSheetData(wsProject,
+      ['Nama Proyek', 'Lokasi', 'Deskripsi', 'Total Anggaran', 'Tanggal Mulai', 'Tanggal Selesai'],
+      [['Proyek Jembatan Kali', 'Jakarta Selatan', 'Pembangunan jembatan penyeberangan', 500000000, '2026-04-01', '2026-12-31']],
+      22
+    );
 
-    // Sheet 2: Supplies
-    const supplyHeaders = ['Nama Barang', 'Jumlah', 'Satuan', 'Biaya', 'Tanggal Mulai', 'Tanggal Selesai'];
-    const supplyExample = ['Semen Tiga Roda', 100, 'sak', 7500000, '2026-04-01', '2026-04-15'];
-    const wsSupply = XLSX.utils.aoa_to_sheet([supplyHeaders, supplyExample]);
-    wsSupply['!cols'] = supplyHeaders.map(() => ({ wch: 18 }));
-    XLSX.utils.book_append_sheet(wb, wsSupply, 'Supplies');
+    const wsSupply = wb.addWorksheet('Supplies');
+    addSheetData(wsSupply,
+      ['Nama Barang', 'Jumlah', 'Satuan', 'Biaya', 'Tanggal Mulai', 'Tanggal Selesai'],
+      [['Semen Tiga Roda', 100, 'sak', 7500000, '2026-04-01', '2026-04-15']],
+      18
+    );
 
-    // Sheet 3: Work Items
-    const workHeaders = ['Nama Pekerjaan', 'Jumlah', 'Satuan', 'Biaya', 'Tanggal Mulai', 'Tanggal Selesai'];
-    const workExample = ['Pekerjaan Pondasi', 50, 'M3', 25000000, '2026-04-01', '2026-06-30'];
-    const wsWork = XLSX.utils.aoa_to_sheet([workHeaders, workExample]);
-    wsWork['!cols'] = workHeaders.map(() => ({ wch: 18 }));
-    XLSX.utils.book_append_sheet(wb, wsWork, 'Work Items');
+    const wsWork = wb.addWorksheet('Work Items');
+    addSheetData(wsWork,
+      ['Nama Pekerjaan', 'Jumlah', 'Satuan', 'Biaya', 'Tanggal Mulai', 'Tanggal Selesai'],
+      [['Pekerjaan Pondasi', 50, 'M3', 25000000, '2026-04-01', '2026-06-30']],
+      18
+    );
 
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buf = await wb.xlsx.writeBuffer();
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="MTERP_Project_Template.xlsx"');
@@ -84,7 +111,9 @@ router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
 
       const fs = require('fs');
       const fileData = req.file.buffer || fs.readFileSync(req.file.path);
-      const wb = XLSX.read(fileData, { type: 'buffer', cellDates: true });
+
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(fileData);
 
       // Helper to normalise header names for flexible matching
       const norm = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
@@ -97,96 +126,73 @@ router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
         return s;
       };
 
+      const sheets = wb.worksheets;
+
       // ---- Sheet 1: Project Info ----
-      const projectSheet = wb.Sheets[wb.SheetNames[0]];
-      const projectRows = XLSX.utils.sheet_to_json(projectSheet, { defval: '' });
-
       let projectData = { nama: '', lokasi: '', description: '', totalBudget: 0, startDate: '', endDate: '' };
-      if (projectRows.length > 0) {
-        const row = projectRows[0];
-        const keys = Object.keys(row);
-        const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
+      if (sheets.length > 0) {
+        const projectRows = sheetToJson(sheets[0]);
+        if (projectRows.length > 0) {
+          const row = projectRows[0];
+          const keys = Object.keys(row);
+          const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
 
-        const nameKey = find(['namaproyek', 'projectname', 'nama']);
-        const locKey = find(['lokasi', 'location']);
-        const descKey = find(['deskripsi', 'description', 'desc']);
-        const budgetKey = find(['totalanggaran', 'totalbudget', 'anggaran', 'budget']);
-        const startKey = find(['tanggalmulai', 'startdate', 'mulai', 'start']);
-        const endKey = find(['tanggalselesai', 'enddate', 'selesai', 'end']);
-
-        projectData = {
-          nama: String(row[nameKey] || ''),
-          lokasi: String(row[locKey] || ''),
-          description: String(row[descKey] || ''),
-          totalBudget: Number(row[budgetKey]) || 0,
-          startDate: parseDate(row[startKey]),
-          endDate: parseDate(row[endKey]),
-        };
+          projectData = {
+            nama: String(row[find(['namaproyek', 'projectname', 'nama'])] || ''),
+            lokasi: String(row[find(['lokasi', 'location'])] || ''),
+            description: String(row[find(['deskripsi', 'description', 'desc'])] || ''),
+            totalBudget: Number(row[find(['totalanggaran', 'totalbudget', 'anggaran', 'budget'])]) || 0,
+            startDate: parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
+            endDate: parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
+          };
+        }
       }
 
       // ---- Sheet 2: Supplies ----
       const supplies = [];
-      if (wb.SheetNames.length > 1) {
-        const supplySheet = wb.Sheets[wb.SheetNames[1]];
-        const supplyRows = XLSX.utils.sheet_to_json(supplySheet, { defval: '' });
-
+      if (sheets.length > 1) {
+        const supplyRows = sheetToJson(sheets[1]);
         for (const row of supplyRows) {
           const keys = Object.keys(row);
           const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
 
-          const itemKey = find(['namabarang', 'itemname', 'item', 'nama']);
-          const qtyKey = find(['jumlah', 'qty', 'quantity']);
-          const unitKey = find(['satuan', 'unit']);
-          const costKey = find(['biaya', 'cost', 'harga']);
-          const startKey = find(['tanggalmulai', 'startdate', 'mulai', 'start']);
-          const endKey = find(['tanggalselesai', 'enddate', 'selesai', 'end']);
-
-          const item = String(row[itemKey] || '').trim();
-          if (!item) continue; // skip empty rows
+          const item = String(row[find(['namabarang', 'itemname', 'item', 'nama'])] || '').trim();
+          if (!item) continue;
 
           supplies.push({
             id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
             item,
-            qty: Number(row[qtyKey]) || 0,
-            unit: String(row[unitKey] || 'pcs'),
-            cost: Number(row[costKey]) || 0,
+            qty: Number(row[find(['jumlah', 'qty', 'quantity'])]) || 0,
+            unit: String(row[find(['satuan', 'unit'])] || 'pcs'),
+            cost: Number(row[find(['biaya', 'cost', 'harga'])]) || 0,
             status: 'Pending',
-            startDate: parseDate(row[startKey]),
-            endDate: parseDate(row[endKey]),
+            startDate: parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
+            endDate: parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
           });
         }
       }
 
       // ---- Sheet 3: Work Items ----
       const workItems = [];
-      if (wb.SheetNames.length > 2) {
-        const workSheet = wb.Sheets[wb.SheetNames[2]];
-        const workRows = XLSX.utils.sheet_to_json(workSheet, { defval: '' });
-
+      if (sheets.length > 2) {
+        const workRows = sheetToJson(sheets[2]);
         for (const row of workRows) {
           const keys = Object.keys(row);
           const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
 
-          const nameKey = find(['namapekerjaan', 'workitemname', 'name', 'nama', 'pekerjaan']);
-          const qtyKey = find(['jumlah', 'qty', 'quantity', 'volume']);
-          const unitKey = find(['satuan', 'unit']);
-          const costKey = find(['biaya', 'cost', 'harga']);
-          const startKey = find(['tanggalmulai', 'startdate', 'mulai', 'start']);
-          const endKey = find(['tanggalselesai', 'enddate', 'selesai', 'end']);
-
-          const name = String(row[nameKey] || '').trim();
+          const name = String(row[find(['namapekerjaan', 'workitemname', 'name', 'nama', 'pekerjaan'])] || '').trim();
           if (!name) continue;
 
-          const unitVal = String(row[unitKey] || 'M2');
+          const unitVal = String(row[find(['satuan', 'unit'])] || 'M2');
           workItems.push({
             id: Date.now() + Math.floor(Math.random() * 10000),
             name,
-            qty: Number(row[qtyKey]) || 0,
+            qty: Number(row[find(['jumlah', 'qty', 'quantity', 'volume'])]) || 0,
             unit: unitVal,
             volume: unitVal,
-            cost: Number(row[costKey]) || 0,
-            startDate: parseDate(row[startKey]),
-            endDate: parseDate(row[endKey]),
+            cost: Number(row[find(['biaya', 'cost', 'harga'])]) || 0,
+            startDate: parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
+            endDate: parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
           });
         }
       }
