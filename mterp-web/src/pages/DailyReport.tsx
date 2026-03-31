@@ -68,6 +68,17 @@ function monthRange(start: Date, end: Date): Date[] {
   return months;
 }
 
+function dayRange(start: Date, end: Date): Date[] {
+  const days: Date[] = [];
+  const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cur <= last) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
 function costInMonth(
   itemStart: Date, itemEnd: Date, totalCost: number, month: Date
 ): number {
@@ -82,8 +93,22 @@ function costInMonth(
   return totalCost / totalMonths;
 }
 
+function costInDay(
+  itemStart: Date, itemEnd: Date, totalCost: number, day: Date
+): number {
+  const iStart = new Date(itemStart.getFullYear(), itemStart.getMonth(), itemStart.getDate());
+  const iEnd = new Date(itemEnd.getFullYear(), itemEnd.getMonth(), itemEnd.getDate());
+  const dDay = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+  if (dDay < iStart || dDay > iEnd) return 0;
+  const totalDays = Math.max(1, Math.round((iEnd.getTime() - iStart.getTime()) / 86400000) + 1);
+  return totalCost / totalDays;
+}
+
 const fmtShort = (d: Date) =>
   d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+
+const fmtDay = (d: Date) =>
+  d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 export default function DailyReport() {
   const { t } = useTranslation();
@@ -411,12 +436,7 @@ export default function DailyReport() {
     const months = monthRange(start, end);
     if (months.length === 0) return;
 
-    // For sub-month projects (single month), pad with next month so we get ≥ 2 data points
-    if (months.length === 1) {
-      const nextMonth = new Date(months[0]);
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
-      months.push(nextMonth);
-    }
+    const useDailyMode = months.length === 1;
 
     interface ScheduleItem { startDate: Date; endDate: Date; plannedCost: number; actualCost: number; }
     const allItems: ScheduleItem[] = [];
@@ -445,19 +465,37 @@ export default function DailyReport() {
     let cumPlanned = 0, cumActual = 0;
     const points: { label: string; planned: number; actual: number }[] = [];
 
-    for (const month of months) {
-      let mPlanned = 0, mActual = 0;
-      for (const item of allItems) {
-        mPlanned += costInMonth(item.startDate, item.endDate, item.plannedCost, month);
-        mActual += costInMonth(item.startDate, item.endDate, item.actualCost, month);
+    if (useDailyMode) {
+      const days = dayRange(start, end);
+      for (const day of days) {
+        let dPlanned = 0, dActual = 0;
+        for (const item of allItems) {
+          dPlanned += costInDay(item.startDate, item.endDate, item.plannedCost, day);
+          dActual += costInDay(item.startDate, item.endDate, item.actualCost, day);
+        }
+        cumPlanned += dPlanned;
+        cumActual += dActual;
+        points.push({
+          label: fmtDay(day),
+          planned: Math.min((cumPlanned / totalItemCost) * 100, 100),
+          actual: Math.min((cumActual / totalItemCost) * 100, 100),
+        });
       }
-      cumPlanned += mPlanned;
-      cumActual += mActual;
-      points.push({
-        label: fmtShort(month),
-        planned: Math.min((cumPlanned / totalItemCost) * 100, 100),
-        actual: Math.min((cumActual / totalItemCost) * 100, 100),
-      });
+    } else {
+      for (const month of months) {
+        let mPlanned = 0, mActual = 0;
+        for (const item of allItems) {
+          mPlanned += costInMonth(item.startDate, item.endDate, item.plannedCost, month);
+          mActual += costInMonth(item.startDate, item.endDate, item.actualCost, month);
+        }
+        cumPlanned += mPlanned;
+        cumActual += mActual;
+        points.push({
+          label: fmtShort(month),
+          planned: Math.min((cumPlanned / totalItemCost) * 100, 100),
+          actual: Math.min((cumActual / totalItemCost) * 100, 100),
+        });
+      }
     }
 
     if (points.length < 1) return;

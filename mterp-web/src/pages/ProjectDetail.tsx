@@ -55,6 +55,10 @@ const fmtDate = (d: string | Date | undefined) => {
 const fmtShort = (d: Date) =>
   d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 
+/** Format a date as "Mar 15" for daily mode labels. */
+const fmtDay = (d: Date) =>
+  d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
 /** Generate an array of first-of-month Date objects from start to end (inclusive). */
 function monthRange(start: Date, end: Date): Date[] {
   const months: Date[] = [];
@@ -65,6 +69,18 @@ function monthRange(start: Date, end: Date): Date[] {
     cur.setMonth(cur.getMonth() + 1);
   }
   return months;
+}
+
+/** Generate an array of Date objects for each day from start to end (inclusive). */
+function dayRange(start: Date, end: Date): Date[] {
+  const days: Date[] = [];
+  const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cur <= last) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
 }
 
 /**
@@ -91,6 +107,24 @@ function costInMonth(
   if (totalMonths === 0) totalMonths = 1;
 
   return totalCost / totalMonths;
+}
+
+/**
+ * For a given item with [itemStart, itemEnd] and a given day,
+ * return the fraction of the item's cost that falls on that day.
+ * We spread cost evenly across all days the item spans.
+ */
+function costInDay(
+  itemStart: Date, itemEnd: Date, totalCost: number, day: Date
+): number {
+  const iStart = new Date(itemStart.getFullYear(), itemStart.getMonth(), itemStart.getDate());
+  const iEnd = new Date(itemEnd.getFullYear(), itemEnd.getMonth(), itemEnd.getDate());
+  const dDay = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+
+  if (dDay < iStart || dDay > iEnd) return 0;
+
+  const totalDays = Math.max(1, Math.round((iEnd.getTime() - iStart.getTime()) / 86400000) + 1);
+  return totalCost / totalDays;
 }
 
 /* ─── Tooltip ─── */
@@ -281,12 +315,8 @@ export default function ProjectDetail() {
     const months = monthRange(start, end);
     if (months.length === 0) return [];
 
-    // For sub-month projects (single month), pad with next month so we get ≥ 2 data points
-    if (months.length === 1) {
-      const nextMonth = new Date(months[0]);
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
-      months.push(nextMonth);
-    }
+    // Determine if project is sub-month (single month) → use daily granularity
+    const useDailyMode = months.length === 1;
 
     // Collect all items (work + supply) with their dates and costs
     interface ScheduleItem {
@@ -332,54 +362,96 @@ export default function ProjectDetail() {
 
     let cumPlanned = 0;
     let cumActual = 0;
-
     const now = new Date();
-    const nowMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const points: SCurveDataPoint[] = [];
 
-    for (const month of months) {
-      let monthPlanned = 0;
-      let monthActual = 0;
+    if (useDailyMode) {
+      // ── Daily granularity for sub-month projects ──
+      const days = dayRange(start, end);
+      if (days.length === 0) return [];
+      const todayDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      for (const item of allItems) {
-        const plannedInMonth = costInMonth(item.startDate, item.endDate, item.plannedCost, month);
-        monthPlanned += plannedInMonth;
+      for (const day of days) {
+        let dayPlanned = 0;
+        let dayActual = 0;
 
-        const actualInMonth = costInMonth(item.startDate, item.endDate, item.actualCost, month);
-        monthActual += actualInMonth;
+        for (const item of allItems) {
+          dayPlanned += costInDay(item.startDate, item.endDate, item.plannedCost, day);
+          dayActual += costInDay(item.startDate, item.endDate, item.actualCost, day);
+        }
+
+        cumPlanned += dayPlanned;
+        cumActual += dayActual;
+
+        const pPct = Math.min((cumPlanned / totalCost) * 100, 100);
+        const aPct = Math.min((cumActual / totalCost) * 100, 100);
+        const dDay = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+
+        points.push({
+          date: fmtDay(day),
+          timestamp: day.getTime(),
+          planned: pPct,
+          actual: aPct,
+          plannedCost: cumPlanned,
+          actualCost: cumActual,
+          deviation: aPct - pPct,
+          isToday: dDay.getTime() === todayDay.getTime(),
+          todayLabel: t('projectDetail.tooltip.today'),
+          plannedLabel: t('projectDetail.tooltip.planned'),
+          actualLabel: t('projectDetail.tooltip.actual'),
+          deviationLabel: t('projectDetail.tooltip.deviation'),
+          aheadLabel: t('projectDetail.tooltip.ahead'),
+          behindLabel: t('projectDetail.tooltip.behind'),
+          planLabel: t('projectDetail.tooltip.plan'),
+          actLabel: t('projectDetail.tooltip.act'),
+        });
       }
+    } else {
+      // ── Monthly granularity (default) ──
+      const nowMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      cumPlanned += monthPlanned;
-      cumActual += monthActual;
+      for (const month of months) {
+        let monthPlanned = 0;
+        let monthActual = 0;
 
-      const pPct = Math.min((cumPlanned / totalCost) * 100, 100);
-      const aPct = Math.min((cumActual / totalCost) * 100, 100);
+        for (const item of allItems) {
+          monthPlanned += costInMonth(item.startDate, item.endDate, item.plannedCost, month);
+          monthActual += costInMonth(item.startDate, item.endDate, item.actualCost, month);
+        }
 
-      points.push({
-        date: fmtShort(month),
-        timestamp: month.getTime(),
-        planned: pPct,
-        actual: aPct,
-        plannedCost: cumPlanned,
-        actualCost: cumActual,
-        deviation: aPct - pPct,
-        isToday: month.getTime() === nowMonth.getTime(),
-        todayLabel: t('projectDetail.tooltip.today'),
-        plannedLabel: t('projectDetail.tooltip.planned'),
-        actualLabel: t('projectDetail.tooltip.actual'),
-        deviationLabel: t('projectDetail.tooltip.deviation'),
-        aheadLabel: t('projectDetail.tooltip.ahead'),
-        behindLabel: t('projectDetail.tooltip.behind'),
-        planLabel: t('projectDetail.tooltip.plan'),
-        actLabel: t('projectDetail.tooltip.act'),
-      });
+        cumPlanned += monthPlanned;
+        cumActual += monthActual;
+
+        const pPct = Math.min((cumPlanned / totalCost) * 100, 100);
+        const aPct = Math.min((cumActual / totalCost) * 100, 100);
+
+        points.push({
+          date: fmtShort(month),
+          timestamp: month.getTime(),
+          planned: pPct,
+          actual: aPct,
+          plannedCost: cumPlanned,
+          actualCost: cumActual,
+          deviation: aPct - pPct,
+          isToday: month.getTime() === nowMonth.getTime(),
+          todayLabel: t('projectDetail.tooltip.today'),
+          plannedLabel: t('projectDetail.tooltip.planned'),
+          actualLabel: t('projectDetail.tooltip.actual'),
+          deviationLabel: t('projectDetail.tooltip.deviation'),
+          aheadLabel: t('projectDetail.tooltip.ahead'),
+          behindLabel: t('projectDetail.tooltip.behind'),
+          planLabel: t('projectDetail.tooltip.plan'),
+          actLabel: t('projectDetail.tooltip.act'),
+        });
+      }
     }
 
     return points;
   })();
 
   // ─── Derive "today" label for the chart reference line ───
-  const todayLabel = fmtShort(new Date());
+  const isDailyMode = scurveData.length > 0 && scurveData[0].date.match(/\d+$/);
+  const todayLabel = isDailyMode ? fmtDay(new Date()) : fmtShort(new Date());
   const todayDataPoint = scurveData.find((d) => d.isToday);
   const hasTodayOnChart = scurveData.some((d) => d.isToday);
 

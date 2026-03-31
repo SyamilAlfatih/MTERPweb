@@ -102,6 +102,14 @@ function monthRange(start: Date, end: Date): Date[] {
   return months;
 }
 
+function dayRange(start: Date, end: Date): Date[] {
+  const days: Date[] = [];
+  const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cur <= last) { days.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
+  return days;
+}
+
 function costInMonth(itemStart: Date, itemEnd: Date, totalCost: number, month: Date): number {
   const mStart = new Date(month.getFullYear(), month.getMonth(), 1);
   const mEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
@@ -113,8 +121,21 @@ function costInMonth(itemStart: Date, itemEnd: Date, totalCost: number, month: D
   return totalCost * (overlapDays / totalDays);
 }
 
+function costInDay(itemStart: Date, itemEnd: Date, totalCost: number, day: Date): number {
+  const iStart = new Date(itemStart.getFullYear(), itemStart.getMonth(), itemStart.getDate());
+  const iEnd = new Date(itemEnd.getFullYear(), itemEnd.getMonth(), itemEnd.getDate());
+  const dDay = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+  if (dDay < iStart || dDay > iEnd) return 0;
+  const totalDays = Math.max(1, Math.round((iEnd.getTime() - iStart.getTime()) / 86400000) + 1);
+  return totalCost / totalDays;
+}
+
 function fmtShort(d: Date) {
   return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+}
+
+function fmtDay(d: Date) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 /* ─── Interfaces ─── */
@@ -356,13 +377,9 @@ export default function ProjectReports() {
           const pStart = projectData.startDate ? new Date(projectData.startDate) : new Date();
           const pEnd = projectData.endDate ? new Date(projectData.endDate) : new Date();
           const months = monthRange(pStart, pEnd);
-          // For sub-month projects (single month), pad with next month so we get ≥ 2 data points
-          if (months.length === 1) {
-            const nextMonth = new Date(months[0]);
-            nextMonth.setMonth(nextMonth.getMonth() + 1);
-            months.push(nextMonth);
-          }
-          if (months.length > 0) {
+          const useDailyMode = months.length === 1;
+
+          if (months.length > 0 || useDailyMode) {
             interface ScheduleItem { startDate: Date; endDate: Date; plannedCost: number; actualCost: number; }
             const scheduleItems: ScheduleItem[] = (projectData.workItems || []).map((w: any) => ({
               startDate: new Date(w.startDate || pStart),
@@ -371,13 +388,26 @@ export default function ProjectReports() {
               actualCost: w.actualCost || 0,
             }));
 
-            const plannedPerMonth = months.map(m => scheduleItems.reduce((s, it) => s + costInMonth(it.startDate, it.endDate, it.plannedCost, m), 0));
-            const actualPerMonth = months.map(m => scheduleItems.reduce((s, it) => s + costInMonth(it.startDate, it.endDate, it.actualCost, m), 0));
+            // Build per-period cost arrays
+            let timeLabels: string[];
+            let plannedPerPeriod: number[];
+            let actualPerPeriod: number[];
+
+            if (useDailyMode) {
+              const days = dayRange(pStart, pEnd);
+              timeLabels = days.map(d => fmtDay(d));
+              plannedPerPeriod = days.map(d => scheduleItems.reduce((s, it) => s + costInDay(it.startDate, it.endDate, it.plannedCost, d), 0));
+              actualPerPeriod = days.map(d => scheduleItems.reduce((s, it) => s + costInDay(it.startDate, it.endDate, it.actualCost, d), 0));
+            } else {
+              timeLabels = months.map(m => fmtShort(m));
+              plannedPerPeriod = months.map(m => scheduleItems.reduce((s, it) => s + costInMonth(it.startDate, it.endDate, it.plannedCost, m), 0));
+              actualPerPeriod = months.map(m => scheduleItems.reduce((s, it) => s + costInMonth(it.startDate, it.endDate, it.actualCost, m), 0));
+            }
 
             const cumPlanned: number[] = []; let cp = 0;
-            plannedPerMonth.forEach(v => { cp += v; cumPlanned.push(cp); });
+            plannedPerPeriod.forEach(v => { cp += v; cumPlanned.push(cp); });
             const cumActual: number[] = []; let ca = 0;
-            actualPerMonth.forEach(v => { ca += v; cumActual.push(ca); });
+            actualPerPeriod.forEach(v => { ca += v; cumActual.push(ca); });
 
             const totalPlanned = cumPlanned[cumPlanned.length - 1] || 1;
             const pctPlanned = cumPlanned.map(v => (v / totalPlanned) * 100);
@@ -397,9 +427,15 @@ export default function ProjectReports() {
             }
             // X labels
             ctx.textAlign = 'center'; ctx.fillStyle = '#64748B'; ctx.font = '20px sans-serif';
-            months.forEach((m, i) => {
-              const x = pad.left + (i / Math.max(1, months.length - 1)) * chartW;
-              ctx.fillText(fmtShort(m), x, H - pad.bottom + 30);
+            const labelInterval = timeLabels.length > 15 ? Math.ceil(timeLabels.length / 10) : 1;
+            timeLabels.forEach((lbl, i) => {
+              if (i % labelInterval !== 0 && i !== timeLabels.length - 1) return;
+              const x = pad.left + (i / Math.max(1, timeLabels.length - 1)) * chartW;
+              ctx.save();
+              ctx.translate(x, H - pad.bottom + 30);
+              if (useDailyMode && timeLabels.length > 10) ctx.rotate(-0.4);
+              ctx.fillText(lbl, 0, 0);
+              ctx.restore();
             });
 
             // Lines
