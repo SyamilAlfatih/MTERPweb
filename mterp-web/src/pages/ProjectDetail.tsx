@@ -281,6 +281,13 @@ export default function ProjectDetail() {
     const months = monthRange(start, end);
     if (months.length === 0) return [];
 
+    // For sub-month projects (single month), pad with next month so we get ≥ 2 data points
+    if (months.length === 1) {
+      const nextMonth = new Date(months[0]);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      months.push(nextMonth);
+    }
+
     // Collect all items (work + supply) with their dates and costs
     interface ScheduleItem {
       startDate: Date;
@@ -464,7 +471,7 @@ export default function ProjectDetail() {
       </div>
 
       {/* Data Visualization: S-Curve / Gantt Chart */}
-      {canSeeFinancials && (scurveData.length > 1 || workItems.length > 0 || supplies.length > 0) && (
+      {canSeeFinancials && (scurveData.length >= 1 || workItems.length > 0 || supplies.length > 0) && (
         <div ref={chartRef}>
           <Card className="mb-4 p-5 overflow-visible max-sm:p-3">
             {/* ── Viz Tab Switcher ── */}
@@ -496,7 +503,7 @@ export default function ProjectDetail() {
             </div>
 
             {/* ── S-Curve View ── */}
-            {vizMode === 'scurve' && scurveData.length > 1 && (
+            {vizMode === 'scurve' && scurveData.length >= 1 && (
               <>
                 <div className="flex justify-between items-start mb-4 max-lg:flex-col max-lg:gap-2" style={{ marginTop: 0 }}>
                   <div />
