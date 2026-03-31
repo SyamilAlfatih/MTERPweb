@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: '/home/adminmte/MTERPweb/mterp-backend/.env' });
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -21,6 +21,8 @@ const updatesRoutes = require('./routes/updates');
 const dashboardRoutes = require('./routes/dashboard');
 
 const app = express();
+
+app.set('trust proxy', 1);
 
 // Middleware
 const allowedOrigins = process.env.CORS_ORIGIN
@@ -89,6 +91,7 @@ app.use((err, req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({ msg: 'Route not found' });
 });
+
 
 // Database connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/mterp';
