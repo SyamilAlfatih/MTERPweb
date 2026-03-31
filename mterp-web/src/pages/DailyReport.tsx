@@ -411,6 +411,13 @@ export default function DailyReport() {
     const months = monthRange(start, end);
     if (months.length === 0) return;
 
+    // For sub-month projects (single month), pad with next month so we get ≥ 2 data points
+    if (months.length === 1) {
+      const nextMonth = new Date(months[0]);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      months.push(nextMonth);
+    }
+
     interface ScheduleItem { startDate: Date; endDate: Date; plannedCost: number; actualCost: number; }
     const allItems: ScheduleItem[] = [];
 
@@ -453,7 +460,7 @@ export default function DailyReport() {
       });
     }
 
-    if (points.length < 2) return;
+    if (points.length < 1) return;
 
     // Draw on canvas
     const ctx = canvas.getContext('2d');

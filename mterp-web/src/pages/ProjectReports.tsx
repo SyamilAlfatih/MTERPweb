@@ -356,6 +356,12 @@ export default function ProjectReports() {
           const pStart = projectData.startDate ? new Date(projectData.startDate) : new Date();
           const pEnd = projectData.endDate ? new Date(projectData.endDate) : new Date();
           const months = monthRange(pStart, pEnd);
+          // For sub-month projects (single month), pad with next month so we get ≥ 2 data points
+          if (months.length === 1) {
+            const nextMonth = new Date(months[0]);
+            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            months.push(nextMonth);
+          }
           if (months.length > 0) {
             interface ScheduleItem { startDate: Date; endDate: Date; plannedCost: number; actualCost: number; }
             const scheduleItems: ScheduleItem[] = (projectData.workItems || []).map((w: any) => ({
