@@ -21,9 +21,27 @@ interface ProjectOption {
 }
 
 interface ProjectData extends ProjectOption {
-  workItems?: { cost?: number; actualCost?: number; startDate?: string; endDate?: string; dates?: { plannedStart?: string; plannedEnd?: string } }[];
+  workItems?: WorkItem[];
   supplies?: { cost?: number; actualCost?: number; startDate?: string; endDate?: string; deadline?: string }[];
 }
+
+interface WorkItem {
+  _id: string;
+  name: string;
+  qty?: number;
+  unit?: string;
+  volume?: string;
+  cost?: number;
+  progress?: number;
+  actualCost?: number;
+  startDate?: string;
+  endDate?: string;
+  dates?: {
+    plannedStart?: string;
+    plannedEnd?: string;
+  };
+}
+
 
 interface WorkItemUpdate {
   workItemId: string;
@@ -265,7 +283,7 @@ export default function DailyReport() {
       setSelectedProjectData({ ...project, supplies: suppliesData || [] });
       setEquipmentData(toolsData);
       
-      const items: WorkItemUpdate[] = (project.workItems || []).map((item: { _id: string; name: string; qty?: number; unit?: string; volume?: string; cost?: number; progress?: number; actualCost?: number; startDate?: string; endDate?: string }) => ({
+      const items: WorkItemUpdate[] = (project.workItems || []).map((item: WorkItem) => ({
         workItemId: item._id,
         name: item.name,
         qty: item.qty || 0,

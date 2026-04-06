@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { AxiosError } from 'axios';
+
 
 import { 
   Users as UsersIcon, 
@@ -98,7 +100,11 @@ export default function Users() {
       setNewUser({ username: '', email: '', fullName: '', password: '', role: 'worker' });
       fetchUsers();
     } catch (error: unknown) {
-      alert((error as { response?: { data?: { msg?: string } } }).response?.data?.msg || 'Failed to create user');
+      if (error instanceof AxiosError) {
+        alert(error.response?.data?.msg || 'Failed to create user');
+      } else {
+        alert('An unexpected error occurred');
+      }
     }
   };
 
@@ -108,7 +114,11 @@ export default function Users() {
         await deleteUser(id);
         fetchUsers();
       } catch (error: unknown) {
-        alert((error as { response?: { data?: { msg?: string } } }).response?.data?.msg || 'Failed to delete user');
+        if (error instanceof AxiosError) {
+          alert(error.response?.data?.msg || 'Failed to delete user');
+        } else {
+          alert('An unexpected error occurred');
+        }
       }
     }
   };
@@ -119,7 +129,11 @@ export default function Users() {
         await verifyUserManually(id);
         fetchUsers();
       } catch (error: unknown) {
-        alert((error as { response?: { data?: { msg?: string } } }).response?.data?.msg || 'Failed to verify user');
+        if (error instanceof AxiosError) {
+          alert(error.response?.data?.msg || 'Failed to verify user');
+        } else {
+          alert('An unexpected error occurred');
+        }
       }
     }
   };
@@ -137,7 +151,11 @@ export default function Users() {
       setIsEditRoleModalOpen(false);
       fetchUsers();
     } catch (error: unknown) {
-      alert((error as { response?: { data?: { msg?: string } } }).response?.data?.msg || 'Failed to update role');
+      if (error instanceof AxiosError) {
+        alert(error.response?.data?.msg || 'Failed to update role');
+      } else {
+        alert('An unexpected error occurred');
+      }
     }
   };
 
@@ -235,8 +253,8 @@ export default function Users() {
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-start gap-3 flex-1 min-w-0 pr-2">
                        <div className="w-12 h-12 rounded-xl bg-bg-secondary text-text-secondary flex items-center justify-center font-black text-lg overflow-hidden shrink-0 border-2 border-border-light">
-                        {user.profilePhoto ? (
-                          <img src={user.profilePhoto} alt={user.fullName} className="w-full h-full object-cover" />
+                        {user.profileImage ? (
+                          <img src={user.profileImage} alt={user.fullName} className="w-full h-full object-cover" />
                         ) : (
                           <span>{user.fullName.charAt(0).toUpperCase()}</span>
                         )}
