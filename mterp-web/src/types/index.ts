@@ -102,8 +102,35 @@ export interface User {
   token?: string;
   phone?: string;
   address?: string;
-  profilePhoto?: string;
+  profileImage?: string;
   isVerified?: boolean;
+}
+
+export interface CreateToolDTO {
+  nama: string;
+  kategori?: string;
+  stok?: number;
+  satuan?: string;
+  kondisi?: string;
+  lokasi?: string;
+}
+
+export interface CreateMaterialRequestDTO {
+  item: string;
+  qty: string;
+  projectId: string;
+  dateNeeded: string;
+  urgency?: 'Low' | 'Normal' | 'High';
+  purpose?: string;
+}
+
+export interface AddProjectSupplyDTO {
+  item: string;
+  qty: number;
+  unit: string;
+  cost: number;
+  deadline: string;
+  staffAssigned: string;
 }
 
 export interface MaterialRequest {

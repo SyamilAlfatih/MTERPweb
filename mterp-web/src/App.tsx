@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import AppLayout from './components/layout/AppLayout';
 
@@ -26,10 +27,26 @@ import SlipGaji from './pages/SlipGaji';
 import ProjectReports from './pages/ProjectReports';
 import Users from './pages/Users';
 
+function AuthRedirectHandler() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      navigate('/', { replace: true });
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, [navigate]);
+
+  return null;
+}
+
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <AuthRedirectHandler />
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<Login />} />
