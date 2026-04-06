@@ -184,8 +184,8 @@ export default function Sidebar() {
           }`}
         >
           <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0 overflow-hidden">
-            {user?.profilePhoto ? (
-              <img src={user.profilePhoto} alt={user?.fullName} className="w-full h-full object-cover rounded-full" />
+            {user?.profileImage ? (
+              <img src={user.profileImage} alt={user?.fullName} className="w-full h-full object-cover rounded-full" />
             ) : (
               <User size={18} />
             )}

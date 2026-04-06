@@ -114,10 +114,11 @@ export default function SlipGaji() {
     const role = user?.role?.toLowerCase() || '';
 
     // Access guard
-    if (!['owner', 'director', 'supervisor', 'asset_admin'].includes(role)) {
-        navigate('/home');
-        return null;
-    }
+    useEffect(() => {
+        if (!['owner', 'director', 'supervisor', 'asset_admin'].includes(role)) {
+            navigate('/home');
+        }
+    }, [role, navigate]);
 
     /* ---- state ---- */
     const [slips, setSlips] = useState<SlipData[]>([]);
