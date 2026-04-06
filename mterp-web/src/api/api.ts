@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { CreateToolDTO, CreateMaterialRequestDTO, AddProjectSupplyDTO } from '../types';
 
 // API Base URL - use local backend or production
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -26,8 +27,8 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // Token expired or invalid
       localStorage.removeItem('userToken');
-      localStorage.removeItem('userData');
-      window.location.href = '/';
+      // Replace window.location.href = '/' with a custom event
+      window.dispatchEvent(new Event('auth:unauthorized'));
     }
     return Promise.reject(error);
   }
@@ -55,19 +56,12 @@ export const returnToolToWarehouse = async (toolId: string) => {
   return response.data;
 };
 
-export const createTool = async (data: {
-  nama: string;
-  kategori?: string;
-  stok?: number;
-  satuan?: string;
-  kondisi?: string;
-  lokasi?: string;
-}) => {
+export const createTool = async (data: CreateToolDTO) => {
   const response = await api.post('/tools', data);
   return response.data;
 };
 
-export const updateTool = async (id: string, data: Record<string, any>) => {
+export const updateTool = async (id: string, data: Partial<CreateToolDTO>) => {
   const response = await api.put(`/tools/${id}`, data);
   return response.data;
 };
@@ -79,7 +73,7 @@ export const deleteTool = async (id: string) => {
 
 // === MATERIAL REQUESTS API ===
 
-export const createMaterialRequest = async (data: Record<string, any>) => {
+export const createMaterialRequest = async (data: CreateMaterialRequestDTO) => {
   const response = await api.post('/requests', data);
   return response.data;
 };
@@ -96,12 +90,12 @@ export const deleteMaterialRequest = async (id: string) => {
 
 // === PROJECT MATERIALS API ===
 
-export const addProjectSupply = async (projectId: string, data: Record<string, any>) => {
+export const addProjectSupply = async (projectId: string, data: AddProjectSupplyDTO) => {
   const response = await api.post(`/projects/${projectId}/supplies`, data);
   return response.data;
 };
 
-export const updateProjectSupply = async (projectId: string, supplyId: string, data: Record<string, any>) => {
+export const updateProjectSupply = async (projectId: string, supplyId: string, data: Partial<AddProjectSupplyDTO>) => {
   const response = await api.put(`/projects/${projectId}/supplies/${supplyId}`, data);
   return response.data;
 };

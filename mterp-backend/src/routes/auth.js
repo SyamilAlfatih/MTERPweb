@@ -1,6 +1,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 const { User } = require('../models');
 const { auth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -9,13 +10,13 @@ const { uploadLimiter } = require('../middleware/rateLimiter');
 const router = express.Router();
 
 // Generate JWT token
-const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+const generateToken = (userId, role) => {
+  return jwt.sign({ userId, role }, process.env.JWT_SECRET, { expiresIn: '7d' });
 };
 
 // Generate OTP
 const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 };
 
 // Email transporter (configure in production)
@@ -64,20 +65,16 @@ router.post('/register', async (req, res) => {
 
     // Send OTP email (in production)
     if (process.env.EMAIL_USER) {
-      try {
-        await transporter.sendMail({
-          from: process.env.EMAIL_USER,
-          to: email,
-          subject: 'MTERP - Verifikasi Email',
-          html: `
-            <h2>Verifikasi Email MTERP</h2>
-            <p>Kode OTP Anda: <strong>${otp}</strong></p>
-            <p>Kode berlaku selama 10 menit.</p>
-          `,
-        });
-      } catch (emailError) {
-        console.log('Email sending failed:', emailError.message);
-      }
+      transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'MTERP - Verifikasi Email',
+        html: `
+          <h2>Verifikasi Email MTERP</h2>
+          <p>Kode OTP Anda: <strong>${otp}</strong></p>
+          <p>Kode berlaku selama 10 menit.</p>
+        `,
+      }).catch(emailError => console.log('Email sending failed:', emailError.message));
     }
 
     res.status(201).json({
@@ -145,12 +142,12 @@ router.post('/login', async (req, res) => {
     }
 
     // Check if email is verified
-    // if (!user.isVerified) {
-    //   return res.status(401).json({ msg: 'Please verify your email first' });
-    // }
+    if (!user.isVerified) {
+      return res.status(401).json({ msg: 'Please verify your email first' });
+    }
 
     // Generate token
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.role);
 
     res.json({
       ...user.toJSON(),
@@ -228,7 +225,7 @@ router.put('/profile/photo', auth, uploadLimiter, upload.single('photo'), async 
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { $set: { profilePhoto: photoUrl } },
+      { $set: { profileImage: photoUrl } },
       { new: true }
     );
 
@@ -248,7 +245,7 @@ router.delete('/profile/photo', auth, async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { $unset: { profilePhoto: 1 } },
+      { $unset: { profileImage: 1 } },
       { new: true }
     );
 

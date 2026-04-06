@@ -20,27 +20,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Check for existing auth on mount and validate with backend
     const validateSession = async () => {
-      const userData = localStorage.getItem('userData');
       const token = localStorage.getItem('userToken');
       
-      if (userData && token) {
+      if (token) {
         try {
-          // Set user from localStorage immediately for fast UI
-          setUser(JSON.parse(userData));
-          // Then validate token with backend and refresh user data
+          // Validate token with backend and fetch user data
           const response = await api.get('/auth/me');
-          const freshUser = response.data;
-          setUser(freshUser);
-          localStorage.setItem('userData', JSON.stringify(freshUser));
+          setUser(response.data);
         } catch (e) {
           // Token invalid or expired — clear session
           console.error('Session validation failed');
-          localStorage.removeItem('userData');
           localStorage.removeItem('userToken');
           setUser(null);
         }
       }
-      setIsLoading(false);
+      setIsLoading(false); // Only set this to false AFTER the API responds
     };
 
     validateSession();
@@ -48,21 +42,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = (userData: User, token: string) => {
     localStorage.setItem('userToken', token);
-    localStorage.setItem('userData', JSON.stringify(userData));
     setUser(userData);
   };
 
   const logout = () => {
     localStorage.removeItem('userToken');
-    localStorage.removeItem('userData');
     setUser(null);
   };
 
   const updateUser = (userData: Partial<User>) => {
     if (user) {
-      const updatedUser = { ...user, ...userData };
-      localStorage.setItem('userData', JSON.stringify(updatedUser));
-      setUser(updatedUser);
+      setUser({ ...user, ...userData });
     }
   };
 
