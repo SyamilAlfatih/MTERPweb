@@ -9,17 +9,11 @@ const auth = async (req, res, next) => {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ msg: 'No token, authorization denied' });
     }
-
     const token = authHeader.replace('Bearer ', '');
-    
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId);
-
-    if (!user) {
-      return res.status(401).json({ msg: 'User not found' });
-    }
-
-    req.user = user;
+    
+    // Attach decoded payload directly instead of querying DB
+    req.user = { _id: decoded.userId, role: decoded.role }; 
     req.token = token;
     next();
   } catch (error) {
@@ -29,29 +23,24 @@ const auth = async (req, res, next) => {
 };
 
 // Role-based access control middleware
+const roleHierarchy = {
+  director: ['director', 'president_director', 'operational_director'],
+  supervisor: ['supervisor', 'site_manager', 'admin_project'],
+  admin: ['admin', 'admin_project']
+};
+
 const authorize = (...roles) => {
   return (req, res, next) => {
     let expandedRoles = new Set(roles);
 
-    // Expand equivalent/higher roles based on new role hierarchy
-    if (roles.includes('director')) {
-      expandedRoles.add('president_director');
-      expandedRoles.add('operational_director');
-    }
-
-    if (roles.includes('supervisor')) {
-      expandedRoles.add('site_manager');
-      expandedRoles.add('admin_project');
-    }
-
-    if (roles.includes('admin')) {
-      expandedRoles.add('admin_project');
-    }
+    roles.forEach(role => {
+      if (roleHierarchy[role]) {
+        roleHierarchy[role].forEach(r => expandedRoles.add(r));
+      }
+    });
 
     if (!Array.from(expandedRoles).includes(req.user.role)) {
-      return res.status(403).json({ 
-        msg: 'Access denied. Insufficient permissions.' 
-      });
+      return res.status(403).json({ msg: 'Access denied. Insufficient permissions.' });
     }
     next();
   };
@@ -65,11 +54,8 @@ const optionalAuth = async (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.replace('Bearer ', '');
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.userId);
-      if (user) {
-        req.user = user;
-        req.token = token;
-      }
+      req.user = { _id: decoded.userId, role: decoded.role }; 
+      req.token = token;
     }
     next();
   } catch (error) {
