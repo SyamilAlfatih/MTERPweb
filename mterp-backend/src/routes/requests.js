@@ -30,7 +30,8 @@ router.get('/', auth, async (req, res) => {
       .populate('requestedBy', 'fullName role')
       .populate('projectId', 'nama lokasi')
       .populate('approvedBy', 'fullName')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     
     res.json(requests);
   } catch (error) {
@@ -45,7 +46,8 @@ router.get('/:id', auth, async (req, res) => {
     const request = await Request.findById(req.params.id)
       .populate('requestedBy', 'fullName role')
       .populate('projectId', 'nama lokasi')
-      .populate('approvedBy', 'fullName');
+      .populate('approvedBy', 'fullName')
+      .lean();
     
     if (!request) {
       return res.status(404).json({ msg: 'Request not found' });

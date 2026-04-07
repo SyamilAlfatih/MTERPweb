@@ -21,34 +21,70 @@ function getTodayRange() {
 router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
     try {
         const { projectId } = req.query;
+        const { todayStart, todayEnd } = getTodayRange();
+        
+        const weekStart = new Date();
+        weekStart.setDate(weekStart.getDate() - 6);
+        weekStart.setHours(0, 0, 0, 0);
+        
+        const monthStart = new Date();
+        monthStart.setDate(1);
+        monthStart.setHours(0, 0, 0, 0);
 
-        // --- Projects ---
-        const allProjects = await Project.find()
-            .select('_id nama status progress totalBudget workItems startDate endDate')
-            .sort({ createdAt: -1 })
-            .lean();
+        const taskQuery = projectId ? { projectId } : {};
+        const attendanceQuery = { date: { $gte: todayStart, $lte: todayEnd } };
+        if (projectId) attendanceQuery.projectId = projectId;
+        const weeklyAttendanceQuery = { date: { $gte: weekStart, $lte: todayEnd } };
+        if (projectId) weeklyAttendanceQuery.projectId = projectId;
+        const wageQuery = { date: { $gte: monthStart, $lte: todayEnd } };
+        if (projectId) wageQuery.projectId = projectId;
+        const unpaidQuery = { paymentStatus: 'Unpaid' };
+        if (projectId) unpaidQuery.projectId = projectId;
+        const reqQuery = { status: 'Pending' };
+        if (projectId) reqQuery.projectId = projectId;
+
+        const [
+            allProjects,
+            tasks,
+            attendanceToday,
+            weeklyRecords,
+            monthlyWageRecords,
+            totalWorkers,
+            unpaidRecords,
+            pendingRequests
+        ] = await Promise.all([
+            Project.find().select('_id nama status progress totalBudget workItems startDate endDate').sort({ createdAt: -1 }).lean(),
+            Task.find(taskQuery).select('status priority').lean(),
+            Attendance.find(attendanceQuery).populate('userId', 'fullName role').populate('projectId', 'nama').select('status checkIn checkOut userId projectId dailyRate overtimePay wageType paymentStatus').lean(),
+            Attendance.find(weeklyAttendanceQuery).select('date status dailyRate overtimePay paymentStatus').lean(),
+            Attendance.find(wageQuery).select('dailyRate overtimePay paymentStatus').lean(),
+            User.countDocuments({ isVerified: true }),
+            Attendance.find(unpaidQuery).select('dailyRate overtimePay').lean(),
+            Request.countDocuments(reqQuery)
+        ]);
 
         const projectList = allProjects.map(p => ({ _id: p._id, nama: p.nama }));
+        const projects = projectId ? allProjects.filter(p => p._id.toString() === projectId) : allProjects;
+        const projectIds = projects.map(p => p._id);
 
-        // Determine scope: single project or all
-        const projects = projectId
-            ? allProjects.filter(p => p._id.toString() === projectId)
-            : allProjects;
+        const [allSupplies, reports] = await Promise.all([
+            Supply.find({ projectId: { $in: projectIds } }).select('actualCost').lean(),
+            projectId && projects.length === 1 
+                ? DailyReport.find({ projectId }).sort({ date: 1 }).select('date progressPercent').limit(30).lean()
+                : DailyReport.find({ projectId: { $in: projectIds } }).sort({ date: 1 }).select('date progressPercent').lean()
+        ]);
 
         // Status breakdown
         const statusCounts = { Planning: 0, 'In Progress': 0, Completed: 0, 'On Hold': 0 };
         projects.forEach(p => { statusCounts[p.status] = (statusCounts[p.status] || 0) + 1; });
 
-        // Budget — work item actuals from Project, supply actuals from Supply collection
+        // Budget calculation
         let totalBudget = 0;
         let actualSpend = 0;
-        const projectIds = projects.map(p => p._id);
         projects.forEach(p => {
             totalBudget += p.totalBudget || 0;
             (p.workItems || []).forEach(w => { actualSpend += w.actualCost || 0; });
         });
-        // Add supply actuals from separate collection
-        const allSupplies = await Supply.find({ projectId: { $in: projectIds } }).select('actualCost').lean();
         allSupplies.forEach(s => { actualSpend += s.actualCost || 0; });
 
         // Average progress
@@ -56,26 +92,13 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             ? Math.round(projects.reduce((s, p) => s + (p.progress || 0), 0) / projects.length)
             : 0;
 
-        // --- Tasks (scoped) ---
-        const taskQuery = projectId ? { projectId } : {};
-        const tasks = await Task.find(taskQuery).select('status priority').lean();
         const taskStatusCounts = { pending: 0, in_progress: 0, completed: 0, cancelled: 0 };
         tasks.forEach(t => { taskStatusCounts[t.status] = (taskStatusCounts[t.status] || 0) + 1; });
 
-        // --- Use timezone-safe today range ---
-        const { todayStart, todayEnd } = getTodayRange();
-
-        const attendanceQuery = { date: { $gte: todayStart, $lte: todayEnd } };
-        if (projectId) attendanceQuery.projectId = projectId;
-        const attendanceToday = await Attendance.find(attendanceQuery)
-            .populate('userId', 'fullName role')
-            .populate('projectId', 'nama')
-            .select('status checkIn checkOut userId projectId dailyRate overtimePay wageType paymentStatus')
-            .lean();
         const attendanceCounts = { Present: 0, Absent: 0, Late: 0, 'Half-day': 0, Permit: 0 };
         attendanceToday.forEach(a => { attendanceCounts[a.status] = (attendanceCounts[a.status] || 0) + 1; });
 
-        // --- Today's worker breakdown (for the worker list) ---
+        // Today's worker breakdown
         const todayWorkers = attendanceToday.map(a => ({
             _id: a._id,
             name: a.userId?.fullName || 'Unknown',
@@ -90,18 +113,7 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             paymentStatus: a.paymentStatus || 'Unpaid',
         }));
 
-        // --- Weekly attendance trend (last 7 days) ---
-        const weekStart = new Date();
-        weekStart.setDate(weekStart.getDate() - 6);
-        weekStart.setHours(0, 0, 0, 0);
-
-        const weeklyAttendanceQuery = { date: { $gte: weekStart, $lte: todayEnd } };
-        if (projectId) weeklyAttendanceQuery.projectId = projectId;
-        const weeklyRecords = await Attendance.find(weeklyAttendanceQuery)
-            .select('date status dailyRate overtimePay paymentStatus')
-            .lean();
-
-        // Group by day
+        // Weekly attendance trend
         const weeklyTrend = [];
         for (let i = 6; i >= 0; i--) {
             const day = new Date();
@@ -126,17 +138,7 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             });
         }
 
-        // --- Wage summary (current month) ---
-        const monthStart = new Date();
-        monthStart.setDate(1);
-        monthStart.setHours(0, 0, 0, 0);
-
-        const wageQuery = { date: { $gte: monthStart, $lte: todayEnd } };
-        if (projectId) wageQuery.projectId = projectId;
-        const monthlyWageRecords = await Attendance.find(wageQuery)
-            .select('dailyRate overtimePay paymentStatus')
-            .lean();
-
+        // Wage summary
         const wageSummary = {
             totalWages: 0,
             totalPaid: 0,
@@ -159,39 +161,19 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             }
         });
 
-        // --- Total workers registered ---
-        const totalWorkers = await User.countDocuments({ isVerified: true });
-
-        // --- Unpaid wages (all time, for the quick stat) ---
-        const unpaidQuery = { paymentStatus: 'Unpaid' };
-        if (projectId) unpaidQuery.projectId = projectId;
-        const unpaidRecords = await Attendance.find(unpaidQuery).select('dailyRate overtimePay').lean();
         const totalUnpaid = unpaidRecords.reduce((s, r) => s + (r.dailyRate || 0) + (r.overtimePay || 0), 0);
 
-        // --- Pending requests ---
-        const reqQuery = { status: 'Pending' };
-        if (projectId) reqQuery.projectId = projectId;
-        const pendingRequests = await Request.countDocuments(reqQuery);
-
-        // --- Progress timeline (from DailyReport collection, last 30 entries) ---
+        // Progress timeline
         let progressTimeline = [];
+        const reportsData = reports || [];
         if (projectId && projects.length === 1) {
-            const reports = await DailyReport.find({ projectId })
-                .sort({ date: 1 })
-                .select('date progressPercent')
-                .limit(30)
-                .lean();
-            progressTimeline = reports.map(r => ({
+            progressTimeline = reportsData.map(r => ({
                 date: r.date,
                 progress: r.progressPercent || 0,
             }));
         } else {
-            const reports = await DailyReport.find({ projectId: { $in: projectIds } })
-                .sort({ date: 1 })
-                .select('date progressPercent')
-                .lean();
             const dateMap = {};
-            reports.forEach(r => {
+            reportsData.forEach(r => {
                 const key = new Date(r.date).toISOString().split('T')[0];
                 if (!dateMap[key]) dateMap[key] = { total: 0, count: 0 };
                 dateMap[key].total += r.progressPercent || 0;

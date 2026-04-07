@@ -34,7 +34,8 @@ router.get('/', auth, async (req, res) => {
       .populate('projectId', 'nama lokasi')
       .populate('assignedTo', 'fullName role')
       .populate('assignedBy', 'fullName')
-      .sort({ dueDate: 1, createdAt: -1 });
+      .sort({ dueDate: 1, createdAt: -1 })
+      .lean();
     
     res.json(tasks);
   } catch (error) {
@@ -54,7 +55,8 @@ router.get('/my', auth, async (req, res) => {
       status: { $in: ['pending', 'in_progress'] },
     })
       .populate('projectId', 'nama lokasi')
-      .sort({ priority: -1, dueDate: 1 });
+      .sort({ priority: -1, dueDate: 1 })
+      .lean();
     
     res.json(tasks);
   } catch (error) {
@@ -69,7 +71,8 @@ router.get('/:id', auth, async (req, res) => {
     const task = await Task.findById(req.params.id)
       .populate('projectId', 'nama lokasi')
       .populate('assignedTo', 'fullName role')
-      .populate('assignedBy', 'fullName');
+      .populate('assignedBy', 'fullName')
+      .lean();
     
     if (!task) {
       return res.status(404).json({ msg: 'Task not found' });
@@ -271,7 +274,8 @@ router.get('/users/list', auth, authorize('owner', 'director', 'supervisor', 'as
   try {
     const users = await User.find({ isVerified: true })
       .select('_id fullName role username')
-      .sort({ fullName: 1 });
+      .sort({ fullName: 1 })
+      .lean();
     
     res.json(users);
   } catch (error) {

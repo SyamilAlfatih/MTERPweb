@@ -29,7 +29,8 @@ router.get('/dashboard', auth, async (req, res) => {
     const allTools = await Tool.find()
       .populate('assignedTo', 'fullName')
       .populate('projectId', 'nama')
-      .sort({ nama: 1 });
+      .sort({ nama: 1 })
+      .lean();
     
     // Calculate stats from full set
     const stats = {
@@ -67,7 +68,8 @@ router.get('/', auth, async (req, res) => {
   try {
     const tools = await Tool.find()
       .populate('assignedTo', 'fullName')
-      .populate('projectId', 'nama');
+      .populate('projectId', 'nama')
+      .lean();
     res.json(tools);
   } catch (error) {
     console.error('Get tools error:', error);
@@ -84,7 +86,7 @@ router.get('/available', auth, async (req, res) => {
         { projectId: { $exists: false } }
       ],
       kondisi: { $ne: 'Rusak' }
-    }).sort({ nama: 1 });
+    }).sort({ nama: 1 }).lean();
     
     res.json(tools);
   } catch (error) {
@@ -98,7 +100,8 @@ router.get('/project/:projectId', auth, async (req, res) => {
   try {
     const tools = await Tool.find({ projectId: req.params.projectId })
       .populate('assignedTo', 'fullName role')
-      .populate('projectId', 'nama');
+      .populate('projectId', 'nama')
+      .lean();
     
     res.json(tools);
   } catch (error) {
@@ -112,7 +115,8 @@ router.get('/:id', auth, async (req, res) => {
   try {
     const tool = await Tool.findById(req.params.id)
       .populate('assignedTo', 'fullName')
-      .populate('projectId', 'nama');
+      .populate('projectId', 'nama')
+      .lean();
     
     if (!tool) {
       return res.status(404).json({ msg: 'Tool not found' });
