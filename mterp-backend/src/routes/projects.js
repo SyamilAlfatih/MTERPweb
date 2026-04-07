@@ -25,7 +25,8 @@ router.get('/', auth, async (req, res) => {
     
     const projects = await Project.find(query)
       .populate('createdBy', 'fullName')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     
     res.json(projects);
   } catch (error) {
@@ -210,20 +211,20 @@ router.get('/:id', auth, async (req, res) => {
   try {
     const project = await Project.findById(req.params.id)
       .populate('createdBy', 'fullName')
-      .populate('assignedTo', 'fullName role');
+      .populate('assignedTo', 'fullName role')
+      .lean();
     
     if (!project) {
       return res.status(404).json({ msg: 'Project not found' });
     }
 
     // Fetch supplies from separate collection
-    const supplies = await Supply.find({ projectId: project._id }).sort({ createdAt: 1 });
+    const supplies = await Supply.find({ projectId: project._id }).sort({ createdAt: 1 }).lean();
     
     // Merge supplies into response for backward compatibility
-    const projectObj = project.toObject();
-    projectObj.supplies = supplies;
+    project.supplies = supplies;
     
-    res.json(projectObj);
+    res.json(project);
   } catch (error) {
     console.error('Get project error:', error);
     res.status(500).json({ msg: 'Server error' });
@@ -510,7 +511,7 @@ router.put('/:id/work-items/:itemId/progress', auth, authorize('owner', 'directo
 // GET /api/projects/:id/supplies - Get all supplies for a project
 router.get('/:id/supplies', auth, async (req, res) => {
   try {
-    const supplies = await Supply.find({ projectId: req.params.id }).sort({ createdAt: 1 });
+    const supplies = await Supply.find({ projectId: req.params.id }).sort({ createdAt: 1 }).lean();
     res.json(supplies);
   } catch (error) {
     console.error('Get project supplies error:', error);
@@ -693,7 +694,8 @@ router.get('/:id/reports', auth, async (req, res) => {
     const reports = await ProjectReport.find({ projectId: req.params.id })
       .populate('submittedBy', 'fullName role')
       .populate('authorization.directorId', 'fullName')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     res.json(reports);
   } catch (error) {
     console.error('Get project reports error:', error);

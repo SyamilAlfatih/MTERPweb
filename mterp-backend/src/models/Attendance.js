@@ -5,10 +5,12 @@ const attendanceSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
+    index: true,
   },
   date: {
     type: Date,
     required: true,
+    index: true,
   },
   checkIn: {
     time: Date,
@@ -80,5 +82,7 @@ const attendanceSchema = new mongoose.Schema({
 
 // Compound index for user + date uniqueness
 attendanceSchema.index({ userId: 1, date: 1 }, { unique: true });
+// Compound index for sorting
+attendanceSchema.index({ userId: 1, date: -1 });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);

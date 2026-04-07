@@ -46,7 +46,8 @@ router.get('/', auth, async (req, res) => {
     const attendance = await Attendance.find(query)
       .populate('userId', 'fullName role')
       .populate('projectId', 'nama')
-      .sort({ date: -1 });
+      .sort({ date: -1 })
+      .lean();
     
     res.json(attendance);
   } catch (error) {
@@ -63,7 +64,7 @@ router.get('/today', auth, async (req, res) => {
     const attendance = await Attendance.findOne({
       userId: req.user._id,
       date: today,
-    });
+    }).lean();
     
     res.json(attendance || null);
   } catch (error) {
@@ -95,7 +96,8 @@ router.get('/recap', auth, async (req, res) => {
     
     const attendance = await Attendance.find(query)
       .populate('userId', 'fullName role')
-      .sort({ date: -1 });
+      .sort({ date: -1 })
+      .lean();
     
     // Calculate summary
     const summary = {
@@ -136,7 +138,8 @@ router.get('/users', auth, authorize('owner', 'director', 'supervisor', 'asset_a
   try {
     const users = await User.find({ isVerified: true })
       .select('_id fullName role')
-      .sort({ fullName: 1 });
+      .sort({ fullName: 1 })
+      .lean();
     res.json(users);
   } catch (error) {
     console.error('Get users error:', error);
