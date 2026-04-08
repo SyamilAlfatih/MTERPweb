@@ -300,6 +300,238 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
   }
 });
 
+// GET /api/attendance/recap-table - Tabular attendance recap for supervisors
+router.get('/recap-table', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const { startDate, endDate, projectId, search, page = 1, limit = 10 } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ msg: 'startDate and endDate are required' });
+    }
+
+    // 1. Build attendance query
+    const attendanceQuery = {
+      date: {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      },
+    };
+    if (projectId) attendanceQuery.projectId = projectId;
+
+    // 2. Fetch all attendance records in range
+    const allRecords = await Attendance.find(attendanceQuery)
+      .populate('userId', 'fullName role position')
+      .populate('projectId', 'nama')
+      .lean();
+
+    // 3. Generate date columns array
+    const dateColumns = [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      dateColumns.push(new Date(d).toISOString().split('T')[0]);
+    }
+
+    // 4. Group by userId and pivot into worker x date grid
+    const workerMap = {};
+    allRecords.forEach(record => {
+      const uid = record.userId._id.toString();
+      if (!workerMap[uid]) {
+        workerMap[uid] = {
+          userId: uid,
+          fullName: record.userId.fullName,
+          initials: record.userId.fullName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(),
+          role: record.userId.role,
+          position: record.userId.position || record.userId.role,
+          dailyRate: record.dailyRate || 0,
+          days: {},
+          totalScore: 0,
+        };
+      }
+      const dateKey = new Date(record.date).toISOString().split('T')[0];
+      let score = 0;
+      if (record.status === 'Present') score = 1;
+      else if (record.status === 'Late') score = 0.5;
+      else if (record.status === 'Half-day') score = 0.5;
+      else if (record.status === 'Absent') score = 0;
+      else if (record.status === 'Permit') score = 0;
+
+      workerMap[uid].days[dateKey] = {
+        status: record.status,
+        score,
+      };
+      workerMap[uid].totalScore += score;
+      if (record.dailyRate > 0) workerMap[uid].dailyRate = record.dailyRate;
+    });
+
+    // 5. Convert to array and format total
+    let workers = Object.values(workerMap).map(w => ({
+      ...w,
+      total: `${w.totalScore % 1 === 0 ? w.totalScore : w.totalScore.toFixed(1)}/${dateColumns.length}`,
+    }));
+
+    // 6. Apply search filter
+    if (search) {
+      const searchLower = search.toLowerCase();
+      workers = workers.filter(w =>
+        w.fullName.toLowerCase().includes(searchLower) ||
+        (w.position && w.position.toLowerCase().includes(searchLower))
+      );
+    }
+
+    // 7. Sort by fullName
+    workers.sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+    // 8. Calculate summary BEFORE pagination
+    const totalWorkforce = workers.length;
+    const totalPossibleDays = totalWorkforce * dateColumns.length;
+    const totalActualScore = workers.reduce((sum, w) => sum + w.totalScore, 0);
+    const avgAttendance = totalPossibleDays > 0 ? Math.round((totalActualScore / totalPossibleDays) * 1000) / 10 : 0;
+    const pendingPayroll = allRecords
+      .filter(r => (r.paymentStatus || 'Unpaid') === 'Unpaid')
+      .reduce((sum, r) => sum + (r.dailyRate || 0) + (r.overtimePay || 0), 0);
+
+    // 9. Paginate
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const total = workers.length;
+    const paginatedWorkers = workers.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+
+    res.json({
+      workers: paginatedWorkers,
+      dateColumns,
+      summary: {
+        totalWorkforce,
+        avgAttendance,
+        siteTarget: 90,
+        pendingPayroll,
+        payrollCycleStart: startDate,
+        payrollCycleEnd: endDate,
+      },
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error('Get attendance recap-table error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// GET /api/attendance/recap-table/export-excel
+router.get('/recap-table/export-excel', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const ExcelJS = require('exceljs');
+    const { startDate, endDate, projectId, search } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ msg: 'startDate and endDate are required' });
+    }
+
+    const attendanceQuery = {
+      date: {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      },
+    };
+    if (projectId) attendanceQuery.projectId = projectId;
+
+    const allRecords = await Attendance.find(attendanceQuery)
+      .populate('userId', 'fullName role position')
+      .populate('projectId', 'nama')
+      .lean();
+
+    const dateColumns = [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      dateColumns.push(new Date(d).toISOString().split('T')[0]);
+    }
+
+    const workerMap = {};
+    allRecords.forEach(record => {
+      const uid = record.userId._id.toString();
+      if (!workerMap[uid]) {
+        workerMap[uid] = {
+          fullName: record.userId.fullName,
+          position: record.userId.position || record.userId.role,
+          dailyRate: record.dailyRate || 0,
+          days: {},
+          totalScore: 0,
+        };
+      }
+      const dateKey = new Date(record.date).toISOString().split('T')[0];
+      let score = 0;
+      if (record.status === 'Present') score = 1;
+      else if (record.status === 'Late' || record.status === 'Half-day') score = 0.5;
+      
+      workerMap[uid].days[dateKey] = record.status;
+      workerMap[uid].totalScore += score;
+      if (record.dailyRate > 0) workerMap[uid].dailyRate = record.dailyRate;
+    });
+
+    let workers = Object.values(workerMap);
+    if (search) {
+      const searchLower = search.toLowerCase();
+      workers = workers.filter(w =>
+        w.fullName.toLowerCase().includes(searchLower) ||
+        (w.position && w.position.toLowerCase().includes(searchLower))
+      );
+    }
+    workers.sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Attendance Recap');
+
+    // Define columns
+    const columns = [
+      { header: 'No', key: 'no', width: 5 },
+      { header: 'Nama (Worker Name)', key: 'fullName', width: 25 },
+      { header: 'Jabatan', key: 'position', width: 20 },
+      { header: 'Upah Harian', key: 'dailyRate', width: 15 },
+    ];
+
+    dateColumns.forEach(date => {
+      columns.push({ header: date, key: date, width: 12 });
+    });
+
+    columns.push({ header: 'Total', key: 'total', width: 10 });
+    sheet.columns = columns;
+
+    // Style header
+    sheet.getRow(1).font = { bold: true };
+    sheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Fill data
+    workers.forEach((worker, index) => {
+      const rowData = {
+        no: index + 1,
+        fullName: worker.fullName,
+        position: worker.position,
+        dailyRate: worker.dailyRate,
+        total: `${worker.totalScore}/${dateColumns.length}`,
+      };
+      
+      dateColumns.forEach(date => {
+        rowData[date] = worker.days[date] || '-';
+      });
+
+      sheet.addRow(rowData);
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=attendance-recap-${startDate}-to-${endDate}.xlsx`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Export excel error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 // PUT /api/attendance/:id/rate - Update rate/wage (supervisor only)
 router.put('/:id/rate', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {

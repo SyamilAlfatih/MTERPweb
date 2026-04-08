@@ -554,7 +554,8 @@
     },
     "quickActions": {
       "requestKasbon": "Request Kasbon",
-      "attendanceLogs": "Attendance Logs"
+      "attendanceLogs": "Attendance Logs",
+      "attendanceRecap": "Attendance Recap"
     },
     "recentHistory": {
       "title": "Recent History",
@@ -1135,5 +1136,56 @@
       "approveSuccessDesc": "Report approved. PDF export is now available.",
       "approveFailed": "Failed to approve report."
     }
+  },
+  "attendanceRecap": {
+    "title": "Attendance Recap",
+    "subtitle": "Detailed workforce attendance log for the current billing cycle.",
+    "filters": {
+      "project": "Project Selection",
+      "period": "Reporting Period",
+      "periodTo": "to",
+      "worker": "Worker Filter",
+      "workerPlaceholder": "Worker Name / Role...",
+      "allProjects": "All Projects"
+    },
+    "table": {
+      "no": "No",
+      "name": "Nama (Worker Name)",
+      "position": "Jabatan",
+      "dailyWage": "Upah Harian",
+      "total": "Total"
+    },
+    "status": {
+      "present": "Present (Full Day)",
+      "late": "Late",
+      "halfDay": "Half Day",
+      "absent": "Absent / Leave",
+      "permit": "Permit"
+    },
+    "pagination": {
+      "showing": "Showing",
+      "of": "of",
+      "workers": "workers"
+    },
+    "summary": {
+      "legend": "Legend",
+      "totalWorkforce": "Total Workforce",
+      "active": "Active",
+      "fromLastWeek": "from last week",
+      "avgAttendance": "Avg. Attendance",
+      "aboveSiteTarget": "Above site target",
+      "belowSiteTarget": "Below site target",
+      "pendingPayroll": "Pending Payroll",
+      "cycle": "Cycle"
+    },
+    "export": {
+      "pdf": "Export PDF",
+      "excel": "Export Excel"
+    },
+    "empty": {
+      "title": "No Attendance Data",
+      "description": "No records found for the selected filters. Try adjusting the date range or project."
+    },
+    "loading": "Loading attendance data..."
   }
 }

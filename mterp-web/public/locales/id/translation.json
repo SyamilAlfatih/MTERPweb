@@ -554,7 +554,8 @@
     },
     "quickActions": {
       "requestKasbon": "Ajukan Kasbon",
-      "attendanceLogs": "Log Kehadiran"
+      "attendanceLogs": "Log Kehadiran",
+      "attendanceRecap": "Rekap Kehadiran"
     },
     "recentHistory": {
       "title": "Riwayat Terbaru",
@@ -1135,5 +1136,56 @@
       "approveSuccessDesc": "Laporan disetujui. Ekspor PDF sekarang tersedia.",
       "approveFailed": "Gagal menyetujui laporan."
     }
+  },
+  "attendanceRecap": {
+    "title": "Rekap Kehadiran",
+    "subtitle": "Log kehadiran tenaga kerja terperinci untuk siklus penagihan saat ini.",
+    "filters": {
+      "project": "Pilihan Proyek",
+      "period": "Periode Pelaporan",
+      "periodTo": "sampai",
+      "worker": "Filter Pekerja",
+      "workerPlaceholder": "Nama Pekerja / Jabatan...",
+      "allProjects": "Semua Proyek"
+    },
+    "table": {
+      "no": "No",
+      "name": "Nama (Nama Pekerja)",
+      "position": "Jabatan",
+      "dailyWage": "Upah Harian",
+      "total": "Total"
+    },
+    "status": {
+      "present": "Hadir (Hari Penuh)",
+      "late": "Terlambat",
+      "halfDay": "Setengah Hari",
+      "absent": "Absen / Cuti",
+      "permit": "Izin"
+    },
+    "pagination": {
+      "showing": "Menampilkan",
+      "of": "dari",
+      "workers": "pekerja"
+    },
+    "summary": {
+      "legend": "Legenda",
+      "totalWorkforce": "Total Tenaga Kerja",
+      "active": "Aktif",
+      "fromLastWeek": "dari minggu lalu",
+      "avgAttendance": "Rata-rata Kehadiran",
+      "aboveSiteTarget": "Di atas target lokasi",
+      "belowSiteTarget": "Di bawah target lokasi",
+      "pendingPayroll": "Payroll Tertunda",
+      "cycle": "Siklus"
+    },
+    "export": {
+      "pdf": "Ekspor PDF",
+      "excel": "Ekspor Excel"
+    },
+    "empty": {
+      "title": "Tidak Ada Data Kehadiran",
+      "description": "Tidak ditemukan catatan untuk filter yang dipilih. Coba sesuaikan rentang tanggal atau proyek."
+    },
+    "loading": "Memuat data kehadiran..."
   }
 }
