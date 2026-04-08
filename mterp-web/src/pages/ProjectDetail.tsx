@@ -182,6 +182,7 @@ export default function ProjectDetail() {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
   const [vizMode, setVizMode] = useState<'scurve' | 'gantt'>('scurve');
+  const [granularity, setGranularity] = useState<'auto' | 'daily' | 'monthly'>('auto');
 
   const chartRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
@@ -198,7 +199,7 @@ export default function ProjectDetail() {
     if (project && !loading) {
       animateEntrance();
     }
-  }, [project, loading]);
+  }, [project, loading, vizMode]);
 
   const fetchProject = async () => {
     try {
@@ -315,8 +316,8 @@ export default function ProjectDetail() {
     const months = monthRange(start, end);
     if (months.length === 0) return [];
 
-    // Determine if project is sub-month (single month) → use daily granularity
-    const useDailyMode = months.length === 1;
+    // Determine granularity: respect toggle or auto-detect
+    const useDailyMode = granularity === 'daily' ? true : granularity === 'monthly' ? false : months.length === 1;
 
     // Collect all items (work + supply) with their dates and costs
     interface ScheduleItem {
@@ -366,7 +367,7 @@ export default function ProjectDetail() {
     const points: SCurveDataPoint[] = [];
 
     if (useDailyMode) {
-      // ── Daily granularity for sub-month projects ──
+      // ── Daily granularity ──
       const days = dayRange(start, end);
       if (days.length === 0) return [];
       const todayDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -407,7 +408,7 @@ export default function ProjectDetail() {
         });
       }
     } else {
-      // ── Monthly granularity (default) ──
+      // ── Monthly granularity ──
       const nowMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
       for (const month of months) {
@@ -450,8 +451,8 @@ export default function ProjectDetail() {
   })();
 
   // ─── Derive "today" label for the chart reference line ───
-  const isDailyMode = scurveData.length > 0 && scurveData[0].date.match(/\d+$/);
-  const todayLabel = isDailyMode ? fmtDay(new Date()) : fmtShort(new Date());
+  const useDailyMode = granularity === 'daily' ? true : granularity === 'monthly' ? false : monthRange(new Date(project.startDate || (project.globalDates as any)?.planned?.start), new Date(project.endDate || (project.globalDates as any)?.planned?.end)).length === 1;
+  const todayLabel = useDailyMode ? fmtDay(new Date()) : fmtShort(new Date());
   const todayDataPoint = scurveData.find((d) => d.isToday);
   const hasTodayOnChart = scurveData.some((d) => d.isToday);
 
@@ -556,21 +557,43 @@ export default function ProjectDetail() {
                   {vizMode === 'scurve' ? t('projectDetail.scurve.subtitle') : t('projectDetail.gantt.subtitle')}
                 </p>
               </div>
-              <div className="flex bg-bg-secondary rounded-lg p-[3px] gap-[2px] shrink-0">
-                <button
-                  className={`flex items-center gap-[6px] py-[6px] px-[14px] border-none bg-transparent rounded-md text-xs font-semibold text-text-muted cursor-pointer transition-all hover:text-text-primary hover:bg-bg-primary whitespace-nowrap${vizMode === 'scurve' ? ' bg-bg-primary !text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : ''}`}
-                  onClick={() => setVizMode('scurve')}
-                >
-                  <TrendingUp size={14} />
-                  S-Curve
-                </button>
-                <button
-                  className={`flex items-center gap-[6px] py-[6px] px-[14px] border-none bg-transparent rounded-md text-xs font-semibold text-text-muted cursor-pointer transition-all hover:text-text-primary hover:bg-bg-primary whitespace-nowrap${vizMode === 'gantt' ? ' bg-bg-primary !text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : ''}`}
-                  onClick={() => setVizMode('gantt')}
-                >
-                  <BarChart3 size={14} />
-                  Gantt
-                </button>
+              <div className="flex gap-2 shrink-0 max-lg:w-full max-lg:justify-between">
+                {/* Granularity Switcher (S-Curve Only) */}
+                {vizMode === 'scurve' && (
+                  <div className="flex bg-bg-secondary rounded-lg p-[3px] gap-[2px]">
+                    {[
+                      { id: 'auto', label: 'Auto' },
+                      { id: 'daily', label: 'Daily' },
+                      { id: 'monthly', label: 'Monthly' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        className={`py-[6px] px-[12px] border-none bg-transparent rounded-md text-[10px] font-bold uppercase tracking-wider text-text-muted cursor-pointer transition-all hover:text-text-primary${granularity === opt.id ? ' bg-bg-primary !text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : ''}`}
+                        onClick={() => setGranularity(opt.id as any)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Viz Mode Switcher */}
+                <div className="flex bg-bg-secondary rounded-lg p-[3px] gap-[2px]">
+                  <button
+                    className={`flex items-center gap-[6px] py-[6px] px-[14px] border-none bg-transparent rounded-md text-xs font-semibold text-text-muted cursor-pointer transition-all hover:text-text-primary hover:bg-bg-primary whitespace-nowrap${vizMode === 'scurve' ? ' bg-bg-primary !text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : ''}`}
+                    onClick={() => setVizMode('scurve')}
+                  >
+                    <TrendingUp size={14} />
+                    S-Curve
+                  </button>
+                  <button
+                    className={`flex items-center gap-[6px] py-[6px] px-[14px] border-none bg-transparent rounded-md text-xs font-semibold text-text-muted cursor-pointer transition-all hover:text-text-primary hover:bg-bg-primary whitespace-nowrap${vizMode === 'gantt' ? ' bg-bg-primary !text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : ''}`}
+                    onClick={() => setVizMode('gantt')}
+                  >
+                    <BarChart3 size={14} />
+                    Gantt
+                  </button>
+                </div>
               </div>
             </div>
 

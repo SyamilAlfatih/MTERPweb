@@ -443,6 +443,90 @@ router.post('/:id/daily-report', auth, authorize('supervisor', 'asset_admin', 'o
   }
 });
 
+// POST /api/projects/:id/duplicate - Duplicate project with wizard options
+router.post('/:id/duplicate', auth, authorize('owner', 'director'), async (req, res) => {
+  try {
+    const { newName, options } = req.body;
+    const { includeWorkItems, includeSupplies, includeDocuments, includeAssignedUsers } = options || {};
+
+    const sourceProject = await Project.findById(req.params.id);
+    if (!sourceProject) {
+      return res.status(404).json({ msg: 'Source project not found' });
+    }
+
+    // Prepare new project data
+    const newProjectData = {
+      nama: newName || `Copy of ${sourceProject.nama}`,
+      lokasi: sourceProject.lokasi,
+      description: sourceProject.description,
+      totalBudget: sourceProject.totalBudget,
+      startDate: sourceProject.startDate,
+      endDate: sourceProject.endDate,
+      status: 'Planning',
+      progress: 0,
+      createdBy: req.user._id,
+      workItems: [],
+      documents: {},
+      assignedTo: [],
+    };
+
+    // Conditional copy: Work Items
+    if (includeWorkItems && sourceProject.workItems && sourceProject.workItems.length > 0) {
+      newProjectData.workItems = sourceProject.workItems.map(item => ({
+        name: item.name,
+        qty: item.qty,
+        volume: item.volume,
+        unit: item.unit,
+        cost: item.cost,
+        progress: 0,
+        actualCost: 0,
+        startDate: item.startDate,
+        endDate: item.endDate,
+      }));
+    }
+
+    // Conditional copy: Documents
+    if (includeDocuments && sourceProject.documents) {
+      newProjectData.documents = { ...sourceProject.documents.toObject() };
+    }
+
+    // Conditional copy: Assigned Users
+    if (includeAssignedUsers && sourceProject.assignedTo) {
+      newProjectData.assignedTo = [...sourceProject.assignedTo];
+    }
+
+    const newProject = new Project(newProjectData);
+    await newProject.save();
+
+    // Conditional copy: Supplies
+    if (includeSupplies) {
+      const sourceSupplies = await Supply.find({ projectId: sourceProject._id });
+      if (sourceSupplies.length > 0) {
+        const newSupplies = sourceSupplies.map(s => {
+          const supplyObj = s.toObject();
+          delete supplyObj._id;
+          delete supplyObj.createdAt;
+          delete supplyObj.updatedAt;
+          return {
+            ...supplyObj,
+            projectId: newProject._id,
+            status: 'Pending',
+            actualCost: 0,
+            totalQtyUsed: 0,
+            deliveryDate: undefined,
+          };
+        });
+        await Supply.insertMany(newSupplies);
+      }
+    }
+
+    res.status(201).json(newProject);
+  } catch (error) {
+    console.error('Duplicate project error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 // DELETE /api/projects/:id - Delete project (also deletes related data)
 router.delete('/:id', auth, authorize('owner'), async (req, res) => {
   try {
