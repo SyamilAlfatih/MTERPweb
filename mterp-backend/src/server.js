@@ -1,8 +1,8 @@
+const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const path = require('path');
 const { authLimiter } = require('./middleware/rateLimiter');
 
 // Import routes

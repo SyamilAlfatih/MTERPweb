@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Upload, Clock, DollarSign, AlertCircle, Check, LogOut, FileText,
   Building, CalendarOff, MapPin, Timer, Calendar, ChevronRight,
-  Shield, TrendingUp, Loader,
+  Shield, TrendingUp, Loader, Users,
 } from 'lucide-react';
 import { useTranslation, Trans } from 'react-i18next';
 import api from '../api/api';
@@ -511,13 +511,23 @@ export default function Attendance() {
         </button>
 
         {isSupervisor && (
-          <button className="flex items-center gap-3 p-3 bg-bg-white border border-border rounded-lg cursor-pointer transition-all duration-150 hover:border-primary hover:shadow-sm group" onClick={() => navigate('/attendance-logs')}>
-            <div className="w-[36px] h-[36px] rounded-md flex items-center justify-center shrink-0 bg-indigo-50 group-hover:bg-indigo-100 transition-colors">
-              <FileText size={18} color="#6366F1" />
-            </div>
-            <span className="flex-1 text-left text-sm font-semibold text-text-primary">{t('attendance.quickActions.attendanceLogs')}</span>
-            <ChevronRight size={16} color="var(--text-muted)" />
-          </button>
+          <>
+            <button className="flex items-center gap-3 p-3 bg-bg-white border border-border rounded-lg cursor-pointer transition-all duration-150 hover:border-primary hover:shadow-sm group" onClick={() => navigate('/attendance-logs')}>
+              <div className="w-[36px] h-[36px] rounded-md flex items-center justify-center shrink-0 bg-indigo-50 group-hover:bg-indigo-100 transition-colors">
+                <FileText size={18} color="#6366F1" />
+              </div>
+              <span className="flex-1 text-left text-sm font-semibold text-text-primary">{t('attendance.quickActions.attendanceLogs')}</span>
+              <ChevronRight size={16} color="var(--text-muted)" />
+            </button>
+
+            <button className="flex items-center gap-3 p-3 bg-bg-white border border-border rounded-lg cursor-pointer transition-all duration-150 hover:border-primary hover:shadow-sm group" onClick={() => navigate('/attendance-recap')}>
+              <div className="w-[36px] h-[36px] rounded-md flex items-center justify-center shrink-0 bg-emerald-50 group-hover:bg-emerald-100 transition-colors">
+                <Users size={18} color="#059669" />
+              </div>
+              <span className="flex-1 text-left text-sm font-semibold text-text-primary">{t('attendance.quickActions.attendanceRecap')}</span>
+              <ChevronRight size={16} color="var(--text-muted)" />
+            </button>
+          </>
         )}
       </div>
 

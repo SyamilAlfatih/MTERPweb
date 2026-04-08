@@ -37,6 +37,10 @@ const userSchema = new mongoose.Schema({
     ],
     default: 'worker',
   },
+  position: {
+    type: String,
+    default: '',
+  },
   isVerified: {
     type: Boolean,
     default: false,

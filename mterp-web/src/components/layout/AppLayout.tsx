@@ -27,6 +27,7 @@ export default function AppLayout() {
       '/tools': t('sidebar.tools', 'Tools'),
       '/materials': t('sidebar.materials', 'Materials'),
       '/attendance': t('sidebar.attendance', 'Attendance'),
+      '/attendance-recap': t('attendanceRecap.title', 'Attendance Recap'),
       '/tasks': t('sidebar.tasks', 'Tasks'),
       '/approvals': t('sidebar.approvals', 'Approvals'),
       '/slip-gaji': t('sidebar.payroll', 'Payroll'),

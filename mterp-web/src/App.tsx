@@ -26,6 +26,7 @@ import Dashboard from './pages/Dashboard';
 import SlipGaji from './pages/SlipGaji';
 import ProjectReports from './pages/ProjectReports';
 import Users from './pages/Users';
+import AttendanceRecap from './pages/AttendanceRecap';
 
 function AuthRedirectHandler() {
   const navigate = useNavigate();
@@ -68,6 +69,7 @@ function App() {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/attendance" element={<Attendance />} />
             <Route path="/attendance-logs" element={<AttendanceLogs />} />
+            <Route path="/attendance-recap" element={<AttendanceRecap />} />
             <Route path="/daily-report" element={<DailyReport />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/my-payments" element={<MyPayments />} />
