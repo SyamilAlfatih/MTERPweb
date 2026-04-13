@@ -42,6 +42,7 @@ export default function Attendance() {
 
   // Project & Permit
   const [projects, setProjects] = useState<any[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [permitModal, setPermitModal] = useState(false);
   const [permitReason, setPermitReason] = useState('');
@@ -73,10 +74,13 @@ export default function Attendance() {
 
   const fetchProjects = async () => {
     try {
-      const response = await api.get('/projects');
+      const response = await api.get('/attendance/projects');
       setProjects(response.data);
     } catch (err) {
       console.error('Failed to fetch projects', err);
+      setProjects([]);
+    } finally {
+      setLoadingProjects(false);
     }
   };
 
@@ -354,7 +358,12 @@ export default function Attendance() {
           </div>
           <div className="grid grid-cols-1 gap-3 mb-6">
             <span className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1">{t('attendance.actions.selectProject')}</span>
-            {projects.length > 0 ? (
+            {loadingProjects ? (
+              <div className="p-8 text-center border-2 border-dashed border-border-light rounded-xl text-text-muted">
+                <Loader size={24} className="animate-spin mx-auto mb-2" />
+                <p className="text-sm font-medium">{t('attendance.actions.loadingProjects') || 'Loading project sites...'}</p>
+              </div>
+            ) : projects.length > 0 ? (
               <div className="flex flex-col gap-2">
                 {projects.map((p) => (
                   <button
@@ -387,8 +396,9 @@ export default function Attendance() {
               </div>
             ) : (
               <div className="p-8 text-center border-2 border-dashed border-border-light rounded-xl text-text-muted">
-                <Loader size={24} className="animate-spin mx-auto mb-2" />
-                <p className="text-sm font-medium">Loading project sites...</p>
+                <Building size={24} className="mx-auto mb-2 opacity-40" />
+                <p className="text-sm font-medium">{t('attendance.actions.noProjects') || 'No active projects available'}</p>
+                <p className="text-xs mt-1 opacity-70">{t('attendance.actions.contactAdmin') || 'Please contact your supervisor'}</p>
               </div>
             )}
           </div>

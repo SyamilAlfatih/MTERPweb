@@ -1,10 +1,24 @@
 const express = require('express');
-const { Attendance, User } = require('../models');
+const { Attendance, User, Project } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
+
+// GET /api/attendance/projects - All active projects for check-in (available to all roles)
+router.get('/projects', auth, async (req, res) => {
+  try {
+    const projects = await Project.find({ status: { $ne: 'Completed' } })
+      .select('_id nama lokasi status')
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json(projects);
+  } catch (error) {
+    console.error('Get attendance projects error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
 
 // Timezone-safe helper: get start of today in the configured timezone
 // Default UTC+7 (WIB - Indonesia Western Time)
