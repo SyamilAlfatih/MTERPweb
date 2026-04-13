@@ -58,7 +58,7 @@ export default function Attendance() {
   const [recentRecords, setRecentRecords] = useState<AttendanceRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
 
-  const isSupervisor = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
+  const isSupervisor = user?.role && ['owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'].includes(user.role);
 
   // Live clock tick
   useEffect(() => {

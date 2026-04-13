@@ -148,7 +148,7 @@ router.get('/recap', auth, async (req, res) => {
 });
 
 // GET /api/attendance/users - Get list of users for filtering (supervisors+)
-router.get('/users', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.get('/users', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const users = await User.find({ isVerified: true })
       .select('_id fullName role')
@@ -316,7 +316,7 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
 });
 
 // GET /api/attendance/recap-table - Tabular attendance recap for supervisors
-router.get('/recap-table', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.get('/recap-table', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const { startDate, endDate, projectId, search, page = 1, limit = 10 } = req.query;
 
@@ -438,7 +438,7 @@ router.get('/recap-table', auth, authorize('owner', 'director', 'supervisor', 'a
 });
 
 // GET /api/attendance/recap-table/export-excel
-router.get('/recap-table/export-excel', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.get('/recap-table/export-excel', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const ExcelJS = require('exceljs');
     const { startDate, endDate, projectId, search } = req.query;
@@ -550,7 +550,7 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'director', 'su
 });
 
 // PUT /api/attendance/:id/rate - Update rate/wage (supervisor only)
-router.put('/:id/rate', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.put('/:id/rate', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const { dailyRate, wageType, overtimePay } = req.body;
     
@@ -602,7 +602,7 @@ router.put('/:id/rate', auth, authorize('owner', 'director', 'supervisor', 'asse
 });
 
 // POST /api/attendance/pay - Mark records as Paid (supervisor only)
-router.post('/pay', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.post('/pay', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const { attendanceIds } = req.body; // Array of IDs
     
