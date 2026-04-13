@@ -37,6 +37,7 @@ export default function Profile() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [uploading, setUploading] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState({
     fullName: user?.fullName || '',
@@ -65,6 +66,7 @@ export default function Profile() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setPhotoPreview(URL.createObjectURL(file));
     setUploading(true);
     try {
       const formData = new FormData();
@@ -95,6 +97,7 @@ export default function Profile() {
   };
 
   const handleRemovePhoto = async () => {
+    setPhotoPreview(null);
     if (!user?.profileImage) return;
 
     try {
@@ -203,8 +206,8 @@ export default function Profile() {
       {/* Profile Photo Section */}
       <div className="flex flex-col items-center mb-8">
         <div className="relative w-[120px] h-[120px] cursor-pointer max-sm:w-[100px] max-sm:h-[100px]" onClick={handlePhotoClick}>
-          {getPhotoUrl() ? (
-            <img src={getPhotoUrl()!} alt="Profile" className="w-full h-full rounded-full object-cover" />
+          {photoPreview || getPhotoUrl() ? (
+            <img src={photoPreview || getPhotoUrl()!} alt="Profile" className="w-full h-full rounded-full object-cover" />
           ) : (
             <div className="w-full h-full rounded-full bg-gradient-to-br from-primary to-primary-light flex items-center justify-center">
               <span className="text-3xl font-bold text-white max-sm:text-2xl">{getInitials()}</span>
