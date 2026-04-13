@@ -74,7 +74,7 @@ export default function Profile() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      updateUser({ profilePhoto: response.data.profilePhoto });
+      updateUser({ profileImage: response.data.profilePhoto ?? response.data.profileImage });
       setAlertData({
         visible: true,
         type: 'success',
@@ -95,11 +95,11 @@ export default function Profile() {
   };
 
   const handleRemovePhoto = async () => {
-    if (!user?.profilePhoto) return;
+    if (!user?.profileImage) return;
 
     try {
       await api.delete('/auth/profile/photo');
-      updateUser({ profilePhoto: undefined });
+      updateUser({ profileImage: undefined });
       setAlertData({
         visible: true,
         type: 'success',
@@ -148,12 +148,12 @@ export default function Profile() {
   };
 
   const getPhotoUrl = () => {
-    if (user?.profilePhoto) {
+    if (user?.profileImage) {
       // Handle both relative and absolute URLs
-      if (user.profilePhoto.startsWith('http')) {
-        return user.profilePhoto;
+      if (user.profileImage.startsWith('http')) {
+        return user.profileImage;
       }
-      return `${import.meta.env.VITE_API_URL?.replace('/api', '')}/${user.profilePhoto}`;
+      return `${import.meta.env.VITE_API_URL?.replace('/api', '')}/${user.profileImage}`;
     }
     return null;
   };
@@ -229,7 +229,7 @@ export default function Profile() {
         <button className="mt-3 py-2 px-4 border-none bg-transparent text-primary text-base font-semibold cursor-pointer" onClick={handlePhotoClick}>
           {t('profile.btnChangePhoto')}
         </button>
-        {user?.profilePhoto && (
+        {user?.profileImage && (
           <button className="mt-1 py-2 px-4 border-none bg-transparent text-danger text-sm font-medium cursor-pointer" onClick={handleRemovePhoto}>
             {t('profile.btnRemovePhoto')}
           </button>

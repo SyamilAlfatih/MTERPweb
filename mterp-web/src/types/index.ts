@@ -103,6 +103,7 @@ export interface User {
   phone?: string;
   address?: string;
   profileImage?: string;
+  profilePhoto?: string;
   isVerified?: boolean;
 }
 
@@ -118,10 +119,11 @@ export interface CreateToolDTO {
 export interface CreateMaterialRequestDTO {
   item: string;
   qty: string;
-  projectId: string;
+  projectId?: string;
   dateNeeded: string;
   urgency?: 'Low' | 'Normal' | 'High';
   purpose?: string;
+  costEstimate?: number;
 }
 
 export interface AddProjectSupplyDTO {
@@ -129,8 +131,11 @@ export interface AddProjectSupplyDTO {
   qty: number;
   unit: string;
   cost: number;
-  deadline: string;
-  staffAssigned: string;
+  startDate?: string;
+  endDate?: string;
+  deadline?: string;
+  staffAssigned?: string;
+  status?: 'Pending' | 'Ordered' | 'Delivered';
 }
 
 export interface MaterialRequest {

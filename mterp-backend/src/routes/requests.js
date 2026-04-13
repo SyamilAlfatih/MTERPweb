@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { Request, Project, User } = require('../models');
+const { Request, Project, User, Supply } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 
 const router = express.Router();
@@ -137,6 +137,29 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (r
     
     if (!request) {
       return res.status(404).json({ msg: 'Request not found' });
+    }
+    
+    // Add approved material to supply plan
+    if (status === 'Approved' && request.projectId) {
+      const existingSupply = await Supply.findOne({
+        projectId: request.projectId._id,
+        item: request.item,
+        status: 'Pending'
+      });
+      
+      if (existingSupply) {
+         existingSupply.qty += Number(request.qty) || 0;
+         await existingSupply.save();
+      } else {
+        const newSupply = new Supply({
+          projectId: request.projectId._id,
+          item: request.item,
+          qty: Number(request.qty) || 0,
+          cost: request.costEstimate || 0,
+          status: 'Pending'
+        });
+        await newSupply.save();
+      }
     }
     
     res.json(request);

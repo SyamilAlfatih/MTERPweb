@@ -138,7 +138,7 @@ export default function ProjectMaterials() {
   const handleStatusUpdate = async (supplyId: string, newStatus: string) => {
     if (!projectId) return;
     try {
-      await updateProjectSupply(projectId, supplyId, { status: newStatus });
+      await updateProjectSupply(projectId, supplyId, { status: newStatus as 'Pending' | 'Ordered' | 'Delivered' });
       await fetchData();
     } catch (err) {
       console.error('Failed to update status', err);
