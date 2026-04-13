@@ -16,6 +16,7 @@ import {
   User,
   DollarSign,
   Receipt,
+  UserCog,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
@@ -147,6 +148,15 @@ const NAV_ITEMS: NavItem[] = [
     roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin'],
     color: '#0D9488',
     bg: '#CCFBF1',
+  },
+  {
+    id: 'project-assign',
+    label: 'Project Assignments',
+    icon: UserCog,
+    route: '/project-assign',
+    roles: ['owner', 'director', 'supervisor', 'asset_admin', 'admin_project'],
+    color: '#7C3AED',
+    bg: '#EDE9FE',
   },
 ];
 

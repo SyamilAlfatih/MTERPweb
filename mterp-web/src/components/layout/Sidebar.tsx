@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Receipt,
   Globe,
+  UserCog,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
@@ -112,6 +113,13 @@ const NAV_ITEMS: NavItem[] = [
     icon: User,
     route: '/users',
     roles: ['owner'],
+  },
+  {
+    id: 'project-assign',
+    label: 'Project Assignments',
+    icon: UserCog,
+    route: '/project-assign',
+    roles: ['owner', 'director', 'supervisor', 'asset_admin', 'admin_project'],
   },
 ];
 

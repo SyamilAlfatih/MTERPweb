@@ -27,6 +27,7 @@ import SlipGaji from './pages/SlipGaji';
 import ProjectReports from './pages/ProjectReports';
 import Users from './pages/Users';
 import AttendanceRecap from './pages/AttendanceRecap';
+import ProjectAssign from './pages/ProjectAssign';
 
 function AuthRedirectHandler() {
   const navigate = useNavigate();
@@ -76,6 +77,7 @@ function App() {
             <Route path="/slip-gaji" element={<SlipGaji />} />
             <Route path="/project-reports/:id" element={<ProjectReports />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/project-assign" element={<ProjectAssign />} />
           </Route>
 
           {/* Fallback */}

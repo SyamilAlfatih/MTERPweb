@@ -286,6 +286,39 @@ router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
   }
 );
 
+
+// GET /api/projects/:id/members - Get project members (assignedTo populated)
+router.get('/:id/members', auth, authorize('owner', 'director', 'supervisor', 'asset_admin', 'admin_project'), async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id)
+      .populate('assignedTo', '_id fullName username role profileImage isVerified')
+      .select('_id nama lokasi assignedTo')
+      .lean();
+    if (!project) return res.status(404).json({ msg: 'Project not found' });
+    res.json(project);
+  } catch (error) {
+    console.error('Get project members error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// PUT /api/projects/:id/members - Replace the full assignedTo list
+router.put('/:id/members', auth, authorize('owner', 'director', 'supervisor', 'asset_admin', 'admin_project'), async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    if (!Array.isArray(userIds)) return res.status(400).json({ msg: 'userIds must be an array' });
+    const project = await Project.findByIdAndUpdate(
+      req.params.id,
+      { $set: { assignedTo: userIds, updatedAt: new Date() } },
+      { new: true }
+    ).populate('assignedTo', '_id fullName username role profileImage isVerified');
+    if (!project) return res.status(404).json({ msg: 'Project not found' });
+    res.json(project);
+  } catch (error) {
+    console.error('Update project members error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
 // PUT /api/projects/:id - Update project
 router.put('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
