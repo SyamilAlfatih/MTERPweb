@@ -162,6 +162,16 @@ export default function MyPayments() {
 
   const handleSubmitKasbon = async () => {
     if (!amount || Number(amount) <= 0) return;
+    
+    if (Number(amount) > 200000) {
+      setAlertData({
+        visible: true,
+        type: 'error',
+        title: t('myPayments.messages.kasbonFailed'),
+        message: 'Maksimum limit Kasbon adalah Rp 200.000',
+      });
+      return;
+    }
 
     setSubmitting(true);
     try {

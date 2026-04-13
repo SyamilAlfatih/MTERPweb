@@ -43,6 +43,10 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ msg: 'Invalid amount' });
     }
     
+    if (amount > 200000) {
+      return res.status(400).json({ msg: 'Maximum Kasbon limit is Rp 200.000' });
+    }
+    
     const kasbon = new Kasbon({
       userId: req.user._id,
       amount: Number(amount),
