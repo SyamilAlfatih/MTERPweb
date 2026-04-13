@@ -166,11 +166,30 @@ export default function Attendance() {
 
   const handleKasbonSubmit = async () => {
     if (!kasbonAmount) return;
+    
+    if (Number(kasbonAmount) > 200000) {
+      setAlertData({
+        visible: true,
+        type: 'error',
+        title: 'Kasbon Ditolak',
+        message: 'Maksimum limit Kasbon adalah Rp 200.000',
+      });
+      return;
+    }
+
     try {
       await api.post('/kasbon', { amount: Number(kasbonAmount), reason: kasbonReason, userId: user?._id });
       setAlertData({ visible: true, type: 'success', title: t('attendance.messages.kasbonSuccessTitle'), message: t('attendance.messages.kasbonSuccess') });
       setKasbonOpen(false); setKasbonAmount(''); setKasbonReason('');
-    } catch (err) { console.error('Kasbon request failed', err); }
+    } catch (err: any) { 
+      console.error('Kasbon request failed', err); 
+      setAlertData({
+        visible: true,
+        type: 'error',
+        title: 'Kasbon Gagal',
+        message: err.response?.data?.msg || 'Gagal mengajukan kasbon',
+      });
+    }
   };
 
   const handlePermitSubmit = async () => {
