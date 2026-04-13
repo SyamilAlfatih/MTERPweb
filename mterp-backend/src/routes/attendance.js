@@ -166,9 +166,10 @@ router.post('/checkin', auth, async (req, res) => {
   try {
     const { projectId, lat, lng } = req.body;
     
-    // 1. Time Validation (08:00 - 16:00)
+    // 1. Time Validation (08:00 - 16:00) - use local timezone, not UTC
     const now = new Date();
-    const hour = now.getHours();
+    const localHour = (now.getUTCHours() + TZ_OFFSET_HOURS) % 24;
+    const hour = localHour;
     
     // Allow supervisor/admin to bypass? For now, strict for everyone or just workers?
     // User request: "outside of that time worker cant check in"
