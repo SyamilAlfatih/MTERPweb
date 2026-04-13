@@ -343,8 +343,8 @@ router.get('/recap-table', auth, authorize('owner', 'director', 'supervisor', 'a
     const dateColumns = [];
     const start = new Date(startDate);
     const end = new Date(endDate);
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      dateColumns.push(new Date(d).toISOString().split('T')[0]);
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      dateColumns.push(d.toISOString().split('T')[0]);
     }
 
     // 4. Group by userId and pivot into worker x date grid
@@ -363,7 +363,8 @@ router.get('/recap-table', auth, authorize('owner', 'director', 'supervisor', 'a
           totalScore: 0,
         };
       }
-      const dateKey = new Date(record.date).toISOString().split('T')[0];
+      const localMs = new Date(record.date).getTime() + (TZ_OFFSET_HOURS * 60 * 60 * 1000);
+      const dateKey = new Date(localMs).toISOString().split('T')[0];
       let score = 0;
       if (record.status === 'Present') score = 1;
       else if (record.status === 'Late') score = 0.5;
@@ -462,8 +463,8 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'director', 'su
     const dateColumns = [];
     const start = new Date(startDate);
     const end = new Date(endDate);
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      dateColumns.push(new Date(d).toISOString().split('T')[0]);
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      dateColumns.push(d.toISOString().split('T')[0]);
     }
 
     const workerMap = {};
@@ -478,7 +479,8 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'director', 'su
           totalScore: 0,
         };
       }
-      const dateKey = new Date(record.date).toISOString().split('T')[0];
+      const localMs = new Date(record.date).getTime() + (TZ_OFFSET_HOURS * 60 * 60 * 1000);
+      const dateKey = new Date(localMs).toISOString().split('T')[0];
       let score = 0;
       if (record.status === 'Present') score = 1;
       else if (record.status === 'Late' || record.status === 'Half-day') score = 0.5;
