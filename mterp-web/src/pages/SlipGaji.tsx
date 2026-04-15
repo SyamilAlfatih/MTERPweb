@@ -4,6 +4,7 @@ import {
     ArrowLeft,
     Receipt,
     UserCheck,
+    AlertTriangle,
     Calendar,
     Plus,
     Lock,
@@ -142,6 +143,11 @@ export default function SlipGaji() {
     const [genNotes, setGenNotes] = useState('');
     const [generating, setGenerating] = useState(false);
 
+    // Kasbon preview for generate modal
+    interface KasbonPreview { _id: string; amount: number; reason?: string; createdAt: string; }
+    const [kasbonPreview, setKasbonPreview] = useState<KasbonPreview[]>([]);
+    const [kasbonLoading, setKasbonLoading] = useState(false);
+
     // Detail modal
     const [detailModal, setDetailModal] = useState(false);
     const [selectedSlip, setSelectedSlip] = useState<SlipData | null>(null);
@@ -172,6 +178,33 @@ export default function SlipGaji() {
 
     useEffect(() => { fetchSlips(); }, [fetchSlips]);
     useEffect(() => { fetchWorkers(); }, [fetchWorkers]);
+
+    // Fetch approved kasbons when worker or dates change in generate modal
+    useEffect(() => {
+        if (!genWorker || !genStart || !genEnd || !genModal) {
+            setKasbonPreview([]);
+            return;
+        }
+        let cancelled = false;
+        const fetchKasbons = async () => {
+            setKasbonLoading(true);
+            try {
+                const res = await api.get('/kasbon');
+                const all: KasbonPreview[] = res.data;
+                const startMs = new Date(genStart + 'T00:00:00').getTime();
+                const endMs = new Date(genEnd + 'T23:59:59').getTime();
+                const filtered = all.filter((k: any) => {
+                    const uid = typeof k.userId === 'object' ? k.userId._id : k.userId;
+                    const created = new Date(k.createdAt).getTime();
+                    return uid === genWorker && k.status === 'Approved' && created >= startMs && created <= endMs;
+                });
+                if (!cancelled) setKasbonPreview(filtered);
+            } catch { if (!cancelled) setKasbonPreview([]); }
+            if (!cancelled) setKasbonLoading(false);
+        };
+        fetchKasbons();
+        return () => { cancelled = true; };
+    }, [genWorker, genStart, genEnd, genModal]);
 
     /* ---- quick week navigation ---- */
     const shiftWeek = (dir: number) => {
@@ -432,6 +465,41 @@ export default function SlipGaji() {
                                     <input type="date" className="w-full px-3.5 py-2.5 border border-border rounded-md text-sm text-text-primary bg-bg-white outline-none transition-colors focus:border-primary box-border" value={genEnd} onChange={(e) => setGenEnd(e.target.value)} />
                                 </div>
                             </div>
+
+                            {/* Kasbon Preview Banner */}
+                            {genWorker && (
+                                <div className={`mb-4 rounded-lg border-2 overflow-hidden transition-all ${kasbonPreview.length > 0 ? 'border-amber-300 bg-amber-50' : 'border-border-light bg-bg-secondary'}`}>
+                                    <div className={`flex items-center gap-2 px-3.5 py-2.5 ${kasbonPreview.length > 0 ? 'bg-amber-100/60' : 'bg-bg-secondary'}`}>
+                                        <AlertTriangle size={14} className={kasbonPreview.length > 0 ? 'text-amber-600' : 'text-text-muted'} />
+                                        <span className={`text-xs font-bold uppercase tracking-[0.3px] ${kasbonPreview.length > 0 ? 'text-amber-700' : 'text-text-muted'}`}>
+                                            {t('slipGaji.modals.generate.kasbonTitle', 'Kasbon Deductions')}
+                                        </span>
+                                        {kasbonLoading && <Loader2 size={12} className="animate-spin text-text-muted ml-auto" />}
+                                    </div>
+                                    {!kasbonLoading && kasbonPreview.length === 0 && (
+                                        <div className="px-3.5 py-2 text-xs text-text-muted font-medium">
+                                            {t('slipGaji.modals.generate.noKasbon', 'No approved kasbon for this period')}
+                                        </div>
+                                    )}
+                                    {kasbonPreview.length > 0 && (
+                                        <div className="px-3.5 pb-2.5 pt-1">
+                                            {kasbonPreview.map(k => (
+                                                <div key={k._id} className="flex items-center justify-between py-1.5 border-b border-amber-200/50 last:border-0">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-xs font-semibold text-amber-800">{k.reason || 'Kasbon'}</span>
+                                                        <span className="text-[10px] text-amber-600">{new Date(k.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                                                    </div>
+                                                    <span className="text-sm font-bold text-red-600">-{formatRp(k.amount)}</span>
+                                                </div>
+                                            ))}
+                                            <div className="flex items-center justify-between pt-2 mt-1 border-t-2 border-amber-300">
+                                                <span className="text-xs font-bold text-amber-800 uppercase">{t('slipGaji.modals.generate.kasbonTotal', 'Total Kasbon')}</span>
+                                                <span className="text-sm font-black text-red-600">-{formatRp(kasbonPreview.reduce((s, k) => s + k.amount, 0))}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="flex gap-3">
                                 <div className="mb-4 flex-1">
