@@ -31,18 +31,17 @@ import { useTranslation } from 'react-i18next';
 import { exportSlipToPdf } from '../utils/exportSlipPdf';
 
 /* ---- helpers ---- */
-/** Get Monday→Saturday of the current week */
+/** Get Sunday→Saturday of the current week */
 const getWeekRange = (refDate = new Date()) => {
     const d = new Date(refDate);
     const day = d.getDay(); // 0=Sun
-    const diffToMon = day === 0 ? 6 : day - 1;
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - diffToMon);
-    monday.setHours(0, 0, 0, 0);
-    const saturday = new Date(monday);
-    saturday.setDate(monday.getDate() + 5);
+    const sunday = new Date(d);
+    sunday.setDate(d.getDate() - day);
+    sunday.setHours(0, 0, 0, 0);
+    const saturday = new Date(sunday);
+    saturday.setDate(sunday.getDate() + 6);
     saturday.setHours(23, 59, 59, 999);
-    return { startDate: monday, endDate: saturday };
+    return { startDate: sunday, endDate: saturday };
 };
 
 const toInputDate = (d: Date) => {

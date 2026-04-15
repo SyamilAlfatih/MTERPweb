@@ -198,13 +198,13 @@ export default function ProjectReports() {
       setStartDate(d);
       setEndDate(d);
     } else if (reportType === 'weekly') {
-      const day = today.getDay();
-      const monday = new Date(today);
-      monday.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-      setStartDate(monday.toISOString().slice(0, 10));
-      setEndDate(sunday.toISOString().slice(0, 10));
+      const day = today.getDay(); // 0=Sun
+      const sunday = new Date(today);
+      sunday.setDate(today.getDate() - day); // Sunday of current week
+      const saturday = new Date(sunday);
+      saturday.setDate(sunday.getDate() + 6);
+      setStartDate(sunday.toISOString().slice(0, 10));
+      setEndDate(saturday.toISOString().slice(0, 10));
     } else if (reportType === 'monthly') {
       const first = new Date(today.getFullYear(), today.getMonth(), 1);
       const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);

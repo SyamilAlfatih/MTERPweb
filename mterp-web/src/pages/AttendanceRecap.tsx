@@ -62,8 +62,8 @@ export default function AttendanceRecap() {
   const [selectedProject, setSelectedProject] = useState('');
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
-    const day = d.getDay() || 7; // Convert Sunday (0) to 7
-    d.setDate(d.getDate() - day + 1); // Monday of current week
+    const day = d.getDay(); // 0=Sun
+    d.setDate(d.getDate() - day); // Sunday of current week
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const date = String(d.getDate()).padStart(2, '0');
@@ -71,8 +71,8 @@ export default function AttendanceRecap() {
   });
   const [endDate, setEndDate] = useState(() => {
     const d = new Date();
-    const day = d.getDay() || 7;
-    d.setDate(d.getDate() - day + 7); // Sunday of current week
+    const day = d.getDay(); // 0=Sun
+    d.setDate(d.getDate() - day + 6); // Saturday of current week
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const date = String(d.getDate()).padStart(2, '0');
