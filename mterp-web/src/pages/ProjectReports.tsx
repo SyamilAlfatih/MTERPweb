@@ -188,7 +188,7 @@ export default function ProjectReports() {
     visible: false, type: 'success', title: '', message: '',
   });
 
-  const userRole = JSON.parse(localStorage.getItem('userData') || '{}').role || '';
+  const userRole = String(JSON.parse(localStorage.getItem('userData') || '{}').role || '').toLowerCase();
 
   // ─── Auto-calculate date range ───
   useEffect(() => {
