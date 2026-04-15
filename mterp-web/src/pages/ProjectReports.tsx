@@ -9,6 +9,7 @@ import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import api from '../api/api';
 import { Card, Button, Input, Alert, Badge } from '../components/shared';
+import { useAuth } from '../contexts/AuthContext';
 
 /* ─── Helpers ─── */
 
@@ -165,6 +166,7 @@ export default function ProjectReports() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [projectName, setProjectName] = useState('');
   const [projectData, setProjectData] = useState<any>(null);
@@ -188,7 +190,7 @@ export default function ProjectReports() {
     visible: false, type: 'success', title: '', message: '',
   });
 
-  const userRole = String(JSON.parse(localStorage.getItem('userData') || '{}').role || '').toLowerCase();
+  const userRole = user?.role?.toLowerCase() || '';
 
   // ─── Auto-calculate date range ───
   useEffect(() => {
