@@ -666,7 +666,8 @@
     "wageOptions": {
       "daily": "Harian Biasa",
       "overtime15": "Lembur 1.5x",
-      "overtime2": "Lembur 2x"
+      "overtime2": "Lembur 2x",
+      "overtime": "Lembur"
     },
     "viewMode": {
       "attendance": "Kehadiran",

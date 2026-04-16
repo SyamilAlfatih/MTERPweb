@@ -93,6 +93,7 @@ export default function AttendanceLogs() {
   const [newWageType, setNewWageType] = useState('daily');
   const [newDailyRate, setNewDailyRate] = useState<number>(0);
   const [newOvertimePay, setNewOvertimePay] = useState<number>(0);
+  const [newOvertimeHours, setNewOvertimeHours] = useState<number | string>(0);
   const [submitting, setSubmitting] = useState(false);
   const [paying, setPaying] = useState(false);
 
@@ -157,31 +158,33 @@ export default function AttendanceLogs() {
 
   const openWageModal = (record: AttendanceRecord) => {
     setSelectedRecord(record);
-    setNewWageType(record.wageType);
+    const hourly = record.dailyRate ? record.dailyRate / 8 : 0;
+    const hours = (record.overtimePay && hourly) ? record.overtimePay / hourly : 0;
+    setNewOvertimeHours(hours);
+    setNewWageType(record.wageType.startsWith('overtime') ? 'overtime' : 'daily');
     setNewDailyRate(record.dailyRate || 0);
     setNewOvertimePay(record.overtimePay || 0);
     setWageModal(true);
   };
 
-  const calculateAutoOvertime = (rate: number, type: string) => {
-    if (!selectedRecord?.checkIn?.time || !selectedRecord?.checkOut?.time) return 0;
-    if (!type.startsWith('overtime')) return 0;
-    const start = new Date(selectedRecord.checkIn.time).getTime();
-    const end = new Date(selectedRecord.checkOut.time).getTime();
-    const durationHours = Math.max(0, (end - start) / (1000 * 60 * 60));
-    const hourlyRate = rate / 8;
-    const multiplier = type === 'overtime_1.5' ? 1.5 : (type === 'overtime_2' ? 2 : 1);
-    return Math.round(durationHours * hourlyRate * multiplier);
-  };
-
   const handleRateChange = (val: number) => {
     setNewDailyRate(val);
-    setNewOvertimePay(calculateAutoOvertime(val, newWageType));
+    const parsedHrs = parseFloat(newOvertimeHours.toString().replace(',', '.')) || 0;
+    setNewOvertimePay(Math.round(parsedHrs * (val / 8)));
+  };
+
+  const handleHoursChange = (valStr: string) => {
+    setNewOvertimeHours(valStr);
+    const parsedHrs = parseFloat(valStr.replace(',', '.')) || 0;
+    setNewOvertimePay(Math.round(parsedHrs * (newDailyRate / 8)));
   };
 
   const handleTypeChange = (val: string) => {
     setNewWageType(val);
-    setNewOvertimePay(calculateAutoOvertime(newDailyRate, val));
+    if (val !== 'overtime') {
+      setNewOvertimeHours(0);
+      setNewOvertimePay(0);
+    }
   };
 
   const handleSaveWage = async () => {
@@ -220,8 +223,7 @@ export default function AttendanceLogs() {
 
   const WAGE_OPTIONS_TRANSLATED = [
     { label: t('attendanceLogs.wageOptions.daily'), value: 'daily', multiplier: 1 },
-    { label: t('attendanceLogs.wageOptions.overtime15'), value: 'overtime_1.5', multiplier: 1.5 },
-    { label: t('attendanceLogs.wageOptions.overtime2'), value: 'overtime_2', multiplier: 2 },
+    { label: t('attendanceLogs.wageOptions.overtime'), value: 'overtime', multiplier: '-' },
   ];
 
   const formatRp = (val: number) => `Rp ${new Intl.NumberFormat('id-ID').format(val)}`;
@@ -646,22 +648,20 @@ export default function AttendanceLogs() {
                     />
                  </div>
 
-                 {newWageType.startsWith('overtime') && (
+                 {newWageType === 'overtime' && (
                    <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-100">
-                     <CostInput
-                       label={t('attendanceLogs.wageModal.overtimePay')}
-                       value={newOvertimePay}
-                       onChange={setNewOvertimePay}
-                       placeholder={t('attendanceLogs.wageModal.overtimePlaceholder')}
+                     <label className="block text-[10px] font-bold text-text-muted uppercase mb-2">Total Overtime Hours</label>
+                     <input 
+                        type="text" 
+                        value={newOvertimeHours} 
+                        onChange={(e) => handleHoursChange(e.target.value)}
+                        placeholder="0.5"
+                        className="w-full p-3 border-2 border-border-light rounded-xl font-bold focus:border-primary outline-none mb-3"
                      />
-                     {selectedRecord.checkIn?.time && selectedRecord.checkOut?.time && (
-                       <div className="mt-3 flex items-center gap-2 text-orange-600 bg-orange-100/50 p-2 rounded-lg">
-                          <Clock size={14} />
-                          <span className="text-xs font-bold uppercase">
-                            {t('attendanceLogs.wageModal.duration', { hours: ((new Date(selectedRecord.checkOut.time).getTime() - new Date(selectedRecord.checkIn.time).getTime()) / (1000 * 60 * 60)).toFixed(2) })}
-                          </span>
-                       </div>
-                     )}
+                     <div className="flex items-center justify-between text-orange-600 bg-orange-100/50 p-2 rounded-lg">
+                        <span className="text-xs font-bold uppercase">Total Overtime Pay</span>
+                        <span className="text-sm font-black">{formatRp(newOvertimePay)}</span>
+                     </div>
                    </div>
                  )}
                  

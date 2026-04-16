@@ -30,7 +30,7 @@ const attendanceSchema = new mongoose.Schema({
   },
   wageType: {
     type: String,
-    enum: ['daily', 'overtime_1.5', 'overtime_2'],
+    enum: ['daily', 'overtime_1.5', 'overtime_2', 'overtime'],
     default: 'daily',
   },
   wageMultiplier: {

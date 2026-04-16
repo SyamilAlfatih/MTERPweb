@@ -235,6 +235,7 @@ export default function MyPayments() {
   const getWageBadge = (wageType: string) => {
     const variants: Record<string, 'primary' | 'warning' | 'danger'> = {
       daily: 'primary',
+      'overtime': 'warning',
       'overtime_1.5': 'warning',
       'overtime_2': 'danger',
     };

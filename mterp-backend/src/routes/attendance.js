@@ -562,6 +562,7 @@ router.put('/:id/rate', auth, authorize('owner', 'president_director', 'operatio
         'daily': 1,
         'overtime_1.5': 1.5,
         'overtime_2': 2,
+        'overtime': 1,
       };
       updates.wageType = wageType;
       updates.wageMultiplier = wageMultipliers[wageType] || 1;
@@ -647,6 +648,7 @@ router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) =
       'daily': 1,
       'overtime_1.5': 1.5,
       'overtime_2': 2,
+      'overtime': 1,
     };
     
     const checkInData = {
