@@ -78,7 +78,7 @@ export const createMaterialRequest = async (data: CreateMaterialRequestDTO) => {
   return response.data;
 };
 
-export const updateMaterialRequestStatus = async (id: string, data: { status: string; rejectionReason?: string }) => {
+export const updateMaterialRequestStatus = async (id: string, data: { status: string; rejectionReason?: string; passphrase?: string }) => {
   const response = await api.put(`/requests/${id}`, data);
   return response.data;
 };

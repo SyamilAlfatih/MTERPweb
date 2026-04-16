@@ -14,6 +14,7 @@ import { MaterialRequest, ProjectData } from '../types';
 const EMPTY_FORM = {
   item: '',
   qty: '',
+  unit: 'Pcs',
   dateNeeded: '',
   purpose: '',
   costEstimate: '',
@@ -42,6 +43,8 @@ export default function Materials() {
   // Approval/Rejection Modals
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [passphrase, setPassphrase] = useState('');
 
   const isAdmin = user?.role && ['owner', 'director', 'asset_admin'].includes(user.role.toLowerCase());
 
@@ -65,7 +68,7 @@ export default function Materials() {
   };
 
   const handleCreateRequest = async () => {
-    if (!formData.item.trim() || !formData.qty.trim() || !formData.dateNeeded) {
+    if (!formData.item.trim() || !String(formData.qty).trim() || !formData.dateNeeded) {
       alert(t('materials.messages.fillRequired'));
       return;
     }
@@ -90,7 +93,7 @@ export default function Materials() {
     }
   };
 
-  const handleUpdateStatus = async (id: string, newStatus: string, reason?: string) => {
+  const handleUpdateStatus = async (id: string, newStatus: string, reason?: string, enteredPassphrase?: string) => {
     try {
       if (newStatus === 'Rejected' && !reason && rejectingId !== id) {
         // Open rejection modal instead
@@ -98,17 +101,26 @@ export default function Materials() {
         setRejectionReason('');
         return;
       }
+      
+      if (newStatus === 'Approved' && !enteredPassphrase && approvingId !== id) {
+        // Open approval modal instead
+        setApprovingId(id);
+        setPassphrase('');
+        return;
+      }
 
       await updateMaterialRequestStatus(id, {
         status: newStatus,
-        rejectionReason: reason
+        rejectionReason: reason,
+        passphrase: enteredPassphrase
       });
 
       setRejectingId(null);
+      setApprovingId(null);
       await fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update status', err);
-      alert(t('materials.messages.updateStatusFailed'));
+      alert(err.response?.data?.msg || t('materials.messages.updateStatusFailed'));
     }
   };
 
@@ -312,7 +324,7 @@ export default function Materials() {
                         </span>
                         <span className="flex items-center gap-1.5 text-sm text-text-secondary" title={t('materials.card.quantity')}>
                           <Package size={14} />
-                          {req.qty}
+                          {req.qty} {req.unit || ''}
                         </span>
                       </div>
                     </div>
@@ -429,13 +441,36 @@ export default function Materials() {
               <div className="flex gap-3 max-sm:flex-col">
                 <div className="flex flex-col gap-1.5 flex-1">
                   <label className="text-sm font-semibold text-text-primary">{t('materials.modal.quantity')} <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    className="w-full p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 transition-shadow"
-                    placeholder={t('materials.modal.quantityPlaceholder')}
-                    value={formData.qty}
-                    onChange={e => setFormData({ ...formData, qty: e.target.value })}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      className="w-full p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 transition-shadow"
+                      placeholder={t('materials.modal.quantityPlaceholder')}
+                      value={formData.qty}
+                      onChange={e => setFormData({ ...formData, qty: e.target.value })}
+                    />
+                    <select
+                      className="w-[120px] p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 transition-shadow appearance-none cursor-pointer"
+                      value={formData.unit}
+                      onChange={e => setFormData({ ...formData, unit: e.target.value })}
+                    >
+                      <option value="Pcs">Pcs</option>
+                      <option value="Sak">Sak</option>
+                      <option value="m2">m2</option>
+                      <option value="m3">m3</option>
+                      <option value="Meter">Meter</option>
+                      <option value="Kg">Kg</option>
+                      <option value="Liter">Liter</option>
+                      <option value="Zak">Zak</option>
+                      <option value="Pkt">Pkt</option>
+                      <option value="Ktk">Ktk</option>
+                      <option value="Rol">Rol</option>
+                      <option value="Btg">Btg</option>
+                      <option value="Lbr">Lbr</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1.5 flex-1">
                   <label className="text-sm font-semibold text-text-primary">{t('materials.modal.dateNeeded')} <span className="text-red-500">*</span></label>
@@ -539,6 +574,47 @@ export default function Materials() {
                     return;
                   }
                   handleUpdateStatus(rejectingId, 'Rejected', rejectionReason);
+                }} 
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approval Modal */}
+      {approvingId && (
+        <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => setApprovingId(null)}>
+          <div className="bg-bg-white rounded-xl w-full max-w-[500px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-border-light">
+              <h2 className="m-0 font-bold text-lg text-emerald-700">{t('materials.modal.approveTitle', 'Approve Material Request')}</h2>
+              <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted flex hover:bg-bg-secondary hover:text-text-primary rounded-md" onClick={() => setApprovingId(null)}>
+                <XCircle size={24} />
+              </button>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-text-primary">{t('materials.modal.passphrase', 'Passphrase')} <span className="text-red-500">*</span></label>
+                <input
+                  type="password"
+                  className="w-full p-3 border border-border rounded-md text-base text-text-primary bg-bg-white focus:outline-none focus:border-emerald-500 focus:ring-3 focus:ring-emerald-500/10 transition-shadow"
+                  placeholder={t('materials.modal.passphrasePlaceholder', 'Enter your passphrase to approve')}
+                  value={passphrase}
+                  onChange={e => setPassphrase(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-5 border-t border-border-light bg-bg-secondary/50 rounded-b-xl">
+              <Button title={t('materials.actions.cancel', 'Cancel')} variant="outline" onClick={() => setApprovingId(null)} />
+              <Button 
+                title={t('materials.actions.confirmApproval', 'Confirm Approval')} 
+                variant="primary" 
+                onClick={() => {
+                  if (!passphrase.trim() || passphrase.length < 4) {
+                    alert(t('materials.messages.passphraseRequired', 'Passphrase is required (min 4 characters)'));
+                    return;
+                  }
+                  handleUpdateStatus(approvingId, 'Approved', undefined, passphrase);
                 }} 
               />
             </div>

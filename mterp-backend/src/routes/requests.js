@@ -63,7 +63,7 @@ router.get('/:id', auth, async (req, res) => {
 // POST /api/requests - Create material request
 router.post('/', auth, async (req, res) => {
   try {
-    const { item, qty, dateNeeded, purpose, costEstimate, projectId, urgency } = req.body;
+    const { item, qty, dateNeeded, purpose, costEstimate, projectId, urgency, unit } = req.body;
     
     if (!item || !item.trim()) {
       return res.status(400).json({ msg: 'Item name is required' });
@@ -72,9 +72,31 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ msg: 'Quantity is required' });
     }
     
+    let finalQty = qty;
+    let finalUnit = unit || 'Pcs';
+    
+    if (typeof qty === 'string') {
+      const match = String(qty).trim().match(/^([\d.]+)\s*(.*)$/);
+      if (match) {
+        finalQty = Number(match[1]);
+        if (match[2] && (!unit || unit === 'Pcs')) {
+          finalUnit = match[2];
+        }
+      } else {
+        finalQty = Number(qty);
+      }
+    } else {
+      finalQty = Number(qty);
+    }
+    
+    if (isNaN(finalQty)) {
+      return res.status(400).json({ msg: 'Quantity must be a valid number' });
+    }
+    
     const request = new Request({
       item,
-      qty,
+      qty: finalQty,
+      unit: finalUnit,
       dateNeeded,
       purpose,
       costEstimate: Number(costEstimate) || 0,
@@ -155,6 +177,7 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (r
           projectId: request.projectId._id,
           item: request.item,
           qty: Number(request.qty) || 0,
+          unit: request.unit || 'Pcs',
           cost: request.costEstimate || 0,
           status: 'Pending'
         });

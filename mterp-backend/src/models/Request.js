@@ -11,6 +11,10 @@ const requestSchema = new mongoose.Schema({
     required: true,
     min: 0,
   },
+  unit: {
+    type: String,
+    default: 'Pcs',
+  },
   dateNeeded: String,
   purpose: String,
   costEstimate: Number,

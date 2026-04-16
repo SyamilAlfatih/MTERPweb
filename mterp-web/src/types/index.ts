@@ -118,7 +118,8 @@ export interface CreateToolDTO {
 
 export interface CreateMaterialRequestDTO {
   item: string;
-  qty: string;
+  qty: string | number;
+  unit?: string;
   projectId?: string;
   dateNeeded: string;
   urgency?: 'Low' | 'Normal' | 'High';
@@ -142,7 +143,8 @@ export interface MaterialRequest {
   _id?: string;
   id?: string;
   item: string;
-  qty: string;
+  qty: string | number;
+  unit?: string;
   dateNeeded: string;
   status: 'Pending' | 'Approved' | 'Rejected';
   requestedBy: { _id: string; fullName: string; role?: string } | string;
