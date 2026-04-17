@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
+import { getImageUrl } from '../../utils/image';
 
 interface NavItem {
   id: string;
@@ -193,7 +194,7 @@ export default function Sidebar() {
         >
           <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0 overflow-hidden">
             {user?.profileImage ? (
-              <img src={user.profileImage} alt={user?.fullName} className="w-full h-full object-cover rounded-full" />
+              <img src={getImageUrl(user.profileImage)} alt={user?.fullName} className="w-full h-full object-cover rounded-full" />
             ) : (
               <User size={18} />
             )}

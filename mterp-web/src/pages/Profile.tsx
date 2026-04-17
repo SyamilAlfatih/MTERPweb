@@ -20,6 +20,7 @@ import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Alert } from '../components/shared';
 import { useTranslation } from 'react-i18next';
+import { getImageUrl } from '../utils/image';
 
 interface SettingsItem {
   id: string;
@@ -151,14 +152,7 @@ export default function Profile() {
   };
 
   const getPhotoUrl = () => {
-    if (user?.profileImage) {
-      // Handle both relative and absolute URLs
-      if (user.profileImage.startsWith('http')) {
-        return user.profileImage;
-      }
-      return `${import.meta.env.VITE_API_URL?.replace('/api', '')}/${user.profileImage}`;
-    }
-    return null;
+    return getImageUrl(user?.profileImage);
   };
 
   const getInitials = () => {

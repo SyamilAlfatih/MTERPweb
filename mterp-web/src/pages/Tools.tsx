@@ -6,11 +6,12 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import api from '../api/api';
-import { getToolDashboard, createTool, updateTool, deleteTool } from '../api/api';
+import api, { getToolDashboard, createTool, updateTool, deleteTool } from '../api/api';
 import { Card, Input, Badge, EmptyState, LoadingOverlay, Button } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
+import { PhotoView } from 'react-photo-view';
 import { Tool } from '../types';
+import { getImageUrl } from '../utils/image';
 
 const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
 
@@ -130,7 +131,7 @@ export default function Tools() {
       lokasi: tool.lokasi || '',
     });
     setPhoto(null);
-    setPhotoPreview(tool.photo ? `${import.meta.env.VITE_API_URL?.replace('/api', '')}/${tool.photo}` : null);
+    setPhotoPreview(tool.photo ? getImageUrl(tool.photo) : null);
     setShowAddModal(true);
   };
 
@@ -377,11 +378,13 @@ export default function Tools() {
                     <div className="flex items-start gap-4 max-sm:flex-col">
                       <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 border border-border-light max-sm:w-full max-sm:h-40">
                         {tool.photo ? (
-                          <img 
-                            src={`${import.meta.env.VITE_API_URL?.replace('/api', '')}/${tool.photo}`} 
-                            alt={tool.nama} 
-                            className="w-full h-full object-cover"
-                          />
+                          <PhotoView src={getImageUrl(tool.photo)}>
+                            <img 
+                              src={getImageUrl(tool.photo)} 
+                              alt={tool.nama} 
+                              className="w-full h-full object-cover cursor-pointer"
+                            />
+                          </PhotoView>
                         ) : (
                           <div className="w-full h-full bg-bg-secondary flex items-center justify-center">
                             <Wrench size={24} className="text-text-muted" />
@@ -476,7 +479,9 @@ export default function Tools() {
                   onClick={() => document.getElementById('tool-photo-input')?.click()}
                 >
                   {photoPreview ? (
-                    <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                    <PhotoView src={photoPreview}>
+                      <img src={photoPreview} alt="Preview" className="w-full h-full object-cover cursor-pointer" />
+                    </PhotoView>
                   ) : (
                     <div className="flex flex-col items-center text-text-muted">
                       <Camera size={28} />

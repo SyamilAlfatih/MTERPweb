@@ -7,6 +7,8 @@ import {
 import api from '../api/api';
 import { Card, LoadingOverlay } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
+import { PhotoView } from 'react-photo-view';
+import { getImageUrl } from '../utils/image';
 
 interface Worker {
   _id: string;
@@ -49,7 +51,9 @@ function Avatar({ user }: { user: Worker }) {
   return (
     <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border-2 border-border-light bg-bg-secondary flex items-center justify-center font-bold text-sm text-text-secondary">
       {user.profileImage ? (
-        <img src={user.profileImage} alt={user.fullName} className="w-full h-full object-cover" />
+        <PhotoView src={getImageUrl(user.profileImage)}>
+          <img src={getImageUrl(user.profileImage)} alt={user.fullName} className="w-full h-full object-cover cursor-pointer" />
+        </PhotoView>
       ) : (
         <span>{initials}</span>
       )}

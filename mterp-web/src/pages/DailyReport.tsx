@@ -5,9 +5,10 @@ import {
   Camera, X, FileDown, Plus, Image as ImageIcon, Wrench
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import api from '../api/api';
 import { Card, Button, Input, Alert, Badge, CostInput } from '../components/shared';
+import { PhotoView } from 'react-photo-view';
 
 interface ProjectOption {
   _id: string;
@@ -1276,7 +1277,9 @@ export default function DailyReport() {
         <div className="grid grid-cols-3 gap-3">
           {photoPreviewUrls.map((url, i) => (
             <div key={i} className="relative aspect-square rounded-xl overflow-hidden border-2 border-border-light group">
-              <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+              <PhotoView src={url}>
+                <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover cursor-pointer" />
+              </PhotoView>
               <button 
                 className="absolute top-2 right-2 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center border-none shadow-lg active:scale-90" 
                 onClick={() => handleRemovePhoto(i)}

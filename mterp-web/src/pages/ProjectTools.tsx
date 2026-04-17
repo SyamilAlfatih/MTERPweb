@@ -10,6 +10,8 @@ import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, Input } from '../components/shared';
+import { PhotoView } from 'react-photo-view';
+import { getImageUrl } from '../utils/image';
 
 interface ToolData {
   _id: string;
@@ -336,11 +338,13 @@ export default function ProjectTools() {
                 <div className="flex items-start gap-4 max-sm:flex-col">
                   <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 border border-border-light max-sm:w-10 max-sm:h-10">
                     {tool.photo ? (
-                      <img 
-                        src={`${import.meta.env.VITE_API_URL?.replace('/api', '')}/${tool.photo}`} 
-                        alt={tool.nama} 
-                        className="w-full h-full object-cover"
-                      />
+                      <PhotoView src={getImageUrl(tool.photo)}>
+                        <img 
+                          src={getImageUrl(tool.photo)} 
+                          alt={tool.nama} 
+                          className="w-full h-full object-cover cursor-pointer"
+                        />
+                      </PhotoView>
                     ) : (
                       <div className="w-full h-full bg-bg-secondary flex items-center justify-center">
                         <Wrench size={22} color={condStyle.color} />
@@ -562,7 +566,9 @@ export default function ProjectTools() {
                   onClick={() => document.getElementById('return-photo-input')?.click()}
                 >
                   {returnPhotoPreview ? (
-                    <img src={returnPhotoPreview} alt="Preview" className="w-full h-full object-cover" />
+                    <PhotoView src={returnPhotoPreview}>
+                      <img src={returnPhotoPreview} alt="Preview" className="w-full h-full object-cover cursor-pointer" />
+                    </PhotoView>
                   ) : (
                     <div className="flex flex-col items-center text-text-muted">
                       <Camera size={32} />

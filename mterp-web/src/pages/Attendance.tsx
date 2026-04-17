@@ -9,6 +9,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import api from '../api/api';
 import { Card, Button, Input, Alert, CostInput } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
+import { PhotoView } from 'react-photo-view';
 
 interface AttendanceRecord {
   _id: string;
@@ -468,7 +469,9 @@ export default function Attendance() {
           <div className="mb-4">
             {photoPreview ? (
               <div className="relative w-[180px] h-[180px] rounded-lg overflow-hidden mx-auto max-sm:w-[150px] max-sm:h-[150px]">
-                <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                <PhotoView src={photoPreview}>
+                  <img src={photoPreview} alt="Preview" className="w-full h-full object-cover cursor-pointer" />
+                </PhotoView>
                 <button className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/70 text-white text-xs font-semibold border-none rounded-sm cursor-pointer" onClick={() => { setPhoto(null); setPhotoPreview(null); }}>
                   {t('attendance.actions.removePhoto')}
                 </button>
@@ -621,7 +624,9 @@ export default function Attendance() {
             <div className="mt-3">
               {permitPhotoPreview ? (
                 <div className="relative w-[180px] h-[180px] rounded-lg overflow-hidden mx-auto max-sm:w-[150px] max-sm:h-[150px]">
-                  <img src={permitPhotoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  <PhotoView src={permitPhotoPreview}>
+                    <img src={permitPhotoPreview} alt="Preview" className="w-full h-full object-cover cursor-pointer" />
+                  </PhotoView>
                   <button className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/70 text-white text-xs font-semibold border-none rounded-sm cursor-pointer" onClick={() => { setPermitPhoto(null); setPermitPhotoPreview(null); }}>
                     {t('attendance.actions.removePhoto')}
                   </button>

@@ -23,6 +23,8 @@ import {
 } from '../api/api';
 import { User } from '../types';
 import { Card } from '../components/shared';
+import { PhotoView } from 'react-photo-view';
+import { getImageUrl } from '../utils/image';
 
 const ROLE_OPTIONS = [
   { value: 'worker', label: 'Worker' },
@@ -254,7 +256,9 @@ export default function Users() {
                     <div className="flex items-start gap-3 flex-1 min-w-0 pr-2">
                        <div className="w-12 h-12 rounded-xl bg-bg-secondary text-text-secondary flex items-center justify-center font-black text-lg overflow-hidden shrink-0 border-2 border-border-light">
                         {user.profileImage ? (
-                          <img src={user.profileImage} alt={user.fullName} className="w-full h-full object-cover" />
+                          <PhotoView src={getImageUrl(user.profileImage)}>
+                            <img src={getImageUrl(user.profileImage)} alt={user.fullName} className="w-full h-full object-cover cursor-pointer" />
+                          </PhotoView>
                         ) : (
                           <span>{user.fullName.charAt(0).toUpperCase()}</span>
                         )}

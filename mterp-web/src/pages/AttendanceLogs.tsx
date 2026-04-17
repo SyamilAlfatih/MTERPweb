@@ -6,6 +6,7 @@ import {
   Wallet, Loader, FileText, CalendarOff, Eye,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { PhotoView } from 'react-photo-view';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, CostInput } from '../components/shared';
@@ -582,7 +583,9 @@ export default function AttendanceLogs() {
                 <X size={20} />
               </button>
             </div>
-            <img src={evidenceModal.url} alt="Permit Evidence" className="w-full block max-h-[70vh] object-contain bg-[#f3f3f3]" />
+            <PhotoView src={evidenceModal.url}>
+              <img src={evidenceModal.url} alt="Permit Evidence" className="w-full block max-h-[70vh] object-contain bg-[#f3f3f3] cursor-pointer" />
+            </PhotoView>
           </div>
         </div>
       )}
