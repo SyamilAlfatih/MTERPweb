@@ -26,6 +26,7 @@ const toolSchema = new mongoose.Schema({
   },
   lokasi: String,
   qrCode: String,
+  photo: String,
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

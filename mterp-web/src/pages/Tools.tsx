@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import {
   Search, Wrench, Plus, Package, MapPin, User,
   Calendar, Edit3, Trash2, X, ChevronDown, AlertTriangle,
-  CheckCircle2, Settings, Archive
+  CheckCircle2, Settings, Archive, Camera, UserX, Warehouse
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import api from '../api/api';
 import { getToolDashboard, createTool, updateTool, deleteTool } from '../api/api';
 import { Card, Input, Badge, EmptyState, LoadingOverlay, Button } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,6 +47,8 @@ export default function Tools() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTool, setEditingTool] = useState<Tool | null>(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const canManage = user?.role && ['owner', 'director', 'asset_admin'].includes(user.role);
@@ -111,6 +114,8 @@ export default function Tools() {
   const openAddModal = () => {
     setEditingTool(null);
     setFormData(EMPTY_FORM);
+    setPhoto(null);
+    setPhotoPreview(null);
     setShowAddModal(true);
   };
 
@@ -124,21 +129,50 @@ export default function Tools() {
       kondisi: tool.kondisi || 'Baik',
       lokasi: tool.lokasi || '',
     });
+    setPhoto(null);
+    setPhotoPreview(tool.photo ? `${import.meta.env.VITE_API_URL?.replace('/api', '')}/${tool.photo}` : null);
     setShowAddModal(true);
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPhoto(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
   };
 
   const handleSave = async () => {
     if (!formData.nama.trim()) return;
+    if (!editingTool && !photo) {
+      alert(t('tools.messages.photoRequired'));
+      return;
+    }
+    
     setSubmitting(true);
     try {
+      const data = new FormData();
+      Object.entries(formData).forEach(([key, value]) => {
+        data.append(key, value.toString());
+      });
+      if (photo) {
+        data.append('photo', photo);
+      }
+
       if (editingTool) {
-        await updateTool(editingTool._id, formData);
+        await api.put(`/tools/${editingTool._id}`, data, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
       } else {
-        await createTool(formData);
+        await api.post('/tools', data, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
       }
       setShowAddModal(false);
       setEditingTool(null);
       setFormData(EMPTY_FORM);
+      setPhoto(null);
+      setPhotoPreview(null);
       await fetchData();
     } catch (err: any) {
       alert(err.response?.data?.msg || t('tools.messages.saveFailed'));
@@ -341,8 +375,18 @@ export default function Tools() {
                     }}
                   >
                     <div className="flex items-start gap-4 max-sm:flex-col">
-                      <div className="w-12 h-12 rounded-md flex items-center justify-center shrink-0 max-sm:w-10 max-sm:h-10" style={{ backgroundColor: condStyle.bg }}>
-                        <Wrench size={22} color={condStyle.color} />
+                      <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 border border-border-light max-sm:w-full max-sm:h-40">
+                        {tool.photo ? (
+                          <img 
+                            src={`${import.meta.env.VITE_API_URL?.replace('/api', '')}/${tool.photo}`} 
+                            alt={tool.nama} 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-bg-secondary flex items-center justify-center">
+                            <Wrench size={24} className="text-text-muted" />
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex-1 min-w-0">
@@ -425,6 +469,33 @@ export default function Tools() {
             </div>
 
             <div className="p-5">
+              {/* Photo Upload Area */}
+              <div className="flex flex-col items-center mb-6">
+                <div 
+                  className="relative w-32 h-32 rounded-xl border-2 border-dashed border-border-light overflow-hidden flex items-center justify-center cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => document.getElementById('tool-photo-input')?.click()}
+                >
+                  {photoPreview ? (
+                    <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center text-text-muted">
+                      <Camera size={28} />
+                      <span className="text-[10px] font-bold uppercase mt-1">Upload Photo</span>
+                    </div>
+                  )}
+                </div>
+                {!editingTool && !photo && (
+                  <span className="text-[10px] text-danger font-bold uppercase mt-1">* Required</span>
+                )}
+                <input 
+                  id="tool-photo-input"
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={handlePhotoChange}
+                />
+              </div>
+
               <div className="flex flex-col gap-2 mb-4">
                 <label className="text-sm font-semibold text-text-primary">{t('tools.modal.name')}</label>
                 <input
@@ -519,7 +590,7 @@ export default function Tools() {
                 onClick={handleSave}
                 loading={submitting}
                 variant="primary"
-                disabled={!formData.nama.trim()}
+                disabled={!formData.nama.trim() || (!editingTool && !photo)}
               />
             </div>
           </div>

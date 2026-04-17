@@ -169,6 +169,7 @@ export interface Tool {
   assignedTo?: { _id: string; fullName: string };
   projectId?: { _id: string; nama: string };
   lastChecked?: string;
+  photo?: string;
   notes?: string;
   createdAt?: string;
   updatedAt?: string;

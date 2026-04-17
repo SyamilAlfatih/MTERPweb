@@ -88,7 +88,7 @@ router.get('/:id', auth, async (req, res) => {
 // POST /api/tasks - Create task (owner, director, supervisor)
 router.post('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
-    const { title, description, projectId, assignedTo, priority, dueDate } = req.body;
+    const { title, description, projectId, assignedTo, priority, dueDate, workItemId } = req.body;
     
     // Verify project exists
     const project = await Project.findById(projectId);
@@ -112,6 +112,7 @@ router.post('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin
       assignedBy: req.user._id,
       priority: priority || 'normal',
       dueDate: dueDate ? new Date(dueDate) : undefined,
+      workItemId,
     });
     
     await task.save();

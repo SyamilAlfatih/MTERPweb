@@ -1,6 +1,8 @@
 const express = require('express');
 const { Tool } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
+const upload = require('../middleware/upload');
+const { uploadLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
@@ -130,7 +132,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // POST /api/tools - Create tool
-router.post('/', auth, authorize('owner', 'director', 'asset_admin'), async (req, res) => {
+router.post('/', auth, authorize('owner', 'director', 'asset_admin'), uploadLimiter, upload.single('photo'), async (req, res) => {
   try {
     const { nama, kategori, stok, satuan, kondisi, lokasi, qrCode, projectId } = req.body;
     
@@ -143,6 +145,7 @@ router.post('/', auth, authorize('owner', 'director', 'asset_admin'), async (req
       lokasi,
       qrCode,
       projectId: projectId || undefined,
+      photo: req.file ? req.file.path : undefined,
     });
     
     await tool.save();
@@ -154,7 +157,7 @@ router.post('/', auth, authorize('owner', 'director', 'asset_admin'), async (req
 });
 
 // PUT /api/tools/:id - Update tool
-router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (req, res) => {
+router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), uploadLimiter, upload.single('photo'), async (req, res) => {
   try {
     const allowedFields = ['nama', 'kategori', 'stok', 'satuan', 'kondisi', 'lokasi', 'qrCode', 'notes'];
     const updateData = { updatedAt: new Date() };
@@ -163,6 +166,10 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (r
         updateData[field] = req.body[field];
       }
     });
+
+    if (req.file) {
+      updateData.photo = req.file.path;
+    }
 
     const tool = await Tool.findByIdAndUpdate(
       req.params.id,
@@ -241,8 +248,23 @@ router.put('/:id/unassign', auth, authorize('owner', 'director', 'asset_admin', 
 });
 
 // PUT /api/tools/:id/return - Return tool to warehouse
-router.put('/:id/return', auth, authorize('owner', 'director', 'asset_admin', 'supervisor'), async (req, res) => {
+router.put('/:id/return', auth, authorize('owner', 'director', 'asset_admin', 'supervisor'), uploadLimiter, upload.single('photo'), async (req, res) => {
   try {
+    const { kondisi } = req.body;
+    const updateData = {
+      lokasi: 'Warehouse',
+      lastChecked: new Date(),
+      updatedAt: new Date(),
+    };
+
+    if (kondisi) {
+      updateData.kondisi = kondisi;
+    }
+
+    if (req.file) {
+      updateData.photo = req.file.path;
+    }
+
     const tool = await Tool.findByIdAndUpdate(
       req.params.id,
       { 
@@ -250,11 +272,7 @@ router.put('/:id/return', auth, authorize('owner', 'director', 'asset_admin', 's
           assignedTo: 1,
           projectId: 1,
         },
-        $set: {
-          lokasi: 'Warehouse',
-          lastChecked: new Date(),
-          updatedAt: new Date(),
-        }
+        $set: updateData
       },
       { new: true }
     );

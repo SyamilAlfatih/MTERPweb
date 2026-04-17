@@ -18,6 +18,12 @@ interface TaskData {
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   priority: 'low' | 'normal' | 'high' | 'urgent';
   dueDate?: string;
+  workItemId?: string;
+}
+
+interface WorkItemOption {
+  _id: string;
+  name: string;
 }
 
 interface ProjectOption {
@@ -54,7 +60,11 @@ export default function Tasks() {
     assignedTo: '',
     priority: 'normal',
     dueDate: '',
+    workItemId: '',
   });
+  const [taskMode, setTaskMode] = useState<'custom' | 'workitem'>('custom');
+  const [projectWorkItems, setProjectWorkItems] = useState<WorkItemOption[]>([]);
+  const [loadingWorkItems, setLoadingWorkItems] = useState(false);
 
   const canManageTasks = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
 
@@ -123,10 +133,48 @@ export default function Tasks() {
       assignedTo: '',
       priority: 'normal',
       dueDate: '',
+      workItemId: '',
     });
     setModalMode('create');
+    setTaskMode('custom');
+    setProjectWorkItems([]);
     setSelectedTask(null);
     setShowModal(true);
+  };
+
+  const handleProjectChange = async (projectId: string) => {
+    setFormData(prev => ({ ...prev, projectId, workItemId: '' }));
+    if (taskMode === 'workitem' && projectId) {
+      fetchProjectWorkItems(projectId);
+    }
+  };
+
+  const fetchProjectWorkItems = async (projectId: string) => {
+    setLoadingWorkItems(true);
+    try {
+      const response = await api.get(`/projects/${projectId}`);
+      setProjectWorkItems(response.data.workItems || []);
+    } catch (err) {
+      console.error('Failed to fetch work items', err);
+    } finally {
+      setLoadingWorkItems(false);
+    }
+  };
+
+  const handleWorkItemChange = (workItemId: string) => {
+    const item = projectWorkItems.find(wi => wi._id === workItemId);
+    setFormData(prev => ({
+      ...prev,
+      workItemId,
+      title: item ? item.name : prev.title
+    }));
+  };
+
+  const toggleTaskMode = (mode: 'custom' | 'workitem') => {
+    setTaskMode(mode);
+    if (mode === 'workitem' && formData.projectId) {
+      fetchProjectWorkItems(formData.projectId);
+    }
   };
 
   const handleOpenAssign = (task: TaskData) => {
@@ -280,6 +328,9 @@ export default function Tasks() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-2">
                   <h3 className={`text-base font-semibold m-0 ${task.status === 'completed' ? 'line-through text-text-muted' : 'text-text-primary'}`}>{task.title}</h3>
+                  {task.workItemId && (
+                    <Badge label="WORK ITEM" variant="primary" size="small" />
+                  )}
                   {getPriorityBadge(task.priority)}
                 </div>
                 {task.description && (
@@ -350,27 +401,29 @@ export default function Tasks() {
             <div className="p-5 flex flex-col gap-4">
               {modalMode === 'create' && (
                 <>
-                  <Input
-                    label={t('tasks.modal.taskTitle')}
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder={t('tasks.modal.taskTitlePlaceholder')}
-                  />
-                  
-                  <Input
-                    label={t('tasks.modal.description')}
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder={t('tasks.modal.descriptionPlaceholder')}
-                    multiline
-                  />
-                  
+                  <div className="flex border border-border-medium rounded-md overflow-hidden mb-2">
+                    <button 
+                      className={`flex-1 py-2 px-4 border-none cursor-pointer text-sm font-bold transition-colors ${taskMode === 'custom' ? 'bg-primary text-white' : 'bg-bg-secondary text-text-muted hover:bg-bg-tertiary'}`}
+                      type="button"
+                      onClick={() => toggleTaskMode('custom')}
+                    >
+                      {t('tasks.modal.customMode', 'Custom Task')}
+                    </button>
+                    <button 
+                      className={`flex-1 py-2 px-4 border-none cursor-pointer text-sm font-bold transition-colors ${taskMode === 'workitem' ? 'bg-primary text-white' : 'bg-bg-secondary text-text-muted hover:bg-bg-tertiary'}`}
+                      type="button"
+                      onClick={() => toggleTaskMode('workitem')}
+                    >
+                      {t('tasks.modal.workItemMode', 'From Work Item')}
+                    </button>
+                  </div>
+
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-semibold text-text-primary">{t('tasks.modal.project')}</label>
                     <div className="relative">
                       <select
                         value={formData.projectId}
-                        onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                        onChange={(e) => handleProjectChange(e.target.value)}
                         className="w-full py-3 px-4 pr-10 border border-border-medium rounded-md text-base text-text-primary bg-bg-white appearance-none cursor-pointer transition-colors duration-150 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/10"
                       >
                         <option value="">{t('tasks.modal.selectProject')}</option>
@@ -382,6 +435,42 @@ export default function Tasks() {
                     </div>
                   </div>
 
+                  {taskMode === 'workitem' && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-semibold text-text-primary">{t('tasks.modal.selectWorkItem', 'Select Project Work Item')}</label>
+                      <div className="relative">
+                        <select
+                          value={formData.workItemId}
+                          onChange={(e) => handleWorkItemChange(e.target.value)}
+                          disabled={!formData.projectId || loadingWorkItems}
+                          className="w-full py-3 px-4 pr-10 border border-border-medium rounded-md text-base text-text-primary bg-bg-white appearance-none cursor-pointer transition-colors duration-150 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:opacity-50"
+                        >
+                          <option value="">{loadingWorkItems ? t('tasks.modal.loadingItems', 'Loading...') : t('tasks.modal.chooseWorkItem', 'Choose Work Item')}</option>
+                          {projectWorkItems.map(wi => (
+                            <option key={wi._id} value={wi._id}>{wi.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
+
+                  <Input
+                    label={t('tasks.modal.taskTitle')}
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    placeholder={t('tasks.modal.taskTitlePlaceholder')}
+                    disabled={taskMode === 'workitem'}
+                  />
+                  
+                  <Input
+                    label={t('tasks.modal.description')}
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder={t('tasks.modal.descriptionPlaceholder')}
+                    multiline
+                  />
+                  
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-semibold text-text-primary">{t('tasks.modal.priority')}</label>
                     <div className="relative">

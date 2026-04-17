@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Wrench, User, Warehouse, Plus,
   ChevronDown, X, AlertCircle, Package, Search,
-  CheckCircle2, Settings, AlertTriangle, Calendar, MapPin, UserX
+  CheckCircle2, Settings, AlertTriangle, Calendar, MapPin, UserX,
+  Camera,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/api';
@@ -14,6 +15,7 @@ interface ToolData {
   _id: string;
   nama: string;
   kategori: string;
+  photo?: string;
   stok: number;
   satuan: string;
   kondisi: string;
@@ -61,6 +63,10 @@ export default function ProjectTools() {
   const [selectedTool, setSelectedTool] = useState<ToolData | null>(null);
   const [selectedUser, setSelectedUser] = useState('');
   const [selectedToolToAdd, setSelectedToolToAdd] = useState('');
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnPhoto, setReturnPhoto] = useState<File | null>(null);
+  const [returnPhotoPreview, setReturnPhotoPreview] = useState<string | null>(null);
+  const [returnCondition, setReturnCondition] = useState('Baik');
   const [submitting, setSubmitting] = useState(false);
 
   const canManageTools = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
@@ -146,15 +152,43 @@ export default function ProjectTools() {
     }
   };
 
-  const handleReturnToWarehouse = async (tool: ToolData) => {
-    if (!confirm(t('projectTools.messages.returnConfirm', { name: tool.nama }))) return;
+  const handleReturnToWarehouse = (tool: ToolData) => {
+    setSelectedTool(tool);
+    setReturnPhoto(null);
+    setReturnPhotoPreview(null);
+    setReturnCondition(tool.kondisi || 'Baik');
+    setShowReturnModal(true);
+  };
 
+  const confirmReturn = async () => {
+    if (!selectedTool || !returnPhoto) return;
+
+    setSubmitting(true);
     try {
-      await api.put(`/tools/${tool._id}/return`);
+      const data = new FormData();
+      data.append('kondisi', returnCondition);
+      data.append('photo', returnPhoto);
+
+      await api.put(`/tools/${selectedTool._id}/return`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
       await fetchData();
+      setShowReturnModal(false);
+      setSelectedTool(null);
     } catch (err: any) {
       console.error('Failed to return tool', err);
       alert(err.response?.data?.msg || t('projectTools.messages.returnFailed'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReturnPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setReturnPhoto(file);
+      setReturnPhotoPreview(URL.createObjectURL(file));
     }
   };
 
@@ -300,8 +334,18 @@ export default function ProjectTools() {
                 }}
               >
                 <div className="flex items-start gap-4 max-sm:flex-col">
-                  <div className="w-12 h-12 rounded-md flex items-center justify-center shrink-0 max-sm:w-10 max-sm:h-10" style={{ backgroundColor: condStyle.bg }}>
-                    <Wrench size={22} color={condStyle.color} />
+                  <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 border border-border-light max-sm:w-10 max-sm:h-10">
+                    {tool.photo ? (
+                      <img 
+                        src={`${import.meta.env.VITE_API_URL?.replace('/api', '')}/${tool.photo}`} 
+                        alt={tool.nama} 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-bg-secondary flex items-center justify-center">
+                        <Wrench size={22} color={condStyle.color} />
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -488,6 +532,93 @@ export default function ProjectTools() {
                 onClick={handleAssignUser}
                 loading={submitting}
                 variant="primary"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Return Tool Modal */}
+      {showReturnModal && selectedTool && (
+        <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => setShowReturnModal(false)}>
+          <div className="bg-bg-white rounded-xl w-full max-w-[480px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-border-light">
+              <h2 className="m-0 font-bold text-lg text-text-primary">{t('projectTools.modal.returnTitle', 'Return to Warehouse')}</h2>
+              <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted rounded-md flex hover:bg-bg-secondary hover:text-text-primary" onClick={() => setShowReturnModal(false)}>
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <div className="flex items-center gap-3 p-3 bg-bg-secondary rounded-md mb-6 font-semibold text-text-primary">
+                <Wrench size={20} color="var(--primary)" />
+                <span>{selectedTool.nama}</span>
+              </div>
+
+              {/* Photo Upload */}
+              <div className="flex flex-col items-center mb-6">
+                <label className="text-sm font-semibold text-text-primary mb-2 self-start">{t('projectTools.modal.conditionPhoto', 'Condition Photo')}</label>
+                <div 
+                  className="relative w-full h-48 rounded-xl border-2 border-dashed border-border-light overflow-hidden flex items-center justify-center cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => document.getElementById('return-photo-input')?.click()}
+                >
+                  {returnPhotoPreview ? (
+                    <img src={returnPhotoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center text-text-muted">
+                      <Camera size={32} />
+                      <span className="text-sm font-bold uppercase mt-2">Upload Return Photo</span>
+                    </div>
+                  )}
+                </div>
+                {!returnPhoto && (
+                  <span className="text-[10px] text-danger font-bold uppercase mt-1 self-start">* Photo is required on return</span>
+                )}
+                <input 
+                  id="return-photo-input"
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={handleReturnPhotoChange}
+                />
+              </div>
+
+              {/* Condition Select */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-text-primary">{t('projectTools.modal.returnCondition', 'Update Condition')}</label>
+                <div className="flex gap-2">
+                  {(['Baik', 'Maintenance', 'Rusak'] as const).map(k => {
+                    const cfg = CONDITION_CONFIG[k];
+                    const isActive = returnCondition === k;
+                    const Icon = cfg.icon;
+                    return (
+                      <button
+                        key={k}
+                        className={`flex-1 flex items-center justify-center gap-[6px] p-3 border-[1.5px] border-border rounded-md bg-bg-white text-text-secondary text-sm font-semibold cursor-pointer transition-all duration-150 hover:border-text-muted ${isActive ? '!font-bold' : ''}`}
+                        style={isActive ? { backgroundColor: cfg.bg, color: cfg.color, borderColor: cfg.color } : {}}
+                        onClick={() => setReturnCondition(k)}
+                        type="button"
+                      >
+                        <Icon size={14} />
+                        {k}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 p-5 border-t border-border-light">
+              <Button
+                title={t('projectTools.actions.cancel')}
+                onClick={() => setShowReturnModal(false)}
+                variant="outline"
+              />
+              <Button
+                title={t('projectTools.actions.confirmReturn', 'Confirm Return')}
+                onClick={confirmReturn}
+                loading={submitting}
+                variant="danger"
+                disabled={!returnPhoto}
               />
             </div>
           </div>

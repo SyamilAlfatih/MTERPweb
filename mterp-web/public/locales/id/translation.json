@@ -455,6 +455,14 @@
       "returnFailed": "Gagal mengembalikan alat",
       "unassignConfirm": "Lepaskan \"{{name}}\" dari {{user}}?",
       "unassignFailed": "Gagal melepas pengguna dari alat"
+    },
+    "modal": {
+      "returnTitle": "Kembalikan ke Gudang",
+      "conditionPhoto": "Foto Kondisi",
+      "returnCondition": "Perbarui Kondisi"
+    },
+    "actions": {
+      "confirmReturn": "Konfirmasi Kembali"
     }
   },
   "projectMaterials": {
@@ -726,7 +734,12 @@
       "dueDate": "Tenggat Waktu",
       "assignTo": "Tugaskan Kepada",
       "assignToOptional": "Tugaskan Kepada (opsional)",
-      "unassigned": "Tidak Ada"
+      "unassigned": "Tidak Ada",
+      "customMode": "Tugas Kustom",
+      "workItemMode": "Dari Item Pekerjaan",
+      "selectWorkItem": "Pilih Item Pekerjaan Proyek",
+      "loadingItems": "Memuat...",
+      "chooseWorkItem": "Pilih Item Pekerjaan"
     },
     "messages": {
       "loadFailed": "Gagal memuat tugas",

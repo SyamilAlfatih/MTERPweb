@@ -21,6 +21,7 @@ const taskSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   },
+  workItemId: String,
   status: {
     type: String,
     enum: ['pending', 'in_progress', 'completed', 'cancelled'],
