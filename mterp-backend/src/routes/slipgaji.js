@@ -157,7 +157,11 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
             'period.endDate': periodEnd,
         });
         if (existing) {
-            return res.status(400).json({ msg: 'Slip already exists for this worker and date range' });
+            // Return the existing slip instead of an error — idempotent behaviour
+            const populated = await SlipGaji.findById(existing._id)
+                .populate('workerId', 'fullName role paymentInfo email phone')
+                .populate('createdBy', 'fullName');
+            return res.status(200).json(populated);
         }
 
         // Get worker info
@@ -250,6 +254,16 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
     } catch (error) {
         console.error('Generate slip error:', error);
         if (error.code === 11000) {
+            // Race condition: another request created the same slip — return it
+            try {
+                const { workerId, startDate, endDate } = req.body;
+                const periodStart = toUTCStart(startDate);
+                const periodEnd = toUTCEnd(endDate);
+                const existing = await SlipGaji.findOne({ workerId, 'period.startDate': periodStart, 'period.endDate': periodEnd })
+                    .populate('workerId', 'fullName role paymentInfo email phone')
+                    .populate('createdBy', 'fullName');
+                if (existing) return res.status(200).json(existing);
+            } catch (_) { /* fall through */ }
             return res.status(400).json({ msg: 'Slip already exists for this period' });
         }
         res.status(500).json({ msg: 'Server error' });

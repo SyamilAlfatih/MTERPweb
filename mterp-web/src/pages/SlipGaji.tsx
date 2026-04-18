@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ArrowLeft,
@@ -217,8 +217,10 @@ export default function SlipGaji() {
     };
 
     /* ---- actions ---- */
+    const isGeneratingRef = useRef(false);
     const handleGenerate = async () => {
-        if (!genWorker) return;
+        if (!genWorker || isGeneratingRef.current) return;
+        isGeneratingRef.current = true;
         setGenerating(true);
         try {
             await api.post('/slipgaji/generate', {
@@ -238,8 +240,10 @@ export default function SlipGaji() {
             fetchSlips();
         } catch (err: any) {
             setAlertData({ visible: true, type: 'error', title: t('slipGaji.messages.genError'), message: err?.response?.data?.msg || t('slipGaji.messages.genErrorDesc') });
+        } finally {
+            isGeneratingRef.current = false;
+            setGenerating(false);
         }
-        setGenerating(false);
     };
 
     const handleAuthorize = async () => {
