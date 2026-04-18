@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, User, Clock, Filter,
   ChevronDown, DollarSign, X, Check, Building, Users,
-  Wallet, Loader, FileText, CalendarOff, Eye,
+  Wallet, Loader, FileText, CalendarOff, Eye, Ban, AlertTriangle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PhotoView } from 'react-photo-view';
@@ -33,6 +33,9 @@ interface AttendanceRecord {
   projectId?: { _id: string; nama: string };
   status: string;
   permit?: { reason: string; evidence: string; status: string };
+  invalidatedBy?: { fullName: string };
+  invalidatedAt?: string;
+  invalidatedReason?: string;
 }
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
@@ -100,6 +103,13 @@ export default function AttendanceLogs() {
 
   // Permit evidence modal
   const [evidenceModal, setEvidenceModal] = useState<{ open: boolean; url: string; worker: string }>({ open: false, url: '', worker: '' });
+
+  // Invalidate modal
+  const [invalidateModal, setInvalidateModal] = useState(false);
+  const [invalidateRecord, setInvalidateRecord] = useState<AttendanceRecord | null>(null);
+  const [invalidateStatus, setInvalidateStatus] = useState<'Absent' | 'Permit'>('Absent');
+  const [invalidateReason, setInvalidateReason] = useState('');
+  const [invalidating, setInvalidating] = useState(false);
 
   const isSupervisor = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
 
@@ -212,6 +222,31 @@ export default function AttendanceLogs() {
       await fetchRecords();
     } catch (err) { console.error('Payment failed', err); alert(t('attendanceLogs.messages.payFailed')); }
     finally { setPaying(false); }
+  };
+
+  const openInvalidateModal = (record: AttendanceRecord) => {
+    setInvalidateRecord(record);
+    setInvalidateStatus('Absent');
+    setInvalidateReason('');
+    setInvalidateModal(true);
+  };
+
+  const handleInvalidate = async () => {
+    if (!invalidateRecord) return;
+    setInvalidating(true);
+    try {
+      await api.put(`/attendance/${invalidateRecord._id}/invalidate`, {
+        newStatus: invalidateStatus,
+        reason: invalidateReason || 'Accidental check-in invalidated by supervisor',
+      });
+      setInvalidateModal(false);
+      setInvalidateRecord(null);
+      await fetchRecords();
+    } catch (err: any) {
+      alert(err?.response?.data?.msg || 'Failed to invalidate attendance');
+    } finally {
+      setInvalidating(false);
+    }
   };
 
   const formatDate = (dateStr: string) =>
@@ -471,13 +506,26 @@ export default function AttendanceLogs() {
                        ) : <div/>}
 
                        {isSupervisor && (
-                         <Button
-                           title="Edit Wage"
-                           icon={DollarSign}
-                           onClick={() => openWageModal(record)}
-                           variant="outline"
-                           className="!h-10 text-xs px-3 py-1"
-                         />
+                         <div className="flex items-center gap-2">
+                           {/* Invalidate button — only for Present/Late with a check-in */}
+                           {record.checkIn?.time && ['Present', 'Late'].includes(record.status) && (
+                             <button
+                               className="flex items-center gap-1.5 h-10 px-3 border-2 border-red-200 bg-red-50 text-red-600 rounded-xl text-xs font-black uppercase tracking-wide hover:bg-red-100 hover:border-red-400 transition-all cursor-pointer active:scale-95"
+                               onClick={() => openInvalidateModal(record)}
+                               title="Invalidate accidental check-in"
+                             >
+                               <Ban size={14} />
+                               Invalidate
+                             </button>
+                           )}
+                           <Button
+                             title="Edit Wage"
+                             icon={DollarSign}
+                             onClick={() => openWageModal(record)}
+                             variant="outline"
+                             className="!h-10 text-xs px-3 py-1"
+                           />
+                         </div>
                        )}
                     </div>
                   </Card>
@@ -586,6 +634,119 @@ export default function AttendanceLogs() {
             <PhotoView src={evidenceModal.url}>
               <img src={evidenceModal.url} alt="Permit Evidence" className="w-full block max-h-[70vh] object-contain bg-[#f3f3f3] cursor-pointer" />
             </PhotoView>
+          </div>
+        </div>
+      )}
+
+      {/* ===== INVALIDATE MODAL ===== */}
+      {invalidateModal && invalidateRecord && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[1050] p-4 sm:p-0 animate-in fade-in duration-200" onClick={() => setInvalidateModal(false)}>
+          <div className="bg-bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-[460px] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-5 sm:zoom-in-95" onClick={e => e.stopPropagation()}>
+            
+            {/* Header */}
+            <div className="p-6 border-b-2 border-red-100 bg-red-50 flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle size={24} className="text-red-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-black text-red-700 m-0 uppercase tracking-tight">Invalidate Check-in</h3>
+                <p className="text-xs font-semibold text-red-500 m-0">Accidental / ghost check-in correction</p>
+              </div>
+              <button className="w-8 h-8 rounded-full bg-red-100 border-none flex items-center justify-center text-red-500 hover:bg-red-200 transition-colors cursor-pointer" onClick={() => setInvalidateModal(false)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-6 flex flex-col gap-5">
+              {/* Worker context */}
+              <div className="flex items-center gap-3 p-4 bg-bg-secondary rounded-2xl border-2 border-border-light">
+                <div className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center font-black text-lg shrink-0">
+                  {invalidateRecord.userId.fullName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1">
+                  <span className="block font-black text-text-primary">{invalidateRecord.userId.fullName}</span>
+                  <span className="text-xs font-bold text-text-muted uppercase">{invalidateRecord.userId.role} · {formatDate(invalidateRecord.date)}</span>
+                </div>
+                <div className="text-right">
+                  <span className="block text-xs font-bold text-text-muted">Checked in at</span>
+                  <span className="text-sm font-black text-text-primary">{invalidateRecord.checkIn?.time ? formatTime(invalidateRecord.checkIn.time) : '--:--'}</span>
+                </div>
+              </div>
+
+              {/* New Status Selection */}
+              <div>
+                <label className="block text-[10px] font-black text-text-muted uppercase tracking-widest mb-3">Mark as</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-black text-sm uppercase cursor-pointer transition-all active:scale-95 ${
+                      invalidateStatus === 'Absent'
+                        ? 'border-red-500 bg-red-50 text-red-600 shadow-md shadow-red-100'
+                        : 'border-border-light bg-bg-white text-text-muted hover:border-red-300'
+                    }`}
+                    onClick={() => setInvalidateStatus('Absent')}
+                  >
+                    <Ban size={22} />
+                    Absent
+                  </button>
+                  <button
+                    className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-black text-sm uppercase cursor-pointer transition-all active:scale-95 ${
+                      invalidateStatus === 'Permit'
+                        ? 'border-purple-500 bg-purple-50 text-purple-600 shadow-md shadow-purple-100'
+                        : 'border-border-light bg-bg-white text-text-muted hover:border-purple-300'
+                    }`}
+                    onClick={() => setInvalidateStatus('Permit')}
+                  >
+                    <CalendarOff size={22} />
+                    Permit
+                  </button>
+                </div>
+              </div>
+
+              {/* Reason */}
+              <div>
+                <label className="block text-[10px] font-black text-text-muted uppercase tracking-widest mb-2">Reason / Note</label>
+                <textarea
+                  className="w-full p-4 border-2 border-border-light rounded-2xl text-sm font-semibold text-text-primary bg-bg-white outline-none transition-all focus:border-red-400 resize-none placeholder:text-text-muted"
+                  rows={3}
+                  value={invalidateReason}
+                  onChange={e => setInvalidateReason(e.target.value)}
+                  placeholder="e.g. Worker was not physically present at site despite check-in..."
+                />
+              </div>
+
+              {/* Warning note */}
+              <div className="flex items-start gap-2.5 p-3.5 bg-amber-50 border-2 border-amber-200 rounded-xl">
+                <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs font-semibold text-amber-700 m-0 leading-relaxed">
+                  This will <strong>clear the check-in and check-out records</strong> for this worker on {formatDate(invalidateRecord.date)} and mark them as <strong>{invalidateStatus}</strong>. This action is logged.
+                </p>
+              </div>
+            </div>
+
+            {/* Action footer */}
+            <div className="p-4 sm:p-6 border-t-2 border-border-light bg-bg-white flex gap-3">
+              <button
+                className="flex-1 py-4 border-2 border-border-light bg-bg-secondary rounded-2xl text-sm font-black text-text-secondary uppercase tracking-wide cursor-pointer hover:bg-border-light transition-colors"
+                onClick={() => setInvalidateModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className={`flex-[2] flex items-center justify-center gap-2 py-4 border-none rounded-2xl text-sm font-black text-white uppercase tracking-wide cursor-pointer transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed ${
+                  invalidateStatus === 'Absent'
+                    ? 'bg-gradient-to-r from-red-600 to-red-500 shadow-lg shadow-red-200'
+                    : 'bg-gradient-to-r from-purple-600 to-purple-500 shadow-lg shadow-purple-200'
+                }`}
+                onClick={handleInvalidate}
+                disabled={invalidating}
+              >
+                {invalidating ? (
+                  <><Loader size={16} className="animate-spin" /> Processing...</>
+                ) : (
+                  <><Ban size={16} /> Invalidate as {invalidateStatus}</>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
