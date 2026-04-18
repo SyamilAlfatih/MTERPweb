@@ -21,17 +21,29 @@ const router = express.Router();
     }
 })();
 
-// Helper: generate slip number from dates
-const generateSlipNumber = async (startDate, endDate) => {
+// Helper: generate slip number from dates (deletion-safe: uses max sequence, not count)
+const generateSlipNumber = async (startDate) => {
     const s = new Date(startDate);
     const yy = s.getFullYear();
     const mm = String(s.getMonth() + 1).padStart(2, '0');
     const dd = String(s.getDate()).padStart(2, '0');
-    const count = await SlipGaji.countDocuments({
-        'period.startDate': { $gte: new Date(yy, s.getMonth(), 1) },
-        'period.endDate': { $lte: new Date(yy, s.getMonth() + 1, 0, 23, 59, 59) },
-    });
-    const seq = String(count + 1).padStart(3, '0');
+
+    // Find the highest sequence number already used this month
+    const prefix = `SG-${yy}${mm}`;
+    const existing = await SlipGaji.find(
+        { slipNumber: { $regex: `^${prefix}` } },
+        { slipNumber: 1 }
+    ).lean();
+
+    let maxSeq = 0;
+    for (const doc of existing) {
+        // slipNumber format: SG-YYYYMMDD-NNN
+        const parts = doc.slipNumber.split('-');
+        const seq = parseInt(parts[2], 10);
+        if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+    }
+
+    const seq = String(maxSeq + 1).padStart(3, '0');
     return `SG-${yy}${mm}${dd}-${seq}`;
 };
 
@@ -218,7 +230,7 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
         const totalDeductions = (deductions || 0) + kasbonDeduction;
         const netPay = grossPay - totalDeductions;
 
-        const slipNumber = await generateSlipNumber(periodStart, periodEnd);
+        const slipNumber = await generateSlipNumber(periodStart);
 
         const slip = new SlipGaji({
             slipNumber,
