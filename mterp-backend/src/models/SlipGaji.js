@@ -22,6 +22,7 @@ const slipGajiSchema = new mongoose.Schema({
         absentDays: { type: Number, default: 0 },
         permitDays: { type: Number, default: 0 },
         totalHours: { type: Number, default: 0 },
+        totalOvertimeHours: { type: Number, default: 0 },
     },
     earnings: {
         dailyRate: { type: Number, default: 0 },

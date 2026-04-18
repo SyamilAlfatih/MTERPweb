@@ -120,6 +120,7 @@ router.get('/recap', auth, async (req, res) => {
       late: attendance.filter(a => a.status === 'Late').length,
       absent: attendance.filter(a => a.status === 'Absent').length,
       totalHours: 0,
+      totalOvertimeHours: 0,
       wageMultiplierTotal: 0,
     };
     
@@ -130,7 +131,15 @@ router.get('/recap', auth, async (req, res) => {
         summary.totalHours += hours;
       }
       summary.wageMultiplierTotal += a.wageMultiplier || 1;
+      // Sum overtime hours
+      if (a.overtimePay > 0 && a.hourlyRate > 0) {
+        summary.totalOvertimeHours += a.overtimePay / a.hourlyRate;
+      } else if (a.overtimePay > 0 && a.dailyRate > 0) {
+        summary.totalOvertimeHours += a.overtimePay / (a.dailyRate / 8);
+      }
     });
+    summary.totalHours = Math.round(summary.totalHours * 10) / 10;
+    summary.totalOvertimeHours = Math.round(summary.totalOvertimeHours * 10) / 10;
     
     // Calculate total payment
     summary.totalPayment = attendance.reduce((sum, a) => {

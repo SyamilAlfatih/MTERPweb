@@ -76,6 +76,7 @@ interface SlipData {
         absentDays: number;
         permitDays: number;
         totalHours: number;
+        totalOvertimeHours: number;
     };
     earnings: {
         dailyRate: number;
@@ -286,7 +287,10 @@ export default function SlipGaji() {
             workerRole: slip.workerId?.role || '',
             periodStart: slip.period.startDate,
             periodEnd: slip.period.endDate,
-            attendance: slip.attendanceSummary,
+            attendance: {
+                ...slip.attendanceSummary,
+                totalOvertimeHours: slip.attendanceSummary.totalOvertimeHours || 0,
+            },
             earnings: slip.earnings,
             paymentInfo: slip.workerPaymentInfo,
             authorization: {
@@ -391,6 +395,12 @@ export default function SlipGaji() {
                                     <Clock size={12} />
                                     <span>{slip.attendanceSummary.presentDays} {t('slipGaji.card.days')}</span>
                                 </div>
+                                {(slip.attendanceSummary.totalOvertimeHours || 0) > 0 && (
+                                    <div className="flex items-center gap-1 text-xs text-amber-600 font-semibold">
+                                        <Clock size={12} />
+                                        <span>{slip.attendanceSummary.totalOvertimeHours.toFixed(1)}h OT</span>
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-1 text-xs text-text-secondary">
                                     <Briefcase size={12} />
                                     <span>{formatRp(slip.earnings.totalDailyWage)}</span>
@@ -657,6 +667,12 @@ export default function SlipGaji() {
                                     <span className="block text-lg font-bold text-text-primary">{selectedSlip.attendanceSummary.totalHours}h</span>
                                     <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.totalHours')}</span>
                                 </div>
+                                {(selectedSlip.attendanceSummary.totalOvertimeHours || 0) > 0 && (
+                                    <div className="text-center p-3 bg-amber-50 rounded-md col-span-3 border border-amber-100">
+                                        <span className="block text-lg font-bold text-amber-600">{selectedSlip.attendanceSummary.totalOvertimeHours.toFixed(1)}h</span>
+                                        <span className="text-[9px] font-semibold text-amber-500 uppercase tracking-[0.3px]">Jam Lembur</span>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Earnings Table */}

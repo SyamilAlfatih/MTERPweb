@@ -178,9 +178,16 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
         const permitDays = attendanceRecords.filter(a => a.status === 'Permit').length;
 
         let totalHours = 0;
+        let totalOvertimeHours = 0;
         attendanceRecords.forEach(a => {
             if (a.checkIn?.time && a.checkOut?.time) {
                 totalHours += (new Date(a.checkOut.time) - new Date(a.checkIn.time)) / (1000 * 60 * 60);
+            }
+            // Sum up overtime hours derived from overtimePay and hourlyRate
+            if (a.overtimePay > 0 && a.hourlyRate > 0) {
+                totalOvertimeHours += a.overtimePay / a.hourlyRate;
+            } else if (a.overtimePay > 0 && a.dailyRate > 0) {
+                totalOvertimeHours += a.overtimePay / (a.dailyRate / 8);
             }
         });
 
@@ -213,7 +220,7 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
             slipNumber,
             workerId,
             period: { startDate: periodStart, endDate: periodEnd },
-            attendanceSummary: { totalDays, presentDays, lateDays, absentDays, permitDays, totalHours: Math.round(totalHours * 10) / 10 },
+            attendanceSummary: { totalDays, presentDays, lateDays, absentDays, permitDays, totalHours: Math.round(totalHours * 10) / 10, totalOvertimeHours: Math.round(totalOvertimeHours * 10) / 10 },
             earnings: {
                 dailyRate: avgDailyRate,
                 totalDailyWage,

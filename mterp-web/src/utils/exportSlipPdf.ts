@@ -21,6 +21,7 @@ interface SlipPdfData {
     absentDays: number;
     permitDays: number;
     totalHours: number;
+    totalOvertimeHours?: number;
   };
   earnings: {
     dailyRate: number;
@@ -225,7 +226,10 @@ export async function exportSlipToPdf(data: SlipPdfData) {
     { label: 'Terlambat', val: String(att.lateDays), color: [217, 119, 6] as const },
     { label: 'Absen', val: String(att.absentDays), color: RED },
     { label: 'Izin', val: String(att.permitDays), color: [124, 58, 237] as const },
-    { label: 'Jam', val: `${att.totalHours}h`, color: DARK },
+    { label: 'Jam Kerja', val: `${att.totalHours}h`, color: DARK },
+    ...(att.totalOvertimeHours && att.totalOvertimeHours > 0
+      ? [{ label: 'Jam Lembur', val: `${att.totalOvertimeHours.toFixed(1)}h`, color: [217, 119, 6] as const }]
+      : []),
   ];
 
   const cellW = cw / attItems.length;

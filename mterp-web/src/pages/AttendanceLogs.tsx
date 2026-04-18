@@ -58,6 +58,7 @@ interface RecapSummary {
   late: number;
   absent: number;
   totalHours: number;
+  totalOvertimeHours: number;
   wageMultiplierTotal: number;
   totalPayment: number;
 }
@@ -402,6 +403,14 @@ export default function AttendanceLogs() {
           </Card>
 
           <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center">
+             <span className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-2">
+               <Clock size={20} />
+             </span>
+             <span className="text-2xl font-black text-amber-600">{(summary.totalOvertimeHours || 0).toFixed(1)}h</span>
+             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Overtime Hours</span>
+          </Card>
+
+          <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center col-span-2 md:col-span-4">
              <span className="w-10 h-10 rounded-full bg-primary-bg flex items-center justify-center text-primary mb-2">
                <DollarSign size={20} />
              </span>
