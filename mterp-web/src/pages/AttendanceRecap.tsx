@@ -19,9 +19,10 @@ interface WorkerRecap {
   role: string;
   position: string;
   dailyRate: number;
-  days: Record<string, { status: string; score: number } | null>;
+  days: Record<string, { status: string; score: number; overtimeHours: number } | null>;
   total: string;
   totalScore: number;
+  totalOvertimeHours: number;
 }
 
 interface RecapSummary {
@@ -29,6 +30,7 @@ interface RecapSummary {
   avgAttendance: number;
   siteTarget: number;
   pendingPayroll: number;
+  totalOvertimeHours: number;
   payrollCycleStart: string;
   payrollCycleEnd: string;
 }
@@ -133,7 +135,7 @@ export default function AttendanceRecap() {
     return `Rp ${val}`;
   };
 
-  const renderStatusIcon = (dayData: { status: string; score: number } | null) => {
+  const renderStatusIcon = (dayData: { status: string; score: number; overtimeHours: number } | null) => {
     if (!dayData) {
       return <Minus size={18} className="text-text-muted opacity-40" />;
     }
@@ -404,6 +406,11 @@ export default function AttendanceRecap() {
                     {t('attendanceRecap.table.total')}
                   </span>
                 </th>
+                <th className="p-4 text-center w-[70px]">
+                  <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">
+                    OT Hrs
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-light">
@@ -453,8 +460,13 @@ export default function AttendanceRecap() {
                     </td>
                     {dateColumns.map((date) => (
                       <td key={date} className="p-2 text-center">
-                        <div className="flex justify-center">
+                        <div className="flex flex-col items-center gap-0.5">
                           {renderStatusIcon(worker.days[date])}
+                          {(worker.days[date]?.overtimeHours || 0) > 0 && (
+                            <span className="text-[9px] font-black text-amber-600 leading-none tabular-nums">
+                              +{worker.days[date]!.overtimeHours.toFixed(1)}h
+                            </span>
+                          )}
                         </div>
                       </td>
                     ))}
@@ -462,6 +474,15 @@ export default function AttendanceRecap() {
                       <span className="text-sm font-black text-primary tabular-nums">
                         {worker.total}
                       </span>
+                    </td>
+                    <td className="p-4 text-center">
+                      {(worker.totalOvertimeHours || 0) > 0 ? (
+                        <span className="text-sm font-black text-amber-600 tabular-nums">
+                          {worker.totalOvertimeHours.toFixed(1)}h
+                        </span>
+                      ) : (
+                        <span className="text-xs text-text-muted opacity-40">—</span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -538,7 +559,7 @@ export default function AttendanceRecap() {
                 { label: t('attendanceRecap.status.permit'), icon: 'Permit' },
               ].map((item) => (
                 <div key={item.label} className="flex items-center gap-3">
-                  {renderStatusIcon({ status: item.icon, score: 1 })}
+                  {renderStatusIcon({ status: item.icon, score: 1, overtimeHours: 0 })}
                   <span className="text-[11px] font-bold text-text-secondary leading-tight">{item.label}</span>
                 </div>
               ))}
@@ -595,6 +616,29 @@ export default function AttendanceRecap() {
               </span>
             </div>
           </Card>
+
+          {/* Overtime Hours Card */}
+          {(summary.totalOvertimeHours || 0) > 0 && (
+            <Card className="p-5 border-2 border-amber-200 bg-amber-50 shadow-sm flex flex-col justify-between">
+              <div>
+                <h3 className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">
+                  Total Overtime Hours
+                </h3>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-amber-600 tabular-nums">
+                    {summary.totalOvertimeHours.toFixed(1)}
+                  </span>
+                  <span className="text-sm font-bold text-amber-500">hrs</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mt-4 text-amber-500">
+                <Clock size={14} />
+                <span className="text-[11px] font-bold leading-none uppercase">
+                  Across {summary.totalWorkforce} worker{summary.totalWorkforce !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </Card>
+          )}
         </div>
       )}
     </div>

@@ -370,6 +370,7 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
           dailyRate: record.dailyRate || 0,
           days: {},
           totalScore: 0,
+          totalOvertimeHours: 0,
         };
       }
       const localMs = new Date(record.date).getTime() + (TZ_OFFSET_HOURS * 60 * 60 * 1000);
@@ -381,17 +382,30 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
       else if (record.status === 'Absent') score = 0;
       else if (record.status === 'Permit') score = 0;
 
+      // Calculate overtime hours for this record
+      let overtimeHours = 0;
+      if (record.overtimePay > 0 && record.hourlyRate > 0) {
+        overtimeHours = Math.round((record.overtimePay / record.hourlyRate) * 10) / 10;
+      } else if (record.overtimePay > 0 && record.dailyRate > 0) {
+        overtimeHours = Math.round((record.overtimePay / (record.dailyRate / 8)) * 10) / 10;
+      }
+
       workerMap[uid].days[dateKey] = {
         status: record.status,
         score,
+        overtimeHours,
       };
       workerMap[uid].totalScore += score;
       if (record.dailyRate > 0) workerMap[uid].dailyRate = record.dailyRate;
+
+      // Accumulate overtime hours per worker
+      workerMap[uid].totalOvertimeHours += overtimeHours;
     });
 
     // 5. Convert to array and format total
     let workers = Object.values(workerMap).map(w => ({
       ...w,
+      totalOvertimeHours: Math.round((w.totalOvertimeHours || 0) * 10) / 10,
       total: `${w.totalScore % 1 === 0 ? w.totalScore : w.totalScore.toFixed(1)}/${dateColumns.length}`,
     }));
 
@@ -415,6 +429,7 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
     const pendingPayroll = allRecords
       .filter(r => (r.paymentStatus || 'Unpaid') === 'Unpaid')
       .reduce((sum, r) => sum + (r.dailyRate || 0) + (r.overtimePay || 0), 0);
+    const totalOvertimeHours = Math.round(workers.reduce((sum, w) => sum + (w.totalOvertimeHours || 0), 0) * 10) / 10;
 
     // 9. Paginate
     const pageNum = parseInt(page);
@@ -430,6 +445,7 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
         avgAttendance,
         siteTarget: 90,
         pendingPayroll,
+        totalOvertimeHours,
         payrollCycleStart: startDate,
         payrollCycleEnd: endDate,
       },
