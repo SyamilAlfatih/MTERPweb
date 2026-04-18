@@ -685,7 +685,7 @@ export default function MyPayments() {
                 {t('myPayments.slip.detail.btnClose')}
               </button>
               <button
-                onClick={() => exportSlipToPdf({
+                onClick={async () => await exportSlipToPdf({
                   slipNumber: selectedSlip.slipNumber,
                   workerName: selectedSlip.workerId?.fullName || 'Worker',
                   workerRole: selectedSlip.workerId?.role || '',
@@ -695,9 +695,11 @@ export default function MyPayments() {
                   earnings: selectedSlip.earnings,
                   paymentInfo: selectedSlip.workerPaymentInfo,
                   authorization: {
-                    directorName: selectedSlip.authorization.directorName || undefined,
+                    directorSigned: !!selectedSlip.authorization.directorPassphrase,
+                    directorName: selectedSlip.authorization.directorName,
                     directorSignedAt: selectedSlip.authorization.directorSignedAt || undefined,
-                    ownerName: selectedSlip.authorization.ownerName || undefined,
+                    ownerSigned: !!selectedSlip.authorization.ownerPassphrase,
+                    ownerName: selectedSlip.authorization.ownerName,
                     ownerSignedAt: selectedSlip.authorization.ownerSignedAt || undefined,
                   },
                   notes: selectedSlip.notes,

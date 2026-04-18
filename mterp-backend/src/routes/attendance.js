@@ -628,7 +628,56 @@ router.post('/pay', auth, authorize('owner', 'president_director', 'operational_
   }
 });
 
+// PUT /api/attendance/:id/invalidate - Supervisor invalidates accidental check-in
+// Sets status to Absent or Permit and clears check-in/check-out data
+router.put('/:id/invalidate', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const { newStatus, reason } = req.body;
+
+    if (!['Absent', 'Permit'].includes(newStatus)) {
+      return res.status(400).json({ msg: 'newStatus must be "Absent" or "Permit"' });
+    }
+
+    const attendance = await Attendance.findById(req.params.id);
+    if (!attendance) return res.status(404).json({ msg: 'Attendance record not found' });
+
+    // Clear check-in and check-out data
+    attendance.checkIn = undefined;
+    attendance.checkOut = undefined;
+
+    // Set new status
+    attendance.status = newStatus;
+
+    // If invalidated as Permit, attach a minimal permit record with the reason
+    if (newStatus === 'Permit') {
+      attendance.permit = {
+        reason: reason || 'Invalidated by supervisor',
+        status: 'Approved', // auto-approved since supervisor is doing this
+      };
+    } else {
+      // Clear any existing permit data
+      attendance.permit = undefined;
+    }
+
+    // Audit trail
+    attendance.invalidatedBy = req.user._id;
+    attendance.invalidatedAt = new Date();
+    attendance.invalidatedReason = reason || 'Accidental check-in invalidated by supervisor';
+
+    await attendance.save();
+
+    res.json({
+      msg: `Attendance invalidated as ${newStatus}`,
+      attendance,
+    });
+  } catch (error) {
+    console.error('Invalidate attendance error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 // Legacy POST /api/attendance - for backwards compatibility
+
 router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) => {
   try {
     const { wageType, projectId, lat, lng } = req.body;

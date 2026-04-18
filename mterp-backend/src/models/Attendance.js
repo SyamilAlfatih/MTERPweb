@@ -74,6 +74,13 @@ const attendanceSchema = new mongoose.Schema({
       default: 'Pending',
     }
   },
+  // Invalidation audit trail (supervisor correcting accidental check-ins)
+  invalidatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  invalidatedAt: Date,
+  invalidatedReason: String,
   createdAt: {
     type: Date,
     default: Date.now,
