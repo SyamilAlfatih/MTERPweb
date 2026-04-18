@@ -268,9 +268,12 @@ export default function SlipGaji() {
     const handleDelete = async (id: string) => {
         try {
             await api.delete(`/slipgaji/${id}`);
+            // Immediately remove from local state so the UI updates without waiting for re-fetch
+            setSlips(prev => prev.filter(s => s._id !== id));
             setAlertData({ visible: true, type: 'success', title: t('slipGaji.messages.delSuccess'), message: t('slipGaji.messages.delSuccessDesc') });
-            fetchSlips();
             if (selectedSlip?._id === id) { setDetailModal(false); setSelectedSlip(null); }
+            // Re-fetch in background to sync with server
+            fetchSlips();
         } catch (err: any) {
             setAlertData({ visible: true, type: 'error', title: t('slipGaji.messages.delError'), message: err?.response?.data?.msg || t('slipGaji.messages.delErrorDesc') });
         }
