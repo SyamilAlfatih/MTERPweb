@@ -1053,6 +1053,12 @@
       "delSuccessDesc": "Draf slip telah dihapus.",
       "delError": "Error",
       "delErrorDesc": "Gagal menghapus"
+    },
+    "columns": {
+      "draft": "Draf",
+      "noDraft": "Tidak ada slip draf",
+      "approved": "Disetujui (Ditandatangani)",
+      "noApproved": "Tidak ada slip yang disetujui"
     }
   },
   "profile": {

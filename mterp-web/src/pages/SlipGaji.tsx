@@ -279,8 +279,8 @@ export default function SlipGaji() {
         return false;
     };
 
-    const handleExportPdf = (slip: SlipData) => {
-        exportSlipToPdf({
+    const handleExportPdf = async (slip: SlipData) => {
+        await exportSlipToPdf({
             slipNumber: slip.slipNumber,
             workerName: slip.workerId?.fullName || 'Worker',
             workerRole: slip.workerId?.role || '',
@@ -290,9 +290,11 @@ export default function SlipGaji() {
             earnings: slip.earnings,
             paymentInfo: slip.workerPaymentInfo,
             authorization: {
-                directorName: slip.authorization.directorName || undefined,
+                directorSigned: !!slip.authorization.directorPassphrase,
+                directorName: slip.authorization.directorName,
                 directorSignedAt: slip.authorization.directorSignedAt || undefined,
-                ownerName: slip.authorization.ownerName || undefined,
+                ownerSigned: !!slip.authorization.ownerPassphrase,
+                ownerName: slip.authorization.ownerName,
                 ownerSignedAt: slip.authorization.ownerSignedAt || undefined,
             },
             notes: slip.notes,
@@ -300,7 +302,7 @@ export default function SlipGaji() {
     };
 
     return (
-        <div className="p-6 max-w-[900px] mx-auto">
+        <div className="p-6 max-w-[1100px] mx-auto">
             <Alert
                 visible={alertData.visible}
                 type={alertData.type}
@@ -341,7 +343,7 @@ export default function SlipGaji() {
                 </button>
             </div>
 
-            {/* Slips List */}
+            {/* Slips List — Two Column Layout */}
             {loading ? (
                 <div className="flex flex-col items-center justify-center p-10 gap-3 text-text-muted">
                     <Loader2 size={32} className="animate-spin" />
@@ -356,76 +358,127 @@ export default function SlipGaji() {
                         <span>{t('slipGaji.empty.btnGenerate')}</span>
                     </button>
                 </Card>
-            ) : (
-                <div className="flex flex-col gap-3">
-                    {slips.map((slip) => {
-                        const badge = STATUS_BADGE[slip.status] || STATUS_BADGE.draft;
-                        return (
-                            <Card key={slip._id} className="!p-4 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md" onClick={() => openDetail(slip)}>
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ background: badge.bg, color: badge.color }}>
-                                            {slip.workerId?.fullName?.[0]?.toUpperCase() || 'W'}
-                                        </div>
-                                        <div>
-                                            <span className="block text-sm font-semibold text-text-primary">{slip.workerId?.fullName || t('slipGaji.card.worker')}</span>
-                                            <span className="block text-[10px] text-text-muted font-mono">{slip.slipNumber}</span>
-                                        </div>
-                                    </div>
-                                    <span className="text-[9px] font-bold px-2.5 py-[3px] rounded-full uppercase tracking-[0.3px] whitespace-nowrap" style={{ color: badge.color, background: badge.bg }}>
-                                        {t(`slipGaji.status.${badge.labelKey}`)}
-                                    </span>
-                                </div>
+            ) : (() => {
+                const draftSlips = slips.filter(s => s.status === 'draft');
+                const approvedSlips = slips.filter(s => s.status === 'authorized' || s.status === 'issued');
 
-                                <div className="flex items-center gap-1.5 text-[0.72em] text-text-secondary pt-1 pb-0.5">
-                                    <Calendar size={11} />
-                                    <span>{formatDateRange(slip.period.startDate, slip.period.endDate)}</span>
+                const SlipCard = ({ slip }: { slip: SlipData }) => {
+                    const badge = STATUS_BADGE[slip.status] || STATUS_BADGE.draft;
+                    return (
+                        <Card key={slip._id} className="!p-4 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md" onClick={() => openDetail(slip)}>
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ background: badge.bg, color: badge.color }}>
+                                        {slip.workerId?.fullName?.[0]?.toUpperCase() || 'W'}
+                                    </div>
+                                    <div>
+                                        <span className="block text-sm font-semibold text-text-primary">{slip.workerId?.fullName || t('slipGaji.card.worker')}</span>
+                                        <span className="block text-[10px] text-text-muted font-mono">{slip.slipNumber}</span>
+                                    </div>
                                 </div>
+                                <span className="text-[9px] font-bold px-2.5 py-[3px] rounded-full uppercase tracking-[0.3px] whitespace-nowrap" style={{ color: badge.color, background: badge.bg }}>
+                                    {t(`slipGaji.status.${badge.labelKey}`)}
+                                </span>
+                            </div>
 
-                                <div className="flex items-center gap-4 pb-3 border-b border-border-light mb-3">
-                                    <div className="flex items-center gap-1 text-xs text-text-secondary">
-                                        <Clock size={12} />
-                                        <span>{slip.attendanceSummary.presentDays} {t('slipGaji.card.days')}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 text-xs text-text-secondary">
-                                        <Briefcase size={12} />
-                                        <span>{formatRp(slip.earnings.totalDailyWage)}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 text-xs text-text-secondary ml-auto font-bold !text-primary !text-sm">
-                                        <DollarSign size={12} />
-                                        <span>{formatRp(slip.earnings.netPay)}</span>
-                                    </div>
-                                </div>
+                            <div className="flex items-center gap-1.5 text-[0.72em] text-text-secondary pt-1 pb-0.5">
+                                <Calendar size={11} />
+                                <span>{formatDateRange(slip.period.startDate, slip.period.endDate)}</span>
+                            </div>
 
-                                <div className="flex items-center justify-between">
-                                    <div className="flex gap-3">
-                                        <div className={`flex items-center gap-1 text-[10px] text-text-muted ${slip.authorization.directorPassphrase ? 'text-[#059669] [&_svg]:text-[#059669]' : ''}`}>
-                                            <Shield size={10} />
-                                            <span>{t('slipGaji.modals.detail.digitalAuth.director')}</span>
-                                        </div>
-                                        <div className={`flex items-center gap-1 text-[10px] text-text-muted ${slip.authorization.ownerPassphrase ? 'text-[#059669] [&_svg]:text-[#059669]' : ''}`}>
-                                            <Shield size={10} />
-                                            <span>{t('slipGaji.modals.detail.digitalAuth.owner')}</span>
-                                        </div>
+                            <div className="flex items-center gap-4 pb-3 border-b border-border-light mb-3">
+                                <div className="flex items-center gap-1 text-xs text-text-secondary">
+                                    <Clock size={12} />
+                                    <span>{slip.attendanceSummary.presentDays} {t('slipGaji.card.days')}</span>
+                                </div>
+                                <div className="flex items-center gap-1 text-xs text-text-secondary">
+                                    <Briefcase size={12} />
+                                    <span>{formatRp(slip.earnings.totalDailyWage)}</span>
+                                </div>
+                                <div className="flex items-center gap-1 text-xs text-text-secondary ml-auto font-bold !text-primary !text-sm">
+                                    <DollarSign size={12} />
+                                    <span>{formatRp(slip.earnings.netPay)}</span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                                <div className="flex gap-3">
+                                    <div className={`flex items-center gap-1 text-[10px] text-text-muted ${slip.authorization.directorPassphrase ? 'text-[#059669] [&_svg]:text-[#059669]' : ''}`}>
+                                        <Shield size={10} />
+                                        <span>{t('slipGaji.modals.detail.digitalAuth.director')}</span>
                                     </div>
-                                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                                        {canSign(slip) && (
-                                            <button className="w-7 h-7 border border-border bg-bg-white rounded-sm flex items-center justify-center cursor-pointer transition-all text-[#0D9488] hover:bg-[#CCFBF1] hover:border-[#0D9488]" onClick={() => openAuth(slip._id)} title="Sign">
-                                                <Lock size={14} />
-                                            </button>
-                                        )}
-                                        {slip.status === 'draft' && (
-                                            <button className="w-7 h-7 border border-border bg-bg-white rounded-sm flex items-center justify-center cursor-pointer transition-all text-danger hover:bg-[#FEE2E2] hover:border-danger" onClick={() => handleDelete(slip._id)} title="Delete">
-                                                <Trash2 size={14} />
-                                            </button>
-                                        )}
+                                    <div className={`flex items-center gap-1 text-[10px] text-text-muted ${slip.authorization.ownerPassphrase ? 'text-[#059669] [&_svg]:text-[#059669]' : ''}`}>
+                                        <Shield size={10} />
+                                        <span>{t('slipGaji.modals.detail.digitalAuth.owner')}</span>
                                     </div>
                                 </div>
-                            </Card>
-                        );
-                    })}
-                </div>
-            )}
+                                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                    {canSign(slip) && (
+                                        <button className="w-7 h-7 border border-border bg-bg-white rounded-sm flex items-center justify-center cursor-pointer transition-all text-[#0D9488] hover:bg-[#CCFBF1] hover:border-[#0D9488]" onClick={() => openAuth(slip._id)} title="Sign">
+                                            <Lock size={14} />
+                                        </button>
+                                    )}
+                                    {slip.status === 'draft' && (
+                                        <button className="w-7 h-7 border border-border bg-bg-white rounded-sm flex items-center justify-center cursor-pointer transition-all text-danger hover:bg-[#FEE2E2] hover:border-danger" onClick={() => handleDelete(slip._id)} title="Delete">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </Card>
+                    );
+                };
+
+                return (
+                    <div className="grid grid-cols-2 gap-5 items-start">
+                        {/* Draft Column */}
+                        <div className="flex flex-col gap-3">
+                            <div className="flex items-center gap-2 pb-2 border-b-2 border-dashed border-[#D97706]">
+                                <div className="w-7 h-7 rounded-md bg-[#FEF3C7] flex items-center justify-center shrink-0">
+                                    <FileText size={14} color="#D97706" />
+                                </div>
+                                <span className="text-xs font-bold text-[#D97706] uppercase tracking-[0.4px]">
+                                    {t('slipGaji.columns.draft', 'Draft')}
+                                </span>
+                                <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FEF3C7] text-[#D97706]">
+                                    {draftSlips.length}
+                                </span>
+                            </div>
+                            {draftSlips.length === 0 ? (
+                                <div className="flex flex-col items-center gap-2 py-8 text-text-muted text-center border border-dashed border-border-light rounded-lg bg-bg-secondary">
+                                    <FileText size={28} color="var(--text-muted)" />
+                                    <span className="text-xs">{t('slipGaji.columns.noDraft', 'No draft slips')}</span>
+                                </div>
+                            ) : (
+                                draftSlips.map(slip => <SlipCard key={slip._id} slip={slip} />)
+                            )}
+                        </div>
+
+                        {/* Approved (Signed) Column */}
+                        <div className="flex flex-col gap-3">
+                            <div className="flex items-center gap-2 pb-2 border-b-2 border-dashed border-[#059669]">
+                                <div className="w-7 h-7 rounded-md bg-[#D1FAE5] flex items-center justify-center shrink-0">
+                                    <CheckCircle2 size={14} color="#059669" />
+                                </div>
+                                <span className="text-xs font-bold text-[#059669] uppercase tracking-[0.4px]">
+                                    {t('slipGaji.columns.approved', 'Approved (Signed)')}
+                                </span>
+                                <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D1FAE5] text-[#059669]">
+                                    {approvedSlips.length}
+                                </span>
+                            </div>
+                            {approvedSlips.length === 0 ? (
+                                <div className="flex flex-col items-center gap-2 py-8 text-text-muted text-center border border-dashed border-border-light rounded-lg bg-bg-secondary">
+                                    <CheckCircle2 size={28} color="var(--text-muted)" />
+                                    <span className="text-xs">{t('slipGaji.columns.noApproved', 'No approved slips')}</span>
+                                </div>
+                            ) : (
+                                approvedSlips.map(slip => <SlipCard key={slip._id} slip={slip} />)
+                            )}
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* ===== Generate Modal ===== */}
             {genModal && (

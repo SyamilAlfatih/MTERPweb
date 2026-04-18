@@ -1,8 +1,11 @@
 import { jsPDF } from 'jspdf';
+import QRCode from 'qrcode';
 
 /**
  * Generate a professional salary slip PDF using jsPDF (direct drawing).
  * No html2canvas, no DOM rendering — 100% reliable.
+ * Signed authorization boxes include a QR code with the signature image
+ * overlaid at the center.
  */
 
 interface SlipPdfData {
@@ -34,8 +37,10 @@ interface SlipPdfData {
     accountName: string;
   };
   authorization: {
+    directorSigned: boolean;
     directorName?: string;
     directorSignedAt?: string;
+    ownerSigned: boolean;
     ownerName?: string;
     ownerSignedAt?: string;
   };
@@ -46,7 +51,95 @@ const fmtRp = (v: number) => `Rp ${new Intl.NumberFormat('id-ID').format(v || 0)
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
-export function exportSlipToPdf(data: SlipPdfData) {
+/** Load an image URL into an HTMLImageElement. Returns null on failure. */
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+/**
+ * Generate a QR code PNG data URL with a signature image composited at the center.
+ * The center ~25% of the QR modules are left white (error correction L/M keeps scan valid).
+ */
+async function buildSignatureQr(
+  qrText: string,
+  signatureUrl: string,
+  sizePx = 300
+): Promise<string> {
+  // 1. Generate QR as data URL (uses error-correction level M → 15% recovery)
+  const qrDataUrl = await QRCode.toDataURL(qrText, {
+    width: sizePx,
+    margin: 1,
+    errorCorrectionLevel: 'M',
+    color: { dark: '#1a1a2e', light: '#ffffff' },
+  });
+
+  // 2. Draw QR onto canvas
+  const canvas = document.createElement('canvas');
+  canvas.width = sizePx;
+  canvas.height = sizePx;
+  const ctx = canvas.getContext('2d')!;
+
+  const qrImg = await loadImage(qrDataUrl);
+  if (qrImg) ctx.drawImage(qrImg, 0, 0, sizePx, sizePx);
+
+  // 3. Overlay signature image centered (~28% of QR size)
+  const sigImg = await loadImage(signatureUrl);
+  if (sigImg) {
+    const sigSize = Math.round(sizePx * 0.28);
+    const sigX = Math.round((sizePx - sigSize) / 2);
+    const sigY = Math.round((sizePx - sigSize) / 2);
+
+    // White backing so signature is readable on QR pattern
+    ctx.fillStyle = '#ffffff';
+    const padding = 6;
+    ctx.fillRect(sigX - padding, sigY - padding, sigSize + padding * 2, sigSize + padding * 2);
+
+    ctx.drawImage(sigImg, sigX, sigY, sigSize, sigSize);
+  }
+
+  return canvas.toDataURL('image/png');
+}
+
+export async function exportSlipToPdf(data: SlipPdfData) {
+  // ── Pre-generate QR images (async) before starting the PDF ──────────────
+  const isDirectorSigned = data.authorization.directorSigned;
+  const isOwnerSigned = data.authorization.ownerSigned;
+
+  const buildQrText = (role: 'Director' | 'Owner', name: string, signedAt?: string) =>
+    [
+      `MTERP Slip Gaji`,
+      `Slip: ${data.slipNumber}`,
+      `Worker: ${data.workerName}`,
+      `Net Pay: ${fmtRp(data.earnings.netPay)}`,
+      `Period: ${fmtDate(data.periodStart)} - ${fmtDate(data.periodEnd)}`,
+      name ? `Signed by ${role}: ${name}` : `Signed by ${role}`,
+      signedAt ? `Signed at: ${fmtDate(signedAt)}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+  const [directorQrDataUrl, ownerQrDataUrl] = await Promise.all([
+    isDirectorSigned
+      ? buildSignatureQr(
+          buildQrText('Director', data.authorization.directorName || '', data.authorization.directorSignedAt),
+          '/director signature.webp'
+        )
+      : Promise.resolve(null),
+    isOwnerSigned
+      ? buildSignatureQr(
+          buildQrText('Owner', data.authorization.ownerName || '', data.authorization.ownerSignedAt),
+          '/owner signature.webp'
+        )
+      : Promise.resolve(null),
+  ]);
+
+  // ── Build PDF ────────────────────────────────────────────────────────────
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const pw = doc.internal.pageSize.getWidth();  // ~210mm
   const mx = 18; // margin
@@ -232,9 +325,13 @@ export function exportSlipToPdf(data: SlipPdfData) {
   sectionTitle('Otorisasi Digital');
 
   const halfW = cw / 2;
-  const boxH = 28;
 
-  // Director box
+  // QR image size in mm (fits nicely inside the box)
+  const qrMm = 38;
+  // Box height: enough for label + QR + name + date, or plain text if unsigned
+  const boxH = isDirectorSigned || isOwnerSigned ? qrMm + 20 : 28;
+
+  // ── Director box ─────────────────────────────────────────────────────────
   doc.setDrawColor(229, 231, 235);
   doc.setLineWidth(0.3);
   doc.rect(mx, y - 2, halfW, boxH, 'S');
@@ -244,20 +341,29 @@ export function exportSlipToPdf(data: SlipPdfData) {
   doc.setTextColor(...LIGHT);
   doc.text('DIREKTUR', mx + halfW / 2, y + 3, { align: 'center' });
 
-  if (data.authorization.directorName) {
-    doc.setFontSize(10);
+  if (isDirectorSigned && directorQrDataUrl) {
+    // QR image centered horizontally in the box
+    const qrX = mx + (halfW - qrMm) / 2;
+    const qrY = y + 6;
+    doc.addImage(directorQrDataUrl, 'PNG', qrX, qrY, qrMm, qrMm);
+
+    // Name below QR
+    const nameY = qrY + qrMm + 4;
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...DARK);
-    doc.text(data.authorization.directorName, mx + halfW / 2, y + 10, { align: 'center' });
+    doc.text(data.authorization.directorName || '—', mx + halfW / 2, nameY, { align: 'center' });
+
     if (data.authorization.directorSignedAt) {
-      doc.setFontSize(7);
+      doc.setFontSize(6);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(...LIGHT);
-      doc.text(fmtDate(data.authorization.directorSignedAt), mx + halfW / 2, y + 15, { align: 'center' });
+      doc.text(fmtDate(data.authorization.directorSignedAt), mx + halfW / 2, nameY + 4, { align: 'center' });
     }
-    doc.setFontSize(7);
+
+    doc.setFontSize(6);
     doc.setTextColor(...GREEN);
-    doc.text('✓ Ditandatangani', mx + halfW / 2, y + 21, { align: 'center' });
+    doc.text('✓ Ditandatangani secara digital', mx + halfW / 2, nameY + 8, { align: 'center' });
   } else {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'italic');
@@ -265,33 +371,43 @@ export function exportSlipToPdf(data: SlipPdfData) {
     doc.text('Menunggu tanda tangan', mx + halfW / 2, y + 12, { align: 'center' });
   }
 
-  // Owner box
-  doc.rect(mx + halfW, y - 2, halfW, boxH, 'S');
+  // ── Owner box ────────────────────────────────────────────────────────────
+  const ownerX = mx + halfW;
+  doc.setDrawColor(229, 231, 235);
+  doc.setLineWidth(0.3);
+  doc.rect(ownerX, y - 2, halfW, boxH, 'S');
 
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...LIGHT);
-  doc.text('OWNER', mx + halfW + halfW / 2, y + 3, { align: 'center' });
+  doc.text('OWNER', ownerX + halfW / 2, y + 3, { align: 'center' });
 
-  if (data.authorization.ownerName) {
-    doc.setFontSize(10);
+  if (isOwnerSigned && ownerQrDataUrl) {
+    const qrX = ownerX + (halfW - qrMm) / 2;
+    const qrY = y + 6;
+    doc.addImage(ownerQrDataUrl, 'PNG', qrX, qrY, qrMm, qrMm);
+
+    const nameY = qrY + qrMm + 4;
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...DARK);
-    doc.text(data.authorization.ownerName, mx + halfW + halfW / 2, y + 10, { align: 'center' });
+    doc.text(data.authorization.ownerName || '—', ownerX + halfW / 2, nameY, { align: 'center' });
+
     if (data.authorization.ownerSignedAt) {
-      doc.setFontSize(7);
+      doc.setFontSize(6);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(...LIGHT);
-      doc.text(fmtDate(data.authorization.ownerSignedAt), mx + halfW + halfW / 2, y + 15, { align: 'center' });
+      doc.text(fmtDate(data.authorization.ownerSignedAt), ownerX + halfW / 2, nameY + 4, { align: 'center' });
     }
-    doc.setFontSize(7);
+
+    doc.setFontSize(6);
     doc.setTextColor(...GREEN);
-    doc.text('✓ Ditandatangani', mx + halfW + halfW / 2, y + 21, { align: 'center' });
+    doc.text('✓ Ditandatangani secara digital', ownerX + halfW / 2, nameY + 8, { align: 'center' });
   } else {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'italic');
     doc.setTextColor(...LIGHT);
-    doc.text('Menunggu tanda tangan', mx + halfW + halfW / 2, y + 12, { align: 'center' });
+    doc.text('Menunggu tanda tangan', ownerX + halfW / 2, y + 12, { align: 'center' });
   }
 
   y += boxH + 8;
