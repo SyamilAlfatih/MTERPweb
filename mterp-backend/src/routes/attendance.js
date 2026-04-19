@@ -20,17 +20,47 @@ router.get('/projects', auth, async (req, res) => {
   }
 });
 
-// Timezone-safe helper: get start of today in the configured timezone
+// ─── Timezone configuration ───────────────────────────────────────────────────
 // Default UTC+7 (WIB - Indonesia Western Time)
 const TZ_OFFSET_HOURS = parseInt(process.env.TZ_OFFSET_HOURS || '7', 10);
+const TZ_OFFSET_MS   = TZ_OFFSET_HOURS * 60 * 60 * 1000;
 
+/**
+ * Returns "today" midnight in the local timezone, stored as a UTC Date.
+ * Dates are persisted this way by every check-in/check-out handler, so ALL
+ * date comparisons must use this same scale.
+ */
 function getTodayStart() {
-  const now = new Date();
-  // Shift to target timezone, then truncate to midnight, then shift back to UTC
-  const localMs = now.getTime() + (TZ_OFFSET_HOURS * 60 * 60 * 1000);
+  const now      = new Date();
+  const localMs  = now.getTime() + TZ_OFFSET_MS;
   const localDay = new Date(localMs);
   localDay.setUTCHours(0, 0, 0, 0);
-  return new Date(localDay.getTime() - (TZ_OFFSET_HOURS * 60 * 60 * 1000));
+  return new Date(localDay.getTime() - TZ_OFFSET_MS);
+}
+
+/**
+ * Converts a YYYY-MM-DD query parameter to the UTC Date that represents
+ * midnight (or end-of-day) in the local timezone — matching how records
+ * are stored by getTodayStart().
+ *
+ * Example (WIB, UTC+7):
+ *   parseDateParam('2026-04-19', false) => 2026-04-18T17:00:00.000Z   ← midnight WIB
+ *   parseDateParam('2026-04-19', true)  => 2026-04-19T16:59:59.999Z   ← 23:59:59 WIB
+ *
+ * @param {string} dateStr  - YYYY-MM-DD from frontend
+ * @param {boolean} endOfDay - if true, use 23:59:59.999 local instead of 00:00:00
+ * @returns {Date}
+ */
+function parseDateParam(dateStr, endOfDay = false) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  // Build a UTC Date that represents the requested local midnight
+  // month is 0-indexed in Date.UTC
+  const localMidnightUTC = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+  if (endOfDay) {
+    // 23:59:59.999 in local time = localMidnight + 86399999 ms
+    return new Date(localMidnightUTC - TZ_OFFSET_MS + 86399999);
+  }
+  return new Date(localMidnightUTC - TZ_OFFSET_MS);
 }
 
 // GET /api/attendance - Get attendance records
@@ -50,11 +80,11 @@ router.get('/', auth, async (req, res) => {
       query.userId = userId;
     }
     
-    // Date range filter
+    // Date range filter — use timezone-aware parser so dates match stored values
     if (startDate || endDate) {
       query.date = {};
-      if (startDate) query.date.$gte = new Date(startDate);
-      if (endDate) query.date.$lte = new Date(endDate);
+      if (startDate) query.date.$gte = parseDateParam(startDate, false);
+      if (endDate)   query.date.$lte = parseDateParam(endDate, true);
     }
     
     const attendance = await Attendance.find(query)
@@ -101,11 +131,11 @@ router.get('/recap', auth, async (req, res) => {
       query.userId = userId;
     }
     
-    // Date range filter
+    // Date range filter — use timezone-aware parser so dates match stored values
     if (startDate || endDate) {
       query.date = {};
-      if (startDate) query.date.$gte = new Date(startDate);
-      if (endDate) query.date.$lte = new Date(endDate);
+      if (startDate) query.date.$gte = parseDateParam(startDate, false);
+      if (endDate)   query.date.$lte = parseDateParam(endDate, true);
     }
     
     const attendance = await Attendance.find(query)
@@ -333,11 +363,11 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
       return res.status(400).json({ msg: 'startDate and endDate are required' });
     }
 
-    // 1. Build attendance query
+    // 1. Build attendance query — timezone-aware parser keeps dates consistent with storage
     const attendanceQuery = {
       date: {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
+        $gte: parseDateParam(startDate, false),
+        $lte: parseDateParam(endDate, true),
       },
     };
     if (projectId) attendanceQuery.projectId = projectId;
@@ -472,10 +502,11 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'president_dire
       return res.status(400).json({ msg: 'startDate and endDate are required' });
     }
 
+    // Timezone-aware date bounds match how records are stored by getTodayStart()
     const attendanceQuery = {
       date: {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
+        $gte: parseDateParam(startDate, false),
+        $lte: parseDateParam(endDate, true),
       },
     };
     if (projectId) attendanceQuery.projectId = projectId;
