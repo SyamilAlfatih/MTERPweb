@@ -114,12 +114,21 @@ export default function AttendanceLogs() {
 
   const isSupervisor = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
 
+  // Use local date string to avoid UTC offset shifting the date (e.g. WIB UTC+7)
+  const toLocalDateStr = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   useEffect(() => {
     const now = new Date();
     const weekStart = new Date(now);
+    // getDay() returns 0=Sunday..6=Saturday — subtracting it gives this week's Sunday
     weekStart.setDate(now.getDate() - now.getDay());
-    setStartDate(weekStart.toISOString().split('T')[0]);
-    setEndDate(now.toISOString().split('T')[0]);
+    setStartDate(toLocalDateStr(weekStart));
+    setEndDate(toLocalDateStr(now));
     fetchUsers();
   }, []);
 
@@ -158,13 +167,14 @@ export default function AttendanceLogs() {
     const now = new Date();
     if (range === 'week') {
       const weekStart = new Date(now);
+      // getDay() returns 0=Sunday..6=Saturday — subtracting it gives this week's Sunday
       weekStart.setDate(now.getDate() - now.getDay());
-      setStartDate(weekStart.toISOString().split('T')[0]);
-      setEndDate(now.toISOString().split('T')[0]);
+      setStartDate(toLocalDateStr(weekStart));
+      setEndDate(toLocalDateStr(now));
     } else if (range === 'month') {
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      setStartDate(monthStart.toISOString().split('T')[0]);
-      setEndDate(now.toISOString().split('T')[0]);
+      setStartDate(toLocalDateStr(monthStart));
+      setEndDate(toLocalDateStr(now));
     }
   };
 
