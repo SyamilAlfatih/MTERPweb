@@ -127,8 +127,8 @@ export default function MyPayments() {
 
       // Get current month range
       const now = new Date();
-      const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+      const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
       const [kasbonRes, wageRes] = await Promise.all([
         api.get('/kasbon'),
