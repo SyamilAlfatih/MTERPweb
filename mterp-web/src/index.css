@@ -180,3 +180,24 @@ body {
     border-radius: var(--radius-lg);
   }
 }
+
+/* ── Modal Overlay System ──────────────────────────────────────────────────── */
+/* Used by all modal dialogs across SlipGaji, MyPayments, etc.                  */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 1rem;
+  animation: overlay-fade-in 200ms ease-out;
+}
+
+@keyframes overlay-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

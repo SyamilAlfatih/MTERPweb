@@ -133,6 +133,7 @@ export default function SlipGaji() {
     const weekRange = getWeekRange();
     const [filterStart, setFilterStart] = useState(toInputDate(weekRange.startDate));
     const [filterEnd, setFilterEnd] = useState(toInputDate(weekRange.endDate));
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Generate modal
     const [genModal, setGenModal] = useState(false);
@@ -147,7 +148,25 @@ export default function SlipGaji() {
     // Kasbon preview for generate modal
     interface KasbonPreview { _id: string; amount: number; reason?: string; createdAt: string; }
     const [kasbonPreview, setKasbonPreview] = useState<KasbonPreview[]>([]);
-    const [kasbonLoading, setKasbonLoading] = useState(false);
+
+    // Pre-generation attendance + earnings preview
+    interface PreviewData {
+        attendanceSummary: {
+            totalDays: number;
+            presentDays: number;
+            lateDays: number;
+            absentDays: number;
+            totalHours: number;
+            totalOvertimeHours: number;
+        };
+        earnings: {
+            dailyRate: number;
+            totalDailyWage: number;
+            totalOvertime: number;
+        };
+    }
+    const [previewData, setPreviewData] = useState<PreviewData | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
 
     // Detail modal
     const [detailModal, setDetailModal] = useState(false);
@@ -180,31 +199,84 @@ export default function SlipGaji() {
     useEffect(() => { fetchSlips(); }, [fetchSlips]);
     useEffect(() => { fetchWorkers(); }, [fetchWorkers]);
 
-    // Fetch approved kasbons when worker or dates change in generate modal
+    // Body scroll lock while any modal is open
+    useEffect(() => {
+        document.body.style.overflow = (genModal || detailModal || authModal) ? 'hidden' : '';
+        return () => { document.body.style.overflow = ''; };
+    }, [genModal, detailModal, authModal]);
+
+    // Escape key closes modals (priority: auth > detail > generate)
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape') return;
+            if (authModal) setAuthModal(false);
+            else if (detailModal) setDetailModal(false);
+            else if (genModal) setGenModal(false);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [authModal, detailModal, genModal]);
+
+    // Fetch attendance recap + kasbon in parallel when worker/dates change in generate modal
     useEffect(() => {
         if (!genWorker || !genStart || !genEnd || !genModal) {
+            setPreviewData(null);
             setKasbonPreview([]);
             return;
         }
-        let cancelled = false;
-        const fetchKasbons = async () => {
-            setKasbonLoading(true);
+        const controller = new AbortController();
+        const timer = setTimeout(async () => {
+            setPreviewLoading(true);
             try {
-                const res = await api.get('/kasbon');
-                const all: KasbonPreview[] = res.data;
+                const [recapRes, kasbonRes] = await Promise.all([
+                    api.get('/attendance/recap', {
+                        params: { userId: genWorker, startDate: genStart, endDate: genEnd },
+                        signal: controller.signal,
+                    }),
+                    api.get('/kasbon', { signal: controller.signal }),
+                ]);
+                if (controller.signal.aborted) return;
+
+                // Build preview from recap summary + records
+                const { summary, records } = recapRes.data;
+                let dailyRate = 0;
+                let totalDailyWage = 0;
+                let totalOvertime = 0;
+                for (const r of (records || [])) {
+                    totalDailyWage += r.dailyRate || 0;
+                    totalOvertime += r.overtimePay || 0;
+                    if (r.dailyRate > 0) dailyRate = r.dailyRate;
+                }
+                setPreviewData({
+                    attendanceSummary: {
+                        totalDays: summary.total || 0,
+                        presentDays: summary.present || 0,
+                        lateDays: summary.late || 0,
+                        absentDays: summary.absent || 0,
+                        totalHours: summary.totalHours || 0,
+                        totalOvertimeHours: summary.totalOvertimeHours || 0,
+                    },
+                    earnings: { dailyRate, totalDailyWage, totalOvertime },
+                });
+
+                // Filter kasbon client-side
                 const startMs = new Date(genStart + 'T00:00:00').getTime();
                 const endMs = new Date(genEnd + 'T23:59:59').getTime();
-                const filtered = all.filter((k: any) => {
+                const filtered = (kasbonRes.data || []).filter((k: any) => {
                     const uid = typeof k.userId === 'object' ? k.userId._id : k.userId;
                     const created = new Date(k.createdAt).getTime();
                     return uid === genWorker && k.status === 'Approved' && created >= startMs && created <= endMs;
                 });
-                if (!cancelled) setKasbonPreview(filtered);
-            } catch { if (!cancelled) setKasbonPreview([]); }
-            if (!cancelled) setKasbonLoading(false);
-        };
-        fetchKasbons();
-        return () => { cancelled = true; };
+                setKasbonPreview(filtered);
+            } catch (err: any) {
+                if (err?.name !== 'CanceledError' && err?.name !== 'AbortError') {
+                    setPreviewData(null);
+                    setKasbonPreview([]);
+                }
+            }
+            if (!controller.signal.aborted) setPreviewLoading(false);
+        }, 300);
+        return () => { clearTimeout(timer); controller.abort(); };
     }, [genWorker, genStart, genEnd, genModal]);
 
     /* ---- quick week navigation ---- */
@@ -354,6 +426,27 @@ export default function SlipGaji() {
                 </button>
             </div>
 
+            {/* Search Bar */}
+            <div className="relative mb-4">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Cari nama pekerja..."
+                    className="w-full pl-9 pr-9 py-2 border border-border rounded-lg bg-bg-white text-sm text-text-primary outline-none transition-all focus:border-primary focus:shadow-[0_0_0_3px_rgba(30,58,138,0.1)] placeholder:text-text-muted"
+                />
+                {searchQuery && (
+                    <button
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-border-light text-text-muted hover:bg-border hover:text-text-primary transition-colors"
+                        title="Hapus pencarian"
+                    >
+                        <X size={12} />
+                    </button>
+                )}
+            </div>
+
             {/* Slips List — Two Column Layout */}
             {loading ? (
                 <div className="flex flex-col items-center justify-center p-10 gap-3 text-text-muted">
@@ -370,8 +463,12 @@ export default function SlipGaji() {
                     </button>
                 </Card>
             ) : (() => {
-                const draftSlips = slips.filter(s => s.status === 'draft');
-                const approvedSlips = slips.filter(s => s.status === 'authorized' || s.status === 'issued');
+                const q = searchQuery.trim().toLowerCase();
+                const matchesSearch = (s: SlipData) =>
+                    !q || (s.workerId?.fullName || '').toLowerCase().includes(q);
+
+                const draftSlips = slips.filter(s => s.status === 'draft' && matchesSearch(s));
+                const approvedSlips = slips.filter(s => (s.status === 'authorized' || s.status === 'issued') && matchesSearch(s));
 
                 const SlipCard = ({ slip }: { slip: SlipData }) => {
                     const badge = STATUS_BADGE[slip.status] || STATUS_BADGE.draft;
@@ -464,7 +561,9 @@ export default function SlipGaji() {
                             {draftSlips.length === 0 ? (
                                 <div className="flex flex-col items-center gap-2 py-8 text-text-muted text-center border border-dashed border-border-light rounded-lg bg-bg-secondary">
                                     <FileText size={28} color="var(--text-muted)" />
-                                    <span className="text-xs">{t('slipGaji.columns.noDraft', 'No draft slips')}</span>
+                                    <span className="text-xs">
+                                        {searchQuery ? `Tidak ada hasil untuk "${searchQuery}"` : t('slipGaji.columns.noDraft', 'No draft slips')}
+                                    </span>
                                 </div>
                             ) : (
                                 draftSlips.map(slip => <SlipCard key={slip._id} slip={slip} />)
@@ -487,7 +586,9 @@ export default function SlipGaji() {
                             {approvedSlips.length === 0 ? (
                                 <div className="flex flex-col items-center gap-2 py-8 text-text-muted text-center border border-dashed border-border-light rounded-lg bg-bg-secondary">
                                     <CheckCircle2 size={28} color="var(--text-muted)" />
-                                    <span className="text-xs">{t('slipGaji.columns.noApproved', 'No approved slips')}</span>
+                                    <span className="text-xs">
+                                        {searchQuery ? `Tidak ada hasil untuk "${searchQuery}"` : t('slipGaji.columns.noApproved', 'No approved slips')}
+                                    </span>
                                 </div>
                             ) : (
                                 approvedSlips.map(slip => <SlipCard key={slip._id} slip={slip} />)
@@ -536,37 +637,120 @@ export default function SlipGaji() {
                                 </div>
                             </div>
 
-                            {/* Kasbon Preview Banner */}
+                            {/* ── Pre-Generation Preview Panel ─────────────────────── */}
                             {genWorker && (
-                                <div className={`mb-4 rounded-lg border-2 overflow-hidden transition-all ${kasbonPreview.length > 0 ? 'border-amber-300 bg-amber-50' : 'border-border-light bg-bg-secondary'}`}>
-                                    <div className={`flex items-center gap-2 px-3.5 py-2.5 ${kasbonPreview.length > 0 ? 'bg-amber-100/60' : 'bg-bg-secondary'}`}>
-                                        <AlertTriangle size={14} className={kasbonPreview.length > 0 ? 'text-amber-600' : 'text-text-muted'} />
-                                        <span className={`text-xs font-bold uppercase tracking-[0.3px] ${kasbonPreview.length > 0 ? 'text-amber-700' : 'text-text-muted'}`}>
-                                            {t('slipGaji.modals.generate.kasbonTitle', 'Kasbon Deductions')}
-                                        </span>
-                                        {kasbonLoading && <Loader2 size={12} className="animate-spin text-text-muted ml-auto" />}
+                                <div className="mb-4 rounded-xl border border-border-light bg-bg-secondary overflow-hidden">
+                                    {/* Panel header */}
+                                    <div className="flex items-center gap-2 px-3.5 py-2.5 bg-primary/5 border-b border-border-light">
+                                        <UserCheck size={14} className="text-primary" />
+                                        <span className="text-xs font-bold uppercase tracking-[0.3px] text-primary">Pratinjau Data Pekerja</span>
+                                        {previewLoading && <Loader2 size={12} className="animate-spin text-text-muted ml-auto" />}
                                     </div>
-                                    {!kasbonLoading && kasbonPreview.length === 0 && (
-                                        <div className="px-3.5 py-2 text-xs text-text-muted font-medium">
-                                            {t('slipGaji.modals.generate.noKasbon', 'No approved kasbon for this period')}
+
+                                    {/* Skeleton while loading */}
+                                    {previewLoading && !previewData && (
+                                        <div className="p-3 flex flex-col gap-2">
+                                            {[1,2,3].map(i => (
+                                                <div key={i} className="h-4 rounded bg-border-light animate-pulse" style={{ width: `${60 + i * 10}%` }} />
+                                            ))}
                                         </div>
                                     )}
-                                    {kasbonPreview.length > 0 && (
-                                        <div className="px-3.5 pb-2.5 pt-1">
-                                            {kasbonPreview.map(k => (
-                                                <div key={k._id} className="flex items-center justify-between py-1.5 border-b border-amber-200/50 last:border-0">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-xs font-semibold text-amber-800">{k.reason || 'Kasbon'}</span>
-                                                        <span className="text-[10px] text-amber-600">{new Date(k.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+
+                                    {/* Attendance stat grid */}
+                                    {previewData && (
+                                        <div className="p-3 flex flex-col gap-3">
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {[
+                                                    { label: 'Hadir', value: previewData.attendanceSummary.presentDays, color: '#059669' },
+                                                    { label: 'Terlambat', value: previewData.attendanceSummary.lateDays, color: '#D97706' },
+                                                    { label: 'Absen', value: previewData.attendanceSummary.absentDays, color: '#DC2626' },
+                                                    { label: 'Total Hari', value: previewData.attendanceSummary.totalDays, color: '#1e3a8a' },
+                                                    { label: 'Total Jam', value: `${previewData.attendanceSummary.totalHours.toFixed(1)}h`, color: '#475569' },
+                                                    { label: 'Lembur', value: `${previewData.attendanceSummary.totalOvertimeHours.toFixed(1)}h`, color: '#7C3AED' },
+                                                ].map(stat => (
+                                                    <div key={stat.label} className="text-center py-2 px-1 bg-bg-white rounded-lg border border-border-light">
+                                                        <span className="block text-base font-extrabold" style={{ color: stat.color }}>{stat.value}</span>
+                                                        <span className="block text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px] mt-0.5">{stat.label}</span>
                                                     </div>
-                                                    <span className="text-sm font-bold text-red-600">-{formatRp(k.amount)}</span>
-                                                </div>
-                                            ))}
-                                            <div className="flex items-center justify-between pt-2 mt-1 border-t-2 border-amber-300">
-                                                <span className="text-xs font-bold text-amber-800 uppercase">{t('slipGaji.modals.generate.kasbonTotal', 'Total Kasbon')}</span>
-                                                <span className="text-sm font-black text-red-600">-{formatRp(kasbonPreview.reduce((s, k) => s + k.amount, 0))}</span>
+                                                ))}
                                             </div>
+
+                                            {/* Earnings breakdown */}
+                                            <div className="bg-bg-white rounded-lg border border-border-light p-3 flex flex-col gap-1">
+                                                <div className="flex justify-between items-center text-xs text-text-secondary py-0.5">
+                                                    <span>Upah Harian ({previewData.attendanceSummary.presentDays + previewData.attendanceSummary.lateDays} hari × {formatRp(previewData.earnings.dailyRate)})</span>
+                                                    <span className="font-semibold">{formatRp(previewData.earnings.totalDailyWage)}</span>
+                                                </div>
+                                                {previewData.earnings.totalOvertime > 0 && (
+                                                    <div className="flex justify-between items-center text-xs text-text-secondary py-0.5">
+                                                        <span>Lembur</span>
+                                                        <span className="font-semibold text-[#059669]">+{formatRp(previewData.earnings.totalOvertime)}</span>
+                                                    </div>
+                                                )}
+                                                {genBonus > 0 && (
+                                                    <div className="flex justify-between items-center text-xs text-text-secondary py-0.5">
+                                                        <span>Bonus</span>
+                                                        <span className="font-semibold text-[#059669]">+{formatRp(genBonus)}</span>
+                                                    </div>
+                                                )}
+                                                <div className="border-t border-dashed border-border-light my-1" />
+                                                {genDeductions > 0 && (
+                                                    <div className="flex justify-between items-center text-xs text-text-secondary py-0.5">
+                                                        <span>Potongan</span>
+                                                        <span className="font-semibold text-[#DC2626]">-{formatRp(genDeductions)}</span>
+                                                    </div>
+                                                )}
+                                                {kasbonPreview.length > 0 && (
+                                                    <div className="flex justify-between items-center text-xs text-text-secondary py-0.5">
+                                                        <span>Kasbon ({kasbonPreview.length} item)</span>
+                                                        <span className="font-semibold text-[#DC2626]">-{formatRp(kasbonPreview.reduce((s, k) => s + k.amount, 0))}</span>
+                                                    </div>
+                                                )}
+                                                {/* Live net pay */}
+                                                <div className="flex justify-between items-center pt-2 border-t-2 border-text-primary mt-1">
+                                                    <span className="text-sm font-bold text-text-primary uppercase tracking-[0.3px]">Estimasi Gaji Bersih</span>
+                                                    <span className="text-base font-extrabold text-primary">
+                                                        {formatRp(Math.max(0,
+                                                            previewData.earnings.totalDailyWage +
+                                                            previewData.earnings.totalOvertime +
+                                                            genBonus - genDeductions -
+                                                            kasbonPreview.reduce((s, k) => s + k.amount, 0)
+                                                        ))}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Kasbon detail (if any) */}
+                                            {kasbonPreview.length > 0 && (
+                                                <div className="rounded-lg border-2 border-amber-300 bg-amber-50 overflow-hidden">
+                                                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-100/60">
+                                                        <AlertTriangle size={13} className="text-amber-600" />
+                                                        <span className="text-xs font-bold uppercase tracking-[0.3px] text-amber-700">Kasbon Aktif</span>
+                                                    </div>
+                                                    <div className="px-3 pb-2 pt-1">
+                                                        {kasbonPreview.map(k => (
+                                                            <div key={k._id} className="flex items-center justify-between py-1 border-b border-amber-200/50 last:border-0">
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-xs font-semibold text-amber-800">{k.reason || 'Kasbon'}</span>
+                                                                    <span className="text-[10px] text-amber-600">{new Date(k.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                                                                </div>
+                                                                <span className="text-sm font-bold text-red-600">-{formatRp(k.amount)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* No kasbon message */}
+                                            {!previewLoading && kasbonPreview.length === 0 && (
+                                                <p className="text-xs text-text-muted text-center py-1">Tidak ada kasbon aktif untuk periode ini</p>
+                                            )}
                                         </div>
+                                    )}
+
+                                    {/* No data yet hint */}
+                                    {!previewLoading && !previewData && (
+                                        <p className="text-xs text-text-muted text-center py-3">Data akan muncul setelah pekerja & tanggal dipilih</p>
                                     )}
                                 </div>
                             )}
