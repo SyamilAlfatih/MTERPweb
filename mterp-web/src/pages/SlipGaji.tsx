@@ -219,7 +219,7 @@ export default function SlipGaji() {
         return () => window.removeEventListener('keydown', onKey);
     }, [authModal, detailModal, genModal]);
 
-    // Fetch attendance recap + kasbon in parallel when worker/dates change in generate modal
+    // Fetch preview data when worker/dates change in generate modal
     useEffect(() => {
         if (!genWorker || !genStart || !genEnd || !genModal || !isValidDate(genStart) || !isValidDate(genEnd)) {
             setPreviewData(null);
@@ -230,46 +230,16 @@ export default function SlipGaji() {
         const timer = setTimeout(async () => {
             setPreviewLoading(true);
             try {
-                const [recapRes, kasbonRes] = await Promise.all([
-                    api.get('/attendance/recap', {
-                        params: { userId: genWorker, startDate: genStart, endDate: genEnd },
-                        signal: controller.signal,
-                    }),
-                    api.get('/kasbon', { signal: controller.signal }),
-                ]);
+                // Single endpoint — uses same date logic as generate (no mismatch)
+                const res = await api.get('/slipgaji/preview', {
+                    params: { workerId: genWorker, startDate: genStart, endDate: genEnd },
+                    signal: controller.signal,
+                });
                 if (controller.signal.aborted) return;
 
-                // Build preview from recap summary + records
-                const { summary, records } = recapRes.data;
-                let dailyRate = 0;
-                let totalDailyWage = 0;
-                let totalOvertime = 0;
-                for (const r of (records || [])) {
-                    totalDailyWage += r.dailyRate || 0;
-                    totalOvertime += r.overtimePay || 0;
-                    if (r.dailyRate > 0) dailyRate = r.dailyRate;
-                }
-                setPreviewData({
-                    attendanceSummary: {
-                        totalDays: summary.total || 0,
-                        presentDays: summary.present || 0,
-                        lateDays: summary.late || 0,
-                        absentDays: summary.absent || 0,
-                        totalHours: summary.totalHours || 0,
-                        totalOvertimeHours: summary.totalOvertimeHours || 0,
-                    },
-                    earnings: { dailyRate, totalDailyWage, totalOvertime },
-                });
-
-                // Filter kasbon client-side
-                const startMs = new Date(genStart + 'T00:00:00').getTime();
-                const endMs = new Date(genEnd + 'T23:59:59').getTime();
-                const filtered = (kasbonRes.data || []).filter((k: any) => {
-                    const uid = typeof k.userId === 'object' ? k.userId._id : k.userId;
-                    const created = new Date(k.createdAt).getTime();
-                    return uid === genWorker && k.status === 'Approved' && created >= startMs && created <= endMs;
-                });
-                setKasbonPreview(filtered);
+                const { attendanceSummary, earnings, kasbons } = res.data;
+                setPreviewData({ attendanceSummary, earnings });
+                setKasbonPreview(kasbons || []);
             } catch (err: any) {
                 if (err?.name !== 'CanceledError' && err?.name !== 'AbortError') {
                     setPreviewData(null);

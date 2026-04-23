@@ -134,6 +134,81 @@ router.get('/week', auth, (req, res) => {
     });
 });
 
+// GET /api/slipgaji/preview — Preview slip data without saving (same logic as generate)
+router.get('/preview', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+    try {
+        const { workerId, startDate, endDate } = req.query;
+        if (!workerId || !startDate || !endDate) {
+            return res.status(400).json({ msg: 'workerId, startDate, and endDate are required' });
+        }
+
+        const periodStart = toUTCStart(startDate);
+        const periodEnd = toUTCEnd(endDate);
+        if (!periodStart || !periodEnd) {
+            return res.status(400).json({ msg: 'Invalid date format. Use YYYY-MM-DD.' });
+        }
+
+        // Attendance — exact same query as generate
+        const attendanceRecords = await Attendance.find({
+            userId: workerId,
+            date: { $gte: periodStart, $lte: periodEnd },
+        }).lean();
+
+        const totalDays = attendanceRecords.length;
+        const presentDays = attendanceRecords.filter(a => a.status === 'Present').length;
+        const lateDays = attendanceRecords.filter(a => a.status === 'Late').length;
+        const absentDays = attendanceRecords.filter(a => a.status === 'Absent').length;
+
+        let totalHours = 0;
+        let totalOvertimeHours = 0;
+        let totalDailyWage = 0;
+        let totalOvertime = 0;
+        let dailyRate = 0;
+
+        for (const a of attendanceRecords) {
+            if (a.checkIn?.time && a.checkOut?.time) {
+                totalHours += (new Date(a.checkOut.time) - new Date(a.checkIn.time)) / (1000 * 60 * 60);
+            }
+            if (a.overtimePay > 0 && a.hourlyRate > 0) {
+                totalOvertimeHours += a.overtimePay / a.hourlyRate;
+            } else if (a.overtimePay > 0 && a.dailyRate > 0) {
+                totalOvertimeHours += a.overtimePay / (a.dailyRate / 8);
+            }
+            totalDailyWage += a.dailyRate || 0;
+            totalOvertime += a.overtimePay || 0;
+            if (a.dailyRate > 0) dailyRate = a.dailyRate;
+        }
+
+        // Kasbon — exact same query as generate
+        const kasbonRecords = await Kasbon.find({
+            userId: workerId,
+            status: 'Approved',
+            createdAt: { $gte: periodStart, $lte: periodEnd },
+        }).lean();
+
+        res.json({
+            attendanceSummary: {
+                totalDays,
+                presentDays,
+                lateDays,
+                absentDays,
+                totalHours: Math.round(totalHours * 10) / 10,
+                totalOvertimeHours: Math.round(totalOvertimeHours * 10) / 10,
+            },
+            earnings: { dailyRate, totalDailyWage, totalOvertime },
+            kasbons: kasbonRecords.map(k => ({
+                _id: k._id,
+                amount: k.amount,
+                reason: k.reason,
+                createdAt: k.createdAt,
+            })),
+        });
+    } catch (error) {
+        console.error('Preview slip error:', error);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
 // GET /api/slipgaji/:id — Get single slip
 router.get('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
     try {
