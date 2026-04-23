@@ -55,6 +55,7 @@ const toInputDate = (d: Date) => {
 const formatDateShort = (iso: string) => new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 const formatDateRange = (s: string, e: string) => `${formatDateShort(s)} — ${formatDateShort(e)}`;
 const formatRp = (v: number) => `Rp ${new Intl.NumberFormat('id-ID').format(v || 0)}`;
+const isValidDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 /* ---- types ---- */
 interface Worker {
@@ -181,6 +182,7 @@ export default function SlipGaji() {
 
     /* ---- data loading ---- */
     const fetchSlips = useCallback(async () => {
+        if (!isValidDate(filterStart) || !isValidDate(filterEnd)) return;
         setLoading(true);
         try {
             const res = await api.get('/slipgaji', { params: { startDate: filterStart, endDate: filterEnd } });
@@ -219,7 +221,7 @@ export default function SlipGaji() {
 
     // Fetch attendance recap + kasbon in parallel when worker/dates change in generate modal
     useEffect(() => {
-        if (!genWorker || !genStart || !genEnd || !genModal) {
+        if (!genWorker || !genStart || !genEnd || !genModal || !isValidDate(genStart) || !isValidDate(genEnd)) {
             setPreviewData(null);
             setKasbonPreview([]);
             return;

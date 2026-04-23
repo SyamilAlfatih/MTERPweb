@@ -51,11 +51,21 @@ function getTodayStart() {
  * @param {boolean} endOfDay - if true, use 23:59:59.999 local instead of 00:00:00
  * @returns {Date}
  */
+/**
+ * Validates that a string is in YYYY-MM-DD format.
+ * Returns false for null, undefined, empty, or malformed strings.
+ */
+function isValidDateStr(s) {
+  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
 function parseDateParam(dateStr, endOfDay = false) {
+  if (!isValidDateStr(dateStr)) return null;
   const [year, month, day] = dateStr.split('-').map(Number);
   // Build a UTC Date that represents the requested local midnight
   // month is 0-indexed in Date.UTC
   const localMidnightUTC = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+  if (isNaN(localMidnightUTC)) return null;
   if (endOfDay) {
     // 23:59:59.999 in local time = localMidnight + 86399999 ms
     return new Date(localMidnightUTC - TZ_OFFSET_MS + 86399999);
@@ -83,8 +93,16 @@ router.get('/', auth, async (req, res) => {
     // Date range filter — use timezone-aware parser so dates match stored values
     if (startDate || endDate) {
       query.date = {};
-      if (startDate) query.date.$gte = parseDateParam(startDate, false);
-      if (endDate)   query.date.$lte = parseDateParam(endDate, true);
+      if (startDate) {
+        const d = parseDateParam(startDate, false);
+        if (!d) return res.status(400).json({ msg: 'Invalid startDate. Use YYYY-MM-DD.' });
+        query.date.$gte = d;
+      }
+      if (endDate) {
+        const d = parseDateParam(endDate, true);
+        if (!d) return res.status(400).json({ msg: 'Invalid endDate. Use YYYY-MM-DD.' });
+        query.date.$lte = d;
+      }
     }
     
     const attendance = await Attendance.find(query)
@@ -134,8 +152,16 @@ router.get('/recap', auth, async (req, res) => {
     // Date range filter — use timezone-aware parser so dates match stored values
     if (startDate || endDate) {
       query.date = {};
-      if (startDate) query.date.$gte = parseDateParam(startDate, false);
-      if (endDate)   query.date.$lte = parseDateParam(endDate, true);
+      if (startDate) {
+        const d = parseDateParam(startDate, false);
+        if (!d) return res.status(400).json({ msg: 'Invalid startDate. Use YYYY-MM-DD.' });
+        query.date.$gte = d;
+      }
+      if (endDate) {
+        const d = parseDateParam(endDate, true);
+        if (!d) return res.status(400).json({ msg: 'Invalid endDate. Use YYYY-MM-DD.' });
+        query.date.$lte = d;
+      }
     }
     
     const attendance = await Attendance.find(query)
@@ -364,11 +390,13 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
     }
 
     // 1. Build attendance query — timezone-aware parser keeps dates consistent with storage
+    const gteDate = parseDateParam(startDate, false);
+    const lteDate = parseDateParam(endDate, true);
+    if (!gteDate || !lteDate) {
+      return res.status(400).json({ msg: 'Invalid date format. Use YYYY-MM-DD.' });
+    }
     const attendanceQuery = {
-      date: {
-        $gte: parseDateParam(startDate, false),
-        $lte: parseDateParam(endDate, true),
-      },
+      date: { $gte: gteDate, $lte: lteDate },
     };
     if (projectId) attendanceQuery.projectId = projectId;
 

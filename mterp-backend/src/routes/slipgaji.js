@@ -48,8 +48,9 @@ const generateSlipNumber = async (startDate) => {
 };
 
 // Helper: parse date string to UTC midnight/end-of-day consistently
-const toUTCStart = (dateStr) => new Date(dateStr + 'T00:00:00.000Z');
-const toUTCEnd = (dateStr) => new Date(dateStr + 'T23:59:59.999Z');
+const isValidDateStr = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const toUTCStart = (dateStr) => isValidDateStr(dateStr) ? new Date(dateStr + 'T00:00:00.000Z') : null;
+const toUTCEnd = (dateStr) => isValidDateStr(dateStr) ? new Date(dateStr + 'T23:59:59.999Z') : null;
 
 // Helper: get current week Mon→Sat (payment Saturday)
 const getCurrentWeekRange = () => {
@@ -73,8 +74,11 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
         if (workerId) query.workerId = workerId;
         if (startDate && endDate) {
             // Use UTC dates to avoid timezone mismatch
-            query['period.startDate'] = { $gte: toUTCStart(startDate) };
-            query['period.endDate'] = { $lte: toUTCEnd(endDate) };
+            const s = toUTCStart(startDate);
+            const e = toUTCEnd(endDate);
+            if (!s || !e) return res.status(400).json({ msg: 'Invalid date format. Use YYYY-MM-DD.' });
+            query['period.startDate'] = { $gte: s };
+            query['period.endDate'] = { $lte: e };
         }
         if (status) query.status = status;
 
