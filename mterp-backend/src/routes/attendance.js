@@ -3,6 +3,7 @@ const { Attendance, User, Project } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
+const { wibDayRange, nowWIB } = require('../utils/date');
 
 const router = express.Router();
 
@@ -21,56 +22,25 @@ router.get('/projects', auth, async (req, res) => {
 });
 
 // ─── Timezone configuration ───────────────────────────────────────────────────
-// Default UTC+7 (WIB - Indonesia Western Time)
-const TZ_OFFSET_HOURS = parseInt(process.env.TZ_OFFSET_HOURS || '7', 10);
-const TZ_OFFSET_MS   = TZ_OFFSET_HOURS * 60 * 60 * 1000;
+// Using standardized WIB date utilities from src/utils/date.js
 
 /**
- * Returns "today" midnight in the local timezone, stored as a UTC Date.
- * Dates are persisted this way by every check-in/check-out handler, so ALL
- * date comparisons must use this same scale.
+ * Returns "today" midnight in the WIB timezone, stored as a UTC Date.
  */
 function getTodayStart() {
-  const now      = new Date();
-  const localMs  = now.getTime() + TZ_OFFSET_MS;
-  const localDay = new Date(localMs);
-  localDay.setUTCHours(0, 0, 0, 0);
-  return new Date(localDay.getTime() - TZ_OFFSET_MS);
+  const range = wibDayRange(nowWIB());
+  return range ? range.start : new Date(); // fallback if range is somehow null
 }
 
-/**
- * Converts a YYYY-MM-DD query parameter to the UTC Date that represents
- * midnight (or end-of-day) in the local timezone — matching how records
- * are stored by getTodayStart().
- *
- * Example (WIB, UTC+7):
- *   parseDateParam('2026-04-19', false) => 2026-04-18T17:00:00.000Z   ← midnight WIB
- *   parseDateParam('2026-04-19', true)  => 2026-04-19T16:59:59.999Z   ← 23:59:59 WIB
- *
- * @param {string} dateStr  - YYYY-MM-DD from frontend
- * @param {boolean} endOfDay - if true, use 23:59:59.999 local instead of 00:00:00
- * @returns {Date}
- */
-/**
- * Validates that a string is in YYYY-MM-DD format.
- * Returns false for null, undefined, empty, or malformed strings.
- */
 function isValidDateStr(s) {
   return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
 function parseDateParam(dateStr, endOfDay = false) {
   if (!isValidDateStr(dateStr)) return null;
-  const [year, month, day] = dateStr.split('-').map(Number);
-  // Build a UTC Date that represents the requested local midnight
-  // month is 0-indexed in Date.UTC
-  const localMidnightUTC = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
-  if (isNaN(localMidnightUTC)) return null;
-  if (endOfDay) {
-    // 23:59:59.999 in local time = localMidnight + 86399999 ms
-    return new Date(localMidnightUTC - TZ_OFFSET_MS + 86399999);
-  }
-  return new Date(localMidnightUTC - TZ_OFFSET_MS);
+  const range = wibDayRange(dateStr);
+  if (!range) return null;
+  return endOfDay ? range.end : range.start;
 }
 
 // GET /api/attendance - Get attendance records
@@ -231,9 +201,9 @@ router.post('/checkin', auth, async (req, res) => {
   try {
     const { projectId, lat, lng } = req.body;
     
-    // 1. Time Validation (08:00 - 16:00) - use local timezone, not UTC
-    const now = new Date();
-    const localHour = (now.getUTCHours() + TZ_OFFSET_HOURS) % 24;
+    // 1. Time Validation (08:00 - 16:00) - use WIB timezone consistently
+    const now = nowWIB();
+    const localHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', hour: 'numeric', hourCycle: 'h23' }).format(now), 10);
     const hour = localHour;
     
     // Allow supervisor/admin to bypass? For now, strict for everyone or just workers?
@@ -263,7 +233,7 @@ router.post('/checkin', auth, async (req, res) => {
     }
     
     const checkInData = {
-      time: new Date(),
+      time: nowWIB(),
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
     };
     
@@ -365,7 +335,7 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
     }
     
     attendance.checkOut = {
-      time: new Date(),
+      time: nowWIB(),
       photo: req.file.path,
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
     };
@@ -431,8 +401,8 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
           totalOvertimeHours: 0,
         };
       }
-      const localMs = new Date(record.date).getTime() + (TZ_OFFSET_HOURS * 60 * 60 * 1000);
-      const dateKey = new Date(localMs).toISOString().split('T')[0];
+      // We can use wibDayRange logic directly or Intl object to get WIB date string
+      const dateKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date(record.date));
       let score = 0;
       if (record.status === 'Present') score = 1;
       else if (record.status === 'Late') score = 0.5;
@@ -563,8 +533,7 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'president_dire
           totalScore: 0,
         };
       }
-      const localMs = new Date(record.date).getTime() + (TZ_OFFSET_HOURS * 60 * 60 * 1000);
-      const dateKey = new Date(localMs).toISOString().split('T')[0];
+      const dateKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date(record.date));
       let score = 0;
       if (record.status === 'Present') score = 1;
       else if (record.status === 'Late' || record.status === 'Half-day') score = 0.5;
@@ -700,7 +669,7 @@ router.post('/pay', auth, authorize('owner', 'president_director', 'operational_
       { 
         $set: { 
           paymentStatus: 'Paid', 
-          paidAt: new Date() 
+          paidAt: nowWIB() 
         } 
       }
     );
@@ -745,7 +714,7 @@ router.put('/:id/invalidate', auth, authorize('owner', 'president_director', 'op
 
     // Audit trail
     attendance.invalidatedBy = req.user._id;
-    attendance.invalidatedAt = new Date();
+    attendance.invalidatedAt = nowWIB();
     attendance.invalidatedReason = reason || 'Accidental check-in invalidated by supervisor';
 
     await attendance.save();
@@ -785,7 +754,7 @@ router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) =
     };
     
     const checkInData = {
-      time: new Date(),
+      time: nowWIB(),
       photo: req.file ? req.file.path : undefined,
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
     };

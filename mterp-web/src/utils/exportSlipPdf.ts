@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
+import { formatDate } from './date';
 
 /**
  * Generate a professional salary slip PDF using jsPDF (direct drawing).
@@ -50,7 +51,7 @@ interface SlipPdfData {
 
 const fmtRp = (v: number) => `Rp ${new Intl.NumberFormat('id-ID').format(v || 0)}`;
 const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  formatDate(iso, { day: 'numeric', month: 'long', year: 'numeric' });
 
 /** Load an image URL into an HTMLImageElement. Returns null on failure. */
 function loadImage(src: string): Promise<HTMLImageElement | null> {
@@ -425,7 +426,7 @@ export async function exportSlipToPdf(data: SlipPdfData) {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...LIGHT);
   doc.text(
-    `Dokumen ini digenerate secara digital oleh sistem MTERP · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+    `Dokumen ini digenerate secara digital oleh sistem MTERP · ${formatDate(new Date(), { day: 'numeric', month: 'long', year: 'numeric' })}`,
     pw / 2,
     y,
     { align: 'center' }

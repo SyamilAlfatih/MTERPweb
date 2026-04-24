@@ -10,6 +10,7 @@ import api from '../api/api';
 import { Card, Button, Input, Alert, CostInput } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import { PhotoView } from 'react-photo-view';
+import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
 
 interface AttendanceRecord {
   _id: string;
@@ -98,13 +99,15 @@ export default function Attendance() {
 
   const fetchRecentHistory = async () => {
     try {
-      const now = new Date();
-      const weekAgo = new Date(now);
-      weekAgo.setDate(weekAgo.getDate() - 7);
+      const todayStr = todayWIB();
+      const todayD = wibDate(todayStr);
+      if (!todayD) return;
+      const weekAgo = new Date(todayD);
+      weekAgo.setUTCDate(weekAgo.getUTCDate() - 7);
       const response = await api.get('/attendance', {
         params: {
           startDate: weekAgo.toISOString().split('T')[0],
-          endDate: now.toISOString().split('T')[0],
+          endDate: todayStr,
         },
       });
       setRecentRecords((response.data || []).slice(0, 7));
@@ -133,7 +136,7 @@ export default function Attendance() {
     setLoading(true);
     try {
       await api.post('/attendance/checkin', { projectId: selectedProjectId });
-      setAlertData({ visible: true, type: 'success', title: t('attendance.messages.checkInSuccessTitle'), message: t('attendance.messages.checkInSuccess', { time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) }) });
+      setAlertData({ visible: true, type: 'success', title: t('attendance.messages.checkInSuccessTitle'), message: t('attendance.messages.checkInSuccess', { time: formatWIBTime(new Date()) }) });
       await fetchTodayAttendance();
       await fetchRecentHistory();
     } catch (err: any) {
@@ -153,7 +156,7 @@ export default function Attendance() {
       const formData = new FormData();
       formData.append('photo', photo);
       await api.put('/attendance/checkout', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setAlertData({ visible: true, type: 'success', title: t('attendance.messages.checkOutSuccessTitle'), message: t('attendance.messages.checkOutSuccess', { time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) }) });
+      setAlertData({ visible: true, type: 'success', title: t('attendance.messages.checkOutSuccessTitle'), message: t('attendance.messages.checkOutSuccess', { time: formatWIBTime(new Date()) }) });
       setPhoto(null);
       setPhotoPreview(null);
       await fetchTodayAttendance();
@@ -214,11 +217,11 @@ export default function Attendance() {
     }
   };
 
-  const formatTime = (dateStr: string) =>
-    new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const formatTimeDisplay = (dateStr: string) =>
+    formatWIBTime(dateStr);
 
   const formatDay = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
+    formatWIBDate(dateStr, { weekday: 'short', day: 'numeric', month: 'short' });
 
   const hasCheckedIn = todayRecord?.checkIn?.time;
   const hasCheckedOut = todayRecord?.checkOut?.time;
@@ -267,7 +270,7 @@ export default function Attendance() {
       <div className="flex flex-col mb-8 p-6 rounded-2xl bg-bg-white border-2 border-border-light shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs font-bold text-text-muted uppercase tracking-widest">
-            {liveTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            {formatWIBDate(liveTime, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </div>
           <div className="flex items-center gap-1">
              <div className={`w-2 h-2 rounded-full ${isWorkingHours ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
@@ -276,8 +279,8 @@ export default function Attendance() {
         </div>
         <div className="flex items-baseline justify-between gap-4">
           <div className="text-5xl font-extrabold text-text-primary tabular-nums tracking-tighter leading-none">
-            {liveTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-            <span className="text-2xl opacity-40 ml-1">{liveTime.toLocaleTimeString('id-ID', { second: '2-digit' })}</span>
+            {formatWIBTime(liveTime)}
+            <span className="text-2xl opacity-40 ml-1">{formatWIBTime(liveTime, { second: '2-digit' })}</span>
           </div>
           <div className={`px-3 py-1.5 rounded-lg text-sm font-black uppercase ${isWorkingHours ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
             {isWorkingHours ? "Working" : "After Hours"}
@@ -303,7 +306,7 @@ export default function Attendance() {
                 <div className="flex flex-col">
                   <span className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.3px] max-sm:text-[9px]">{t('attendance.steps.checkIn')}</span>
                   <span className={`text-sm font-bold max-sm:text-xs ${hasCheckedIn ? 'text-emerald-600' : 'text-text-primary'}`}>
-                    {hasCheckedIn ? formatTime(todayRecord!.checkIn!.time) : isPermit ? t('attendance.steps.permit') : '--:--'}
+                    {hasCheckedIn ? formatTimeDisplay(todayRecord!.checkIn!.time) : isPermit ? t('attendance.steps.permit') : '--:--'}
                   </span>
                 </div>
               </div>
@@ -339,7 +342,7 @@ export default function Attendance() {
                 <div className="flex flex-col">
                   <span className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.3px] max-sm:text-[9px]">{t('attendance.steps.checkOut')}</span>
                   <span className={`text-sm font-bold max-sm:text-xs ${hasCheckedOut ? 'text-emerald-600' : 'text-text-primary'}`}>
-                    {hasCheckedOut ? formatTime(todayRecord!.checkOut!.time) : '--:--'}
+                    {hasCheckedOut ? formatTimeDisplay(todayRecord!.checkOut!.time) : '--:--'}
                   </span>
                 </div>
               </div>
@@ -516,7 +519,7 @@ export default function Attendance() {
           </div>
           <h3 className="text-lg font-bold text-text-primary m-0 mb-2">{t('attendance.allDone.title')}</h3>
           <p className="text-sm text-text-muted m-0">
-            {t('attendance.allDone.desc')} <strong className="text-text-primary">{getDuration()}</strong> {t('attendance.allDone.descDetail', { start: formatTime(todayRecord!.checkIn!.time), end: formatTime(todayRecord!.checkOut!.time) })}
+            {t('attendance.allDone.desc')} <strong className="text-text-primary">{getDuration()}</strong> {t('attendance.allDone.descDetail', { start: formatTimeDisplay(todayRecord!.checkIn!.time), end: formatTimeDisplay(todayRecord!.checkOut!.time) })}
           </p>
         </Card>
       )}
@@ -586,9 +589,9 @@ export default function Attendance() {
                   <div className="flex-1 flex flex-col min-w-0">
                     <span className="text-sm font-semibold text-text-primary">{formatDay(r.date)}</span>
                     <span className="text-[11px] text-text-muted tabular-nums">
-                      {r.checkIn?.time ? formatTime(r.checkIn.time) : '--:--'}
+                      {r.checkIn?.time ? formatTimeDisplay(r.checkIn.time) : '--:--'}
                       {' → '}
-                      {r.checkOut?.time ? formatTime(r.checkOut.time) : '--:--'}
+                      {r.checkOut?.time ? formatTimeDisplay(r.checkOut.time) : '--:--'}
                     </span>
                   </div>
                   <span className="text-[9px] font-bold px-2 py-[2px] rounded-full whitespace-nowrap shrink-0" style={{ backgroundColor: info.bg, color: info.color }}>

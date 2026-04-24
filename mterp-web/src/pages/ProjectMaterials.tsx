@@ -10,6 +10,7 @@ import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Input, EmptyState, LoadingOverlay } from '../components/shared';
 import { ProjectData } from '../types';
+import { formatDate as formatWIBDate } from '../utils/date';
 
 interface Supply {
   _id: string;
@@ -156,9 +157,7 @@ export default function ProjectMaterials() {
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return null;
-    return new Date(dateStr).toLocaleDateString('id-ID', {
-      day: 'numeric', month: 'short'
-    });
+    return formatWIBDate(dateStr, { day: 'numeric', month: 'short' });
   };
 
   // derived stats

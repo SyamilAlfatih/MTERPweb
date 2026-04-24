@@ -3,6 +3,7 @@ const { Tool } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
+const { nowWIB } = require('../utils/date');
 
 const router = express.Router();
 
@@ -160,7 +161,7 @@ router.post('/', auth, authorize('owner', 'director', 'asset_admin'), uploadLimi
 router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), uploadLimiter, upload.single('photo'), async (req, res) => {
   try {
     const allowedFields = ['nama', 'kategori', 'stok', 'satuan', 'kondisi', 'lokasi', 'qrCode', 'notes'];
-    const updateData = { updatedAt: new Date() };
+    const updateData = { updatedAt: nowWIB() };
     allowedFields.forEach(field => {
       if (req.body[field] !== undefined) {
         updateData[field] = req.body[field];
@@ -200,7 +201,7 @@ router.put('/:id/assign', auth, authorize('owner', 'director', 'asset_admin', 's
           assignedTo: assignedTo || undefined,
           projectId: projectId || undefined,
           lokasi: projectId ? 'On-Site' : 'Warehouse',
-          lastChecked: new Date(),
+          lastChecked: nowWIB(),
         } 
       },
       { new: true }
@@ -227,8 +228,8 @@ router.put('/:id/unassign', auth, authorize('owner', 'director', 'asset_admin', 
       { 
         $unset: { assignedTo: 1 },
         $set: {
-          lastChecked: new Date(),
-          updatedAt: new Date(),
+          lastChecked: nowWIB(),
+          updatedAt: nowWIB(),
         }
       },
       { new: true }
@@ -253,8 +254,8 @@ router.put('/:id/return', auth, authorize('owner', 'director', 'asset_admin', 's
     const { kondisi } = req.body;
     const updateData = {
       lokasi: 'Warehouse',
-      lastChecked: new Date(),
-      updatedAt: new Date(),
+      lastChecked: nowWIB(),
+      updatedAt: nowWIB(),
     };
 
     if (kondisi) {

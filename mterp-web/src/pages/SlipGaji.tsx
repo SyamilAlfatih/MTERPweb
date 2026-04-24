@@ -30,29 +30,28 @@ import { useAuth } from '../contexts/AuthContext';
 import { Card, Alert, Button } from '../components/shared';
 import { useTranslation } from 'react-i18next';
 import { exportSlipToPdf } from '../utils/exportSlipPdf';
+import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
 
 /* ---- helpers ---- */
-/** Get Sunday→Saturday of the current week */
-const getWeekRange = (refDate = new Date()) => {
-    const d = new Date(refDate);
-    const day = d.getDay(); // 0=Sun
-    const sunday = new Date(d);
-    sunday.setDate(d.getDate() - day);
-    sunday.setHours(0, 0, 0, 0);
+const getWeekRange = (refDateStr = todayWIB()) => {
+    const [y, m, d] = refDateStr.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    const day = date.getUTCDay(); // 0=Sun
+    const sunday = new Date(date);
+    sunday.setUTCDate(date.getUTCDate() - day);
     const saturday = new Date(sunday);
-    saturday.setDate(sunday.getDate() + 6);
-    saturday.setHours(23, 59, 59, 999);
+    saturday.setUTCDate(sunday.getUTCDate() + 6);
     return { startDate: sunday, endDate: saturday };
 };
 
 const toInputDate = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
     return `${y}-${m}-${dd}`;
 };
 
-const formatDateShort = (iso: string) => new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+const formatDateShort = (iso: string) => formatWIBDate(iso, { day: 'numeric', month: 'short', year: 'numeric' });
 const formatDateRange = (s: string, e: string) => `${formatDateShort(s)} — ${formatDateShort(e)}`;
 const formatRp = (v: number) => `Rp ${new Intl.NumberFormat('id-ID').format(v || 0)}`;
 const isValidDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -253,9 +252,10 @@ export default function SlipGaji() {
 
     /* ---- quick week navigation ---- */
     const shiftWeek = (dir: number) => {
-        const s = new Date(filterStart);
-        s.setDate(s.getDate() + dir * 7);
-        const range = getWeekRange(s);
+        const [y, m, d] = filterStart.split('-').map(Number);
+        const s = new Date(Date.UTC(y, m - 1, d));
+        s.setUTCDate(s.getUTCDate() + dir * 7);
+        const range = getWeekRange(toInputDate(s));
         setFilterStart(toInputDate(range.startDate));
         setFilterEnd(toInputDate(range.endDate));
     };
@@ -704,7 +704,7 @@ export default function SlipGaji() {
                                                             <div key={k._id} className="flex items-center justify-between py-1 border-b border-amber-200/50 last:border-0">
                                                                 <div className="flex flex-col">
                                                                     <span className="text-xs font-semibold text-amber-800">{k.reason || 'Kasbon'}</span>
-                                                                    <span className="text-[10px] text-amber-600">{new Date(k.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                                                                    <span className="text-[10px] text-amber-600">{formatWIBDate(k.createdAt, { day: 'numeric', month: 'short' })}</span>
                                                                 </div>
                                                                 <span className="text-sm font-bold text-red-600">-{formatRp(k.amount)}</span>
                                                             </div>
@@ -891,7 +891,7 @@ export default function SlipGaji() {
                                             <>
                                                 <span className="text-sm font-semibold text-text-primary">{selectedSlip.authorization.directorName}</span>
                                                 <span className="text-[10px] text-text-muted">
-                                                    {new Date(selectedSlip.authorization.directorSignedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    {formatWIBDate(selectedSlip.authorization.directorSignedAt, { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </span>
                                                 <CheckCircle2 size={14} className="text-[#059669]" />
                                             </>
@@ -916,7 +916,7 @@ export default function SlipGaji() {
                                             <>
                                                 <span className="text-sm font-semibold text-text-primary">{selectedSlip.authorization.ownerName}</span>
                                                 <span className="text-[10px] text-text-muted">
-                                                    {new Date(selectedSlip.authorization.ownerSignedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    {formatWIBDate(selectedSlip.authorization.ownerSignedAt, { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </span>
                                                 <CheckCircle2 size={14} className="text-[#059669]" />
                                             </>

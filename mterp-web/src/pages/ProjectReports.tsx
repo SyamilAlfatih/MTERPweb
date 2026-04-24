@@ -10,6 +10,7 @@ import QRCode from 'qrcode';
 import api from '../api/api';
 import { Card, Button, Input, Alert, Badge } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
+import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
 
 /* ─── Helpers ─── */
 
@@ -17,10 +18,10 @@ const formatRupiah = (num: number) =>
   new Intl.NumberFormat('id-ID').format(num || 0);
 
 const fmtDate = (d: string | Date) =>
-  new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  formatWIBDate(d, { day: 'numeric', month: 'short', year: 'numeric' }) || '';
 
 const fmtDateLong = (d: string | Date) =>
-  new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  formatWIBDate(d, { day: 'numeric', month: 'long', year: 'numeric' }) || '';
 
 const loadImageAsBase64 = (src: string): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -132,11 +133,11 @@ function costInDay(itemStart: Date, itemEnd: Date, totalCost: number, day: Date)
 }
 
 function fmtShort(d: Date) {
-  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  return formatWIBDate(d, { month: 'short', year: '2-digit' });
 }
 
 function fmtDay(d: Date) {
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return formatWIBDate(d, { month: 'short', day: 'numeric' });
 }
 
 /* ─── Interfaces ─── */
@@ -177,8 +178,8 @@ export default function ProjectReports() {
 
   // Report submit form
   const [reportType, setReportType] = useState<ReportType>('daily');
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(() => todayWIB());
+  const [endDate, setEndDate] = useState(() => todayWIB());
 
   // Approve modal
   const [approveModal, setApproveModal] = useState<{ open: boolean; reportId: string }>({ open: false, reportId: '' });
@@ -194,24 +195,33 @@ export default function ProjectReports() {
 
   // ─── Auto-calculate date range ───
   useEffect(() => {
-    const today = new Date();
+    const todayStr = todayWIB();
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const todayDate = new Date(Date.UTC(y, m - 1, d));
+
     if (reportType === 'daily') {
-      const d = today.toISOString().slice(0, 10);
-      setStartDate(d);
-      setEndDate(d);
+      setStartDate(todayStr);
+      setEndDate(todayStr);
     } else if (reportType === 'weekly') {
-      const day = today.getDay(); // 0=Sun
-      const sunday = new Date(today);
-      sunday.setDate(today.getDate() - day); // Sunday of current week
+      const day = todayDate.getUTCDay(); // 0=Sun
+      const sunday = new Date(todayDate);
+      sunday.setUTCDate(todayDate.getUTCDate() - day); 
       const saturday = new Date(sunday);
-      saturday.setDate(sunday.getDate() + 6);
-      setStartDate(sunday.toISOString().slice(0, 10));
-      setEndDate(saturday.toISOString().slice(0, 10));
+      saturday.setUTCDate(sunday.getUTCDate() + 6);
+      
+      const toInputStr = (d: Date) => d.toISOString().slice(0, 10);
+      setStartDate(toInputStr(sunday));
+      setEndDate(toInputStr(saturday));
     } else if (reportType === 'monthly') {
-      const first = new Date(today.getFullYear(), today.getMonth(), 1);
-      const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      setStartDate(first.toISOString().slice(0, 10));
-      setEndDate(last.toISOString().slice(0, 10));
+      const first = new Date(todayDate);
+      first.setUTCDate(1);
+      const last = new Date(todayDate);
+      last.setUTCMonth(last.getUTCMonth() + 1);
+      last.setUTCDate(0);
+      
+      const toInputStr = (d: Date) => d.toISOString().slice(0, 10);
+      setStartDate(toInputStr(first));
+      setEndDate(toInputStr(last));
     }
     // custom: user controls both dates
   }, [reportType]);
@@ -376,19 +386,23 @@ export default function ProjectReports() {
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, W, H);
 
-          const pStart = projectData.startDate ? new Date(projectData.startDate) : new Date();
-          const pEnd = projectData.endDate ? new Date(projectData.endDate) : new Date();
+          const pStart = (projectData.startDate ? wibDate(projectData.startDate) : null) || new Date();
+          const pEnd = (projectData.endDate ? wibDate(projectData.endDate) : null) || new Date();
           const months = monthRange(pStart, pEnd);
           const useDailyMode = months.length === 1;
 
           if (months.length > 0 || useDailyMode) {
             interface ScheduleItem { startDate: Date; endDate: Date; plannedCost: number; actualCost: number; }
-            const scheduleItems: ScheduleItem[] = (projectData.workItems || []).map((w: any) => ({
-              startDate: new Date(w.startDate || pStart),
-              endDate: new Date(w.endDate || pEnd),
-              plannedCost: w.cost || 0,
-              actualCost: w.actualCost || 0,
-            }));
+            const scheduleItems: ScheduleItem[] = (projectData.workItems || []).map((w: any) => {
+              const sD = w.startDate ? wibDate(w.startDate) : pStart;
+              const eD = w.endDate ? wibDate(w.endDate) : pEnd;
+              return {
+                startDate: sD || pStart,
+                endDate: eD || pEnd,
+                plannedCost: w.cost || 0,
+                actualCost: w.actualCost || 0,
+              };
+            });
 
             // Build per-period cost arrays
             let timeLabels: string[];

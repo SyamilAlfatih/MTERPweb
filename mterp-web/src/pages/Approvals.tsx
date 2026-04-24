@@ -5,6 +5,7 @@ import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState } from '../components/shared';
 import { ApprovalItem, KasbonItem } from '../types';
+import { formatDate as formatWIBDate } from '../utils/date';
 
 export default function Approvals() {
   const { t } = useTranslation();
@@ -47,7 +48,7 @@ export default function Approvals() {
         item: r.item,
         qty: r.qty,
         urgency: r.urgency || 'Normal',
-        date: r.dateNeeded || '-',
+        date: r.dateNeeded ? formatWIBDate(r.dateNeeded, { day: 'numeric', month: 'short', year: 'numeric' }) : '-',
         project: r.projectId?.nama || 'General',
       }));
       setApprovals(mapped);
@@ -60,7 +61,7 @@ export default function Approvals() {
           role: k.userId?.role || 'Staff',
           amount: k.amount,
           reason: k.reason || '-',
-          date: new Date(k.createdAt).toLocaleDateString('id-ID'),
+          date: formatWIBDate(k.createdAt, { day: 'numeric', month: 'short', year: 'numeric' }),
         }));
         setKasbons(kasbonMapped);
       }

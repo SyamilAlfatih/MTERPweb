@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { PhotoView } from 'react-photo-view';
 import { Tool } from '../types';
 import { getImageUrl } from '../utils/image';
+import { formatDate as formatWIBDate } from '../utils/date';
 
 const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
 
@@ -104,11 +105,9 @@ export default function Tools() {
     return { ...config, label: labelMapping[config.label] };
   };
 
-  const formatDate = (dateStr?: string) => {
+  const formatDateDisplay = (dateStr?: string) => {
     if (!dateStr) return null;
-    return new Date(dateStr).toLocaleDateString('id-ID', {
-      day: 'numeric', month: 'short', year: 'numeric'
-    });
+    return formatWIBDate(dateStr, { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
   // CRUD handlers
@@ -435,7 +434,7 @@ export default function Tools() {
                           {tool.lastChecked && (
                             <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
                               <Calendar size={13} />
-                              {formatDate(tool.lastChecked)}
+                              {formatDateDisplay(tool.lastChecked)}
                             </span>
                           )}
                         </div>

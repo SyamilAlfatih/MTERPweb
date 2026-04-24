@@ -15,6 +15,7 @@ import api from '../api/api';
 import { Card, ProgressBar, Button, LoadingOverlay, Badge } from '../components/shared';
 import { ProjectData, WorkItem } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
 
 /* ─── Types ─── */
 
@@ -48,16 +49,11 @@ const formatRupiah = (num: number) => {
 
 const fmtDate = (d: string | Date | undefined) => {
   if (!d) return '-';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatWIBDate(d, { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-const fmtShort = (d: Date) =>
-  d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-
-/** Format a date as "Mar 15" for daily mode labels. */
-const fmtDay = (d: Date) =>
-  d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const fmtShort = (d: Date | string) => formatWIBDate(d, { month: 'short', year: '2-digit' });
+const fmtDay = (d: Date | string) => formatWIBDate(d, { month: 'short', day: 'numeric' });
 
 /** Generate an array of first-of-month Date objects from start to end (inclusive). */
 function monthRange(start: Date, end: Date): Date[] {
@@ -311,8 +307,9 @@ export default function ProjectDetail() {
     if (!globalStart || !globalEnd) return [];
     if (workItems.length === 0 && supplies.length === 0) return [];
 
-    const start = new Date(globalStart);
-    const end = new Date(globalEnd);
+    const start = wibDate(globalStart);
+    const end = wibDate(globalEnd);
+    if (!start || !end) return [];
     const months = monthRange(start, end);
     if (months.length === 0) return [];
 
@@ -333,10 +330,13 @@ export default function ProjectDetail() {
       const wiAny = wi as any;
       const s = wiAny.startDate || wiAny.dates?.plannedStart;
       const e = wiAny.endDate || wiAny.dates?.plannedEnd;
-      if (s && e) {
+      const dS = s ? wibDate(s) : start;
+      const dE = e ? wibDate(e) : end;
+      
+      if (dS && dE) {
         allItems.push({
-          startDate: new Date(s),
-          endDate: new Date(e),
+          startDate: dS,
+          endDate: dE,
           plannedCost: wi.cost || 0,
           actualCost: wiAny.actualCost || 0,
         });
@@ -346,10 +346,13 @@ export default function ProjectDetail() {
     for (const sup of supplies as any[]) {
       const s = sup.startDate || sup.deadline;
       const e = sup.endDate || sup.deadline;
-      if (s && e) {
+      const dS = s ? wibDate(s) : start;
+      const dE = e ? wibDate(e) : end;
+
+      if (dS && dE) {
         allItems.push({
-          startDate: new Date(s),
-          endDate: new Date(e),
+          startDate: dS,
+          endDate: dE,
           plannedCost: sup.cost || 0,
           actualCost: sup.actualCost || 0,
         });
@@ -370,7 +373,9 @@ export default function ProjectDetail() {
       // ── Daily granularity ──
       const days = dayRange(start, end);
       if (days.length === 0) return [];
-      const todayDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayStr = todayWIB();
+      const todayD = wibDate(todayStr);
+      const todayDay = todayD ? new Date(todayD) : new Date();
 
       for (const day of days) {
         let dayPlanned = 0;
@@ -409,7 +414,10 @@ export default function ProjectDetail() {
       }
     } else {
       // ── Monthly granularity ──
-      const nowMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const todayStr = todayWIB();
+      const todayD = wibDate(todayStr);
+      const nowMonth = todayD ? new Date(todayD) : new Date();
+      nowMonth.setUTCDate(1);
 
       for (const month of months) {
         let monthPlanned = 0;
@@ -452,7 +460,7 @@ export default function ProjectDetail() {
 
   // ─── Derive "today" label for the chart reference line ───
   const useDailyMode = granularity === 'daily' ? true : granularity === 'monthly' ? false : monthRange(new Date(project.startDate || (project.globalDates as any)?.planned?.start), new Date(project.endDate || (project.globalDates as any)?.planned?.end)).length === 1;
-  const todayLabel = useDailyMode ? fmtDay(new Date()) : fmtShort(new Date());
+  const todayLabel = useDailyMode ? fmtDay(todayWIB()) : fmtShort(todayWIB());
   const todayDataPoint = scurveData.find((d) => d.isToday);
   const hasTodayOnChart = scurveData.some((d) => d.isToday);
 

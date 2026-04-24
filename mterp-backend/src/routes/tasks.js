@@ -1,6 +1,7 @@
 const express = require('express');
 const { Task, Project, User } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
+const { parseWIBDate, nowWIB } = require('../utils/date');
 
 const router = express.Router();
 
@@ -47,8 +48,8 @@ router.get('/', auth, async (req, res) => {
 // GET /api/tasks/my - Get current user's tasks for today
 router.get('/my', auth, async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = nowWIB();
+    today.setUTCHours(0, 0, 0, 0); // Local time bounds handled correctly by DB queries usually, but this is safe for sorting.
     
     const tasks = await Task.find({
       assignedTo: req.user._id,
@@ -111,7 +112,7 @@ router.post('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin
       assignedTo: assignedTo || undefined,
       assignedBy: req.user._id,
       priority: priority || 'normal',
-      dueDate: dueDate ? new Date(dueDate) : undefined,
+      dueDate: parseWIBDate(dueDate) || undefined,
       workItemId,
     });
     
@@ -148,7 +149,7 @@ router.put('/:id', auth, async (req, res) => {
       if (status) {
         task.status = status;
         if (status === 'completed') {
-          task.completedAt = new Date();
+          task.completedAt = nowWIB();
         }
       }
     } else {
@@ -161,11 +162,11 @@ router.put('/:id', auth, async (req, res) => {
       if (status) {
         task.status = status;
         if (status === 'completed') {
-          task.completedAt = new Date();
+          task.completedAt = nowWIB();
         }
       }
       if (priority) task.priority = priority;
-      if (dueDate !== undefined) task.dueDate = dueDate ? new Date(dueDate) : undefined;
+      if (dueDate !== undefined) task.dueDate = parseWIBDate(dueDate) || undefined;
       if (notes !== undefined) task.notes = notes;
     }
     
@@ -239,7 +240,7 @@ router.put('/:id/status', auth, async (req, res) => {
     
     task.status = status;
     if (status === 'completed') {
-      task.completedAt = new Date();
+      task.completedAt = nowWIB();
     }
     
     await task.save();

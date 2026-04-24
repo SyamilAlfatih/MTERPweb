@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, Input } from '../components/shared';
+import { formatDate as formatWIBDate } from '../utils/date';
 
 interface TaskData {
   _id: string;
@@ -352,7 +353,7 @@ export default function Tasks() {
                   {task.dueDate && (
                     <span className="flex items-center gap-1 text-sm text-text-muted">
                       <Calendar size={14} />
-                      {new Date(task.dueDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      {formatWIBDate(task.dueDate, { day: 'numeric', month: 'long', year: 'numeric' })}
                     </span>
                   )}
                 </div>

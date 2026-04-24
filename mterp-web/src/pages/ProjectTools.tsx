@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, Input } from '../components/shared';
 import { PhotoView } from 'react-photo-view';
 import { getImageUrl } from '../utils/image';
+import { formatDate as formatWIBDate } from '../utils/date';
 
 interface ToolData {
   _id: string;
@@ -211,11 +212,9 @@ export default function ProjectTools() {
     return { ...config, label: labelMapping[config.label] };
   };
 
-  const formatDate = (dateStr?: string) => {
+  const formatDateDisplay = (dateStr?: string) => {
     if (!dateStr) return null;
-    return new Date(dateStr).toLocaleDateString('id-ID', {
-      day: 'numeric', month: 'short'
-    });
+    return formatWIBDate(dateStr, { day: 'numeric', month: 'short' });
   };
 
   // Filtered tools
@@ -382,7 +381,7 @@ export default function ProjectTools() {
                       {tool.lastChecked && (
                         <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
                           <Calendar size={13} />
-                          {formatDate(tool.lastChecked)}
+                          {formatDateDisplay(tool.lastChecked)}
                         </span>
                       )}
                     </div>

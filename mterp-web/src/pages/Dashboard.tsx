@@ -36,6 +36,7 @@ import {
 } from 'recharts';
 import api from '../api/api';
 import { Card } from '../components/shared';
+import { formatDate as formatWIBDate, formatTime as formatWIBTime } from '../utils/date';
 
 interface WorkerEntry {
     _id: string;
@@ -122,7 +123,7 @@ const formatCurrency = (val: number): string => {
 
 const formatTime = (dateStr: string | null): string => {
     if (!dateStr) return '--:--';
-    return new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    return formatWIBTime(dateStr);
 };
 
 export default function Dashboard() {
@@ -185,7 +186,7 @@ export default function Dashboard() {
 
     // Placeholder for userName and formattedDate, as they are not defined in the original code
     const userName = "User";
-    const formattedDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const formattedDate = formatWIBDate(new Date(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     return (
         <div className="p-6 max-w-[1200px] mx-auto max-lg:p-4 max-sm:p-3">

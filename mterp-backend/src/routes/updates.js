@@ -1,19 +1,20 @@
 const express = require('express');
 const { Project, Attendance, DailyReport } = require('../models');
 const { auth } = require('../middleware/auth');
+const { wibDayRange, nowWIB } = require('../utils/date');
 
 const router = express.Router();
 
-// Timezone-safe helper
-const TZ_OFFSET_HOURS = parseInt(process.env.TZ_OFFSET_HOURS || '7', 10);
-
+// Timezone-safe helper using shared utilities
 function getTodayRange() {
+  const range = wibDayRange(nowWIB());
+  if (range) {
+    return { todayStart: range.start, todayEnd: range.end };
+  }
+  // Fallback
   const now = new Date();
-  const localMs = now.getTime() + (TZ_OFFSET_HOURS * 60 * 60 * 1000);
-  const localDay = new Date(localMs);
-  localDay.setUTCHours(0, 0, 0, 0);
-  const todayStart = new Date(localDay.getTime() - (TZ_OFFSET_HOURS * 60 * 60 * 1000));
-  const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+  const todayStart = new Date(now.setUTCHours(0,0,0,0));
+  const todayEnd = new Date(now.setUTCHours(23,59,59,999));
   return { todayStart, todayEnd };
 }
 
@@ -73,7 +74,7 @@ router.get('/', auth, async (req, res) => {
         title: 'Today\'s Attendance',
         description: `${todayAttendance.length} checked in`,
         subtitle: completedCount > 0 ? `${totalHours.toFixed(1)} total man-hours` : 'In progress',
-        timestamp: new Date(),
+        timestamp: nowWIB(),
         color: '#10B981',
         bg: '#D1FAE5',
       });

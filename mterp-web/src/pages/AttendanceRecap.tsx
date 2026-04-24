@@ -11,6 +11,7 @@ import { Card, Button, EmptyState } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
 
 interface WorkerRecap {
   userId: string;
@@ -63,22 +64,20 @@ export default function AttendanceRecap() {
   // Filters
   const [selectedProject, setSelectedProject] = useState('');
   const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    const day = d.getDay(); // 0=Sun
-    d.setDate(d.getDate() - day); // Sunday of current week
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const date = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${date}`;
+    const todayStr = todayWIB();
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    const day = date.getUTCDay(); // 0=Sun
+    date.setUTCDate(date.getUTCDate() - day); // Sunday of current week
+    return date.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => {
-    const d = new Date();
-    const day = d.getDay(); // 0=Sun
-    d.setDate(d.getDate() - day + 6); // Saturday of current week
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const date = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${date}`;
+    const todayStr = todayWIB();
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    const day = date.getUTCDay(); // 0=Sun
+    date.setUTCDate(date.getUTCDate() - day + 6); // Saturday of current week
+    return date.toISOString().split('T')[0];
   });
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -213,7 +212,10 @@ export default function AttendanceRecap() {
       t('attendanceRecap.table.name').split(' ')[0], // Use short name
       t('attendanceRecap.table.position'),
       t('attendanceRecap.table.dailyWage'),
-      ...dateColumns.map(dateStr => new Date(dateStr).getDate().toString().padStart(2, '0')),
+      ...dateColumns.map(dateStr => {
+        const d = wibDate(dateStr);
+        return d ? d.getUTCDate().toString().padStart(2, '0') : '-';
+      }),
       t('attendanceRecap.table.total')
     ];
 
@@ -388,15 +390,16 @@ export default function AttendanceRecap() {
                   </span>
                 </th>
                 {dateColumns.map((dateStr) => {
-                  const d = new Date(dateStr);
-                  const isSunday = d.getDay() === 0;
+                  const [y, m, dNum] = dateStr.split('-').map(Number);
+                  const d = new Date(Date.UTC(y, m - 1, dNum));
+                  const isSunday = d.getUTCDay() === 0;
                   return (
                     <th key={dateStr} className="p-3 text-center w-[50px] min-w-[50px]">
                       <div className={`text-[9px] font-black leading-none mb-1 ${isSunday ? 'text-red-500' : 'text-text-muted opacity-60'}`}>
-                        {d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}
+                        {formatWIBDate(d, { weekday: 'short' }).toUpperCase()}
                       </div>
                       <div className={`text-base font-black leading-none tabular-nums ${isSunday ? 'text-red-600' : 'text-text-primary'}`}>
-                        {d.getDate().toString().padStart(2, '0')}
+                        {d.getUTCDate().toString().padStart(2, '0')}
                       </div>
                     </th>
                   );
@@ -612,7 +615,7 @@ export default function AttendanceRecap() {
             <div className="flex items-center gap-2 mt-4 text-text-muted">
               <Wallet size={14} />
               <span className="text-[11px] font-bold leading-none">
-                {t('attendanceRecap.summary.cycle')}: {new Date(summary.payrollCycleStart).toLocaleDateString([], { month: 'short', day: 'numeric' })} - {new Date(summary.payrollCycleEnd).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                {t('attendanceRecap.summary.cycle')}: {formatWIBDate(summary.payrollCycleStart, { month: 'short', day: 'numeric' })} - {formatWIBDate(summary.payrollCycleEnd, { month: 'short', day: 'numeric' })}
               </span>
             </div>
           </Card>

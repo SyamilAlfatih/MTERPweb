@@ -10,6 +10,7 @@ import { PhotoView } from 'react-photo-view';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, CostInput } from '../components/shared';
+import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
 
 interface UserOption {
   _id: string;
@@ -123,12 +124,15 @@ export default function AttendanceLogs() {
   };
 
   useEffect(() => {
-    const now = new Date();
-    const weekStart = new Date(now);
-    // getDay() returns 0=Sunday..6=Saturday — subtracting it gives this week's Sunday
-    weekStart.setDate(now.getDate() - now.getDay());
-    setStartDate(toLocalDateStr(weekStart));
-    setEndDate(toLocalDateStr(now));
+    const todayStr = todayWIB();
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const todayD = new Date(Date.UTC(y, m - 1, d));
+    
+    const weekStart = new Date(todayD);
+    weekStart.setUTCDate(todayD.getUTCDate() - todayD.getUTCDay());
+    
+    setStartDate(weekStart.toISOString().slice(0, 10));
+    setEndDate(todayStr);
     fetchUsers();
   }, []);
 
@@ -164,17 +168,20 @@ export default function AttendanceLogs() {
 
   const handleDateRangeChange = (range: 'week' | 'month' | 'custom') => {
     setDateRange(range);
-    const now = new Date();
+    const todayStr = todayWIB();
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const todayD = new Date(Date.UTC(y, m - 1, d));
+
     if (range === 'week') {
-      const weekStart = new Date(now);
-      // getDay() returns 0=Sunday..6=Saturday — subtracting it gives this week's Sunday
-      weekStart.setDate(now.getDate() - now.getDay());
-      setStartDate(toLocalDateStr(weekStart));
-      setEndDate(toLocalDateStr(now));
+      const weekStart = new Date(todayD);
+      weekStart.setUTCDate(todayD.getUTCDate() - todayD.getUTCDay());
+      setStartDate(weekStart.toISOString().slice(0, 10));
+      setEndDate(todayStr);
     } else if (range === 'month') {
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      setStartDate(toLocalDateStr(monthStart));
-      setEndDate(toLocalDateStr(now));
+      const monthStart = new Date(todayD);
+      monthStart.setUTCDate(1);
+      setStartDate(monthStart.toISOString().slice(0, 10));
+      setEndDate(todayStr);
     }
   };
 
@@ -260,11 +267,11 @@ export default function AttendanceLogs() {
     }
   };
 
-  const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
+  const formatDateDisplay = (dateStr: string) =>
+    formatWIBDate(dateStr, { weekday: 'short', day: 'numeric', month: 'short' });
 
-  const formatTime = (dateStr: string) =>
-    new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const formatTimeDisplay = (dateStr: string) =>
+    formatWIBTime(dateStr);
 
 
 
@@ -478,16 +485,16 @@ export default function AttendanceLogs() {
                       </div>
                       <div className="text-right">
                         <Badge label={record.status} variant={record.status === 'Present' ? 'success' : record.status === 'Absent' ? 'danger' : 'warning'} className="mb-1" />
-                        <span className="block text-[10px] font-bold text-text-muted uppercase">{formatDate(record.date)}</span>
+                        <span className="block text-[10px] font-bold text-text-muted uppercase">{formatDateDisplay(record.date)}</span>
                       </div>
                     </div>
 
                     {/* Time Log */}
                     <div className="flex items-center gap-2 bg-bg-secondary p-3 rounded-xl mb-4 border-2 border-transparent">
                       <Clock size={16} className="text-text-muted" />
-                      <span className="text-sm font-black text-text-primary tabular-nums">{record.checkIn?.time ? formatTime(record.checkIn.time) : '--:--'}</span>
+                      <span className="text-sm font-black text-text-primary tabular-nums">{record.checkIn?.time ? formatTimeDisplay(record.checkIn.time) : '--:--'}</span>
                       <span className="text-sm text-text-muted px-2">→</span>
-                      <span className="text-sm font-black text-text-primary tabular-nums">{record.checkOut?.time ? formatTime(record.checkOut.time) : '--:--'}</span>
+                      <span className="text-sm font-black text-text-primary tabular-nums">{record.checkOut?.time ? formatTimeDisplay(record.checkOut.time) : '--:--'}</span>
                     </div>
 
                     {/* Wage Display Panel */}
@@ -598,7 +605,7 @@ export default function AttendanceLogs() {
                         {record.permit?.status || 'Pending'}
                       </span>
                       <span className="block text-[10px] font-bold text-text-muted uppercase">
-                         {formatDate(record.date)}
+                         {formatDateDisplay(record.date)}
                       </span>
                     </div>
                   </div>
@@ -684,11 +691,11 @@ export default function AttendanceLogs() {
                 </div>
                 <div className="flex-1">
                   <span className="block font-black text-text-primary">{invalidateRecord.userId.fullName}</span>
-                  <span className="text-xs font-bold text-text-muted uppercase">{invalidateRecord.userId.role} · {formatDate(invalidateRecord.date)}</span>
+                  <span className="text-xs font-bold text-text-muted uppercase">{invalidateRecord.userId.role} · {formatDateDisplay(invalidateRecord.date)}</span>
                 </div>
                 <div className="text-right">
                   <span className="block text-xs font-bold text-text-muted">Checked in at</span>
-                  <span className="text-sm font-black text-text-primary">{invalidateRecord.checkIn?.time ? formatTime(invalidateRecord.checkIn.time) : '--:--'}</span>
+                  <span className="text-sm font-black text-text-primary">{invalidateRecord.checkIn?.time ? formatTimeDisplay(invalidateRecord.checkIn.time) : '--:--'}</span>
                 </div>
               </div>
 
@@ -737,7 +744,7 @@ export default function AttendanceLogs() {
               <div className="flex items-start gap-2.5 p-3.5 bg-amber-50 border-2 border-amber-200 rounded-xl">
                 <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-xs font-semibold text-amber-700 m-0 leading-relaxed">
-                  This will <strong>clear the check-in and check-out records</strong> for this worker on {formatDate(invalidateRecord.date)} and mark them as <strong>{invalidateStatus}</strong>. This action is logged.
+                  This will <strong>clear the check-in and check-out records</strong> for this worker on {formatDateDisplay(invalidateRecord.date)} and mark them as <strong>{invalidateStatus}</strong>. This action is logged.
                 </p>
               </div>
             </div>
@@ -797,7 +804,7 @@ export default function AttendanceLogs() {
                   </div>
                   <div className="text-right border-l-2 border-primary/20 pl-4">
                      <span className="block text-[10px] font-bold text-primary uppercase mb-1">Date</span>
-                     <span className="text-sm font-black text-primary">{formatDate(selectedRecord.date)}</span>
+                     <span className="text-sm font-black text-primary">{formatDateDisplay(selectedRecord.date)}</span>
                   </div>
                </div>
 

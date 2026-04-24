@@ -15,6 +15,9 @@
     "search": "Cari proyek, alat...",
     "language": "ID"
   },
+  "nav": {
+    "home": "Beranda"
+  },
   "dashboard": {
     "welcome": "Selamat Datang,",
     "activeProjects": "Proyek Aktif",

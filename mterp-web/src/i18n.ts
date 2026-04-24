@@ -11,11 +11,13 @@ i18n
   // Passes i18n down to react-i18next
   .use(initReactI18next)
   .init({
-    fallbackLng: 'id', // Default language is Indonesian
+    fallbackLng: 'id',
+    supportedLngs: ['en', 'id'],
+    load: 'languageOnly', // Convert en-US to en
     debug: import.meta.env.MODE === 'development',
 
     interpolation: {
-      escapeValue: false, // React already safeguards from XSS
+      escapeValue: false,
     },
     
     backend: {

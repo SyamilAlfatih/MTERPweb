@@ -7,6 +7,7 @@ import {
 import api from '../api/api';
 import { Card, Input, Button, Alert, EmptyState, LoadingOverlay, CostInput } from '../components/shared';
 import { ProjectData } from '../types';
+import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB } from '../utils/date';
 
 interface Supply {
   _id: string;
@@ -52,11 +53,7 @@ export default function MaterialUsage() {
     supplyId: '',
     qtyUsed: '',
     notes: '',
-    date: (() => {
-      const d = new Date();
-      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-      return d.toISOString().split('T')[0];
-    })(),
+    date: todayWIB(),
   });
 
   useEffect(() => {
@@ -110,11 +107,8 @@ export default function MaterialUsage() {
   const formatRupiah = (num: number) =>
     new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
-  const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-
-  const formatTime = (dateStr: string) =>
-    new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const formatDate = (dateStr: string) => formatWIBDate(dateStr, { day: 'numeric', month: 'short', year: 'numeric' });
+  const formatTime = (dateStr: string) => formatWIBTime(dateStr);
 
   // Derived stats
   const totalPlannedQty = supplies.reduce((sum, s) => sum + (s.qty || 0), 0);

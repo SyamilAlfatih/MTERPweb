@@ -15,6 +15,9 @@
     "search": "Search projects, tools...",
     "language": "EN"
   },
+  "nav": {
+    "home": "Home"
+  },
   "dashboard": {
     "welcome": "Welcome back,",
     "activeProjects": "Active Projects",

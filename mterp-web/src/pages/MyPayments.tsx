@@ -10,6 +10,7 @@ import { Card, Badge, Button, EmptyState, CostInput } from '../components/shared
 import { Alert } from '../components/shared';
 import { useTranslation } from 'react-i18next';
 import { exportSlipToPdf } from '../utils/exportSlipPdf';
+import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
 
 interface KasbonRecord {
   _id: string;
@@ -80,7 +81,7 @@ interface MySlip {
 }
 
 const formatRp = (v: number) => `Rp ${new Intl.NumberFormat('id-ID').format(v || 0)}`;
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+const fmtDate = (iso: string) => formatWIBDate(iso, { day: 'numeric', month: 'short' });
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 const fmtPeriod = (p: { startDate?: string; endDate?: string; month?: number; year?: number }) => {
   if (p.startDate && p.endDate) return `${fmtDate(p.startDate)} — ${fmtDate(p.endDate)}`;
@@ -126,9 +127,16 @@ export default function MyPayments() {
       setLoading(true);
 
       // Get current month range
-      const now = new Date();
-      const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+      const todayStr = todayWIB();
+      const todayD = wibDate(todayStr);
+      if (!todayD) return;
+      const firstOfMonth = new Date(todayD);
+      firstOfMonth.setUTCDate(1);
+      const lastOfMonth = new Date(todayD);
+      lastOfMonth.setUTCMonth(lastOfMonth.getUTCMonth() + 1);
+      lastOfMonth.setUTCDate(0);
+      const startDate = firstOfMonth.toISOString().split('T')[0];
+      const endDate = lastOfMonth.toISOString().split('T')[0];
 
       const [kasbonRes, wageRes] = await Promise.all([
         api.get('/kasbon'),
@@ -210,7 +218,7 @@ export default function MyPayments() {
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('id-ID', {
+    return formatWIBDate(dateStr, {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -244,10 +252,7 @@ export default function MyPayments() {
 
   const formatTime = (timeStr?: string) => {
     if (!timeStr) return '-';
-    return new Date(timeStr).toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatWIBTime(timeStr);
   };
 
   const totalKasbonPending = kasbons.filter(k => k.status === 'Pending').reduce((sum, k) => sum + k.amount, 0);
@@ -659,7 +664,7 @@ export default function MyPayments() {
                       <>
                         <span style={{ fontSize: '0.8em', fontWeight: 600 }}>{sig.name}</span>
                         <span style={{ fontSize: '0.65em', color: 'var(--text-muted)' }}>
-                          {new Date(sig.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {formatWIBDate(sig.date, { day: 'numeric', month: 'short', year: 'numeric' })}
                         </span>
                         <CheckCircle2 size={12} color="#059669" />
                       </>

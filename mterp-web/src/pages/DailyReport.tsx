@@ -9,6 +9,7 @@ import { jsPDF } from 'jspdf';
 import api from '../api/api';
 import { Card, Button, Input, Alert, Badge, CostInput } from '../components/shared';
 import { PhotoView } from 'react-photo-view';
+import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
 
 interface ProjectOption {
   _id: string;
@@ -123,11 +124,8 @@ function costInDay(
   return totalCost / totalDays;
 }
 
-const fmtShort = (d: Date) =>
-  d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-
-const fmtDay = (d: Date) =>
-  d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const fmtShort = (d: Date | string) => formatWIBDate(d, { month: 'short', year: '2-digit' });
+const fmtDay = (d: Date | string) => formatWIBDate(d, { month: 'short', day: 'numeric' });
 
 export default function DailyReport() {
   const { t } = useTranslation();
@@ -154,11 +152,7 @@ export default function DailyReport() {
     message: '',
   });
 
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const d = new Date();
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().split('T')[0];
-  });
+  const [selectedDate, setSelectedDate] = useState<string>(todayWIB());
 
   const [formData, setFormData] = useState({
     weather: 'Cerah',
@@ -450,8 +444,9 @@ export default function DailyReport() {
     const globalEnd = project.endDate;
     if (!globalStart || !globalEnd) return;
 
-    const start = new Date(globalStart as string);
-    const end = new Date(globalEnd as string);
+    const start = wibDate(globalStart as string);
+    const end = wibDate(globalEnd as string);
+    if (!start || !end) return;
     const months = monthRange(start, end);
     if (months.length === 0) return;
 
@@ -463,16 +458,20 @@ export default function DailyReport() {
     for (const wi of wItems) {
       const s = wi.startDate || wi.dates?.plannedStart;
       const e = wi.endDate || wi.dates?.plannedEnd;
-      if (s && e) {
-        allItems.push({ startDate: new Date(s as string), endDate: new Date(e as string), plannedCost: wi.cost || 0, actualCost: wi.actualCost || 0 });
+      const dS = s ? wibDate(s as string) : start;
+      const dE = e ? wibDate(e as string) : end;
+      if (dS && dE) {
+        allItems.push({ startDate: dS, endDate: dE, plannedCost: wi.cost || 0, actualCost: wi.actualCost || 0 });
       }
     }
 
     for (const sup of sItems) {
       const s = sup.startDate || sup.deadline;
       const e = sup.endDate || sup.deadline;
-      if (s && e) {
-        allItems.push({ startDate: new Date(s as string), endDate: new Date(e as string), plannedCost: sup.cost || 0, actualCost: sup.actualCost || 0 });
+      const dS = s ? wibDate(s as string) : start;
+      const dE = e ? wibDate(e as string) : end;
+      if (dS && dE) {
+        allItems.push({ startDate: dS, endDate: dE, plannedCost: sup.cost || 0, actualCost: sup.actualCost || 0 });
       }
     }
 
@@ -706,7 +705,7 @@ export default function DailyReport() {
       doc.setFont('helvetica', 'normal');
       doc.text(selectedProjectName, margin + 35, y);
 
-      const dateStr = new Date(selectedDate + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+      const dateStr = formatWIBDate(selectedDate, { day: 'numeric', month: 'long', year: 'numeric' });
       doc.setFont('helvetica', 'bold');
       doc.text('Tanggal / Date:', pageW / 2 + 5, y);
       doc.setFont('helvetica', 'normal');
@@ -1026,7 +1025,7 @@ export default function DailyReport() {
           <div>
             <h1 className="text-2xl font-black text-text-primary m-0 tracking-tight uppercase">{t('dailyReport.title')}</h1>
             <span className="text-xs font-bold text-text-muted uppercase tracking-widest">
-              {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+              {formatWIBDate(new Date())}
             </span>
           </div>
         </div>

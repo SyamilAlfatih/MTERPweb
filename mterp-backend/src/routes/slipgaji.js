@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { User, Attendance, Kasbon, SlipGaji } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
+const { wibDayRange, nowWIB } = require('../utils/date');
 
 const router = express.Router();
 
@@ -48,13 +49,11 @@ const generateSlipNumber = async (startDate) => {
 };
 
 // Helper: parse date string to UTC midnight/end-of-day consistently
-const isValidDateStr = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
-const toUTCStart = (dateStr) => isValidDateStr(dateStr) ? new Date(dateStr + 'T00:00:00.000Z') : null;
-const toUTCEnd = (dateStr) => isValidDateStr(dateStr) ? new Date(dateStr + 'T23:59:59.999Z') : null;
+// (Removed toUTCStart/toUTCEnd in favor of wibDayRange)
 
 // Helper: get current week Mon→Sat (payment Saturday)
 const getCurrentWeekRange = () => {
-    const now = new Date();
+    const now = nowWIB();
     const day = now.getDay(); // 0=Sun, 1=Mon...6=Sat
     const diffToMon = day === 0 ? 6 : day - 1;
     const monday = new Date(now);
@@ -73,12 +72,12 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
         const query = {};
         if (workerId) query.workerId = workerId;
         if (startDate && endDate) {
-            // Use UTC dates to avoid timezone mismatch
-            const s = toUTCStart(startDate);
-            const e = toUTCEnd(endDate);
-            if (!s || !e) return res.status(400).json({ msg: 'Invalid date format. Use YYYY-MM-DD.' });
-            query['period.startDate'] = { $gte: s };
-            query['period.endDate'] = { $lte: e };
+            // Use WIB dates correctly mapped to UTC bounds
+            const startRange = wibDayRange(startDate);
+            const endRange = wibDayRange(endDate);
+            if (!startRange || !endRange) return res.status(400).json({ msg: 'Invalid date format. Use YYYY-MM-DD.' });
+            query['period.startDate'] = { $gte: startRange.start };
+            query['period.endDate'] = { $lte: endRange.end };
         }
         if (status) query.status = status;
 
@@ -142,11 +141,13 @@ router.get('/preview', auth, authorize('owner', 'director', 'supervisor', 'asset
             return res.status(400).json({ msg: 'workerId, startDate, and endDate are required' });
         }
 
-        const periodStart = toUTCStart(startDate);
-        const periodEnd = toUTCEnd(endDate);
-        if (!periodStart || !periodEnd) {
+        const startRange = wibDayRange(startDate);
+        const endRange = wibDayRange(endDate);
+        if (!startRange || !endRange) {
             return res.status(400).json({ msg: 'Invalid date format. Use YYYY-MM-DD.' });
         }
+        const periodStart = startRange.start;
+        const periodEnd = endRange.end;
 
         // Attendance — exact same query as generate
         const attendanceRecords = await Attendance.find({
@@ -233,9 +234,14 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
             return res.status(400).json({ msg: 'Worker, start date, and end date are required' });
         }
 
-        // Use UTC dates consistently to avoid timezone issues
-        const periodStart = toUTCStart(startDate);
-        const periodEnd = toUTCEnd(endDate);
+        // Use WIB dates mapped to UTC consistently to avoid timezone issues
+        const startRange = wibDayRange(startDate);
+        const endRange = wibDayRange(endDate);
+        if (!startRange || !endRange) {
+            return res.status(400).json({ msg: 'Invalid date format. Use YYYY-MM-DD.' });
+        }
+        const periodStart = startRange.start;
+        const periodEnd = endRange.end;
 
         if (periodStart >= periodEnd) {
             return res.status(400).json({ msg: 'Start date must be before end date' });
@@ -348,8 +354,11 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
             // Race condition: another request created the same slip — return it
             try {
                 const { workerId, startDate, endDate } = req.body;
-                const periodStart = toUTCStart(startDate);
-                const periodEnd = toUTCEnd(endDate);
+                const startR = wibDayRange(startDate);
+                const endR = wibDayRange(endDate);
+                if (!startR || !endR) return res.status(400).json({ msg: 'Invalid dates' });
+                const periodStart = startR.start;
+                const periodEnd = endR.end;
                 const existing = await SlipGaji.findOne({ workerId, 'period.startDate': periodStart, 'period.endDate': periodEnd })
                     .populate('workerId', 'fullName role paymentInfo email phone')
                     .populate('createdBy', 'fullName');
@@ -393,7 +402,7 @@ router.post('/:id/authorize', auth, authorize('owner', 'director'), async (req, 
             slip.authorization.directorPassphrase = hashedPassphrase;
             slip.authorization.directorId = req.user._id;
             slip.authorization.directorName = req.user.fullName;
-            slip.authorization.directorSignedAt = new Date();
+            slip.authorization.directorSignedAt = nowWIB();
         } else if (role === 'owner') {
             if (slip.authorization.ownerPassphrase) {
                 return res.status(400).json({ msg: 'Owner has already signed this slip' });
@@ -401,7 +410,7 @@ router.post('/:id/authorize', auth, authorize('owner', 'director'), async (req, 
             slip.authorization.ownerPassphrase = hashedPassphrase;
             slip.authorization.ownerId = req.user._id;
             slip.authorization.ownerName = req.user.fullName;
-            slip.authorization.ownerSignedAt = new Date();
+            slip.authorization.ownerSignedAt = nowWIB();
         } else {
             return res.status(403).json({ msg: 'Only director or owner can authorize' });
         }

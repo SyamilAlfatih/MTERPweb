@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Badge } from '../components/shared';
+import { formatDate as formatWIBDate } from '../utils/date';
 
 interface UpdateItem {
   _id: string;
@@ -154,7 +155,7 @@ export default function Home() {
     if (diffMins < 60) return `${diffMins}${t('home.time.minsAgo')}`;
     if (diffHours < 24) return `${diffHours}${t('home.time.hoursAgo')}`;
     if (diffDays < 7) return `${diffDays}${t('home.time.daysAgo')}`;
-    return date.toLocaleDateString(i18n.language === 'id' ? 'id-ID' : 'en-US', { day: 'numeric', month: 'short' });
+    return formatWIBDate(date, { day: 'numeric', month: 'short' });
   };
 
   const isManager = user?.role && ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin', 'admin_project'].includes(user.role);
@@ -194,7 +195,7 @@ export default function Home() {
               {user?.fullName?.split(' ')[0] || 'Hi there'} 👷
             </h2>
             <p className="text-white/70 text-sm font-medium mt-1 m-0">
-              {new Date().toLocaleDateString(i18n.language === 'id' ? 'id-ID' : 'en-US', {
+              {formatWIBDate(new Date(), {
                 weekday: 'long', day: 'numeric', month: 'long',
               })}
             </p>
