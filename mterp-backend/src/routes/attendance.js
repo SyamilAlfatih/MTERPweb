@@ -75,11 +75,12 @@ router.get('/', auth, async (req, res) => {
       }
     }
     
-    const attendance = await Attendance.find(query)
+    const attendance = (await Attendance.find(query)
       .populate('userId', 'fullName role')
       .populate('projectId', 'nama')
       .sort({ date: -1 })
-      .lean();
+      .lean())
+      .filter(a => a.userId); // Filter out records with deleted users
     
     res.json(attendance);
   } catch (error) {
@@ -134,10 +135,11 @@ router.get('/recap', auth, async (req, res) => {
       }
     }
     
-    const attendance = await Attendance.find(query)
+    const attendance = (await Attendance.find(query)
       .populate('userId', 'fullName role')
       .sort({ date: -1 })
-      .lean();
+      .lean())
+      .filter(a => a.userId); // Filter out records with deleted users
     
     // Calculate summary
     const summary = {
@@ -371,10 +373,11 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
     if (projectId) attendanceQuery.projectId = projectId;
 
     // 2. Fetch all attendance records in range
-    const allRecords = await Attendance.find(attendanceQuery)
+    const allRecords = (await Attendance.find(attendanceQuery)
       .populate('userId', 'fullName role position')
       .populate('projectId', 'nama')
-      .lean();
+      .lean())
+      .filter(a => a.userId); // Filter out records with deleted users
 
     // 3. Generate date columns array
     const dateColumns = [];
@@ -509,10 +512,11 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'president_dire
     };
     if (projectId) attendanceQuery.projectId = projectId;
 
-    const allRecords = await Attendance.find(attendanceQuery)
+    const allRecords = (await Attendance.find(attendanceQuery)
       .populate('userId', 'fullName role position')
       .populate('projectId', 'nama')
-      .lean();
+      .lean())
+      .filter(a => a.userId); // Filter out records with deleted users
 
     const dateColumns = [];
     const start = new Date(startDate);

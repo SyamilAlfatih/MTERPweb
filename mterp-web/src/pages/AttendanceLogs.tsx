@@ -476,11 +476,11 @@ export default function AttendanceLogs() {
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center gap-3">
                          <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shrink-0" style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}>
-                          {record.userId.fullName.charAt(0).toUpperCase()}
+                          {record.userId?.fullName?.charAt(0).toUpperCase() || '?'}
                         </div>
                         <div>
-                          <h4 className="text-base font-black text-text-primary tracking-tight m-0">{record.userId.fullName}</h4>
-                          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{record.userId.role}</span>
+                          <h4 className="text-base font-black text-text-primary tracking-tight m-0">{record.userId?.fullName || t('attendanceLogs.deletedUser', 'Deleted User')}</h4>
+                          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{record.userId?.role || '-'}</span>
                         </div>
                       </div>
                       <div className="text-right">
@@ -587,11 +587,11 @@ export default function AttendanceLogs() {
                   <div className="flex justify-between items-start mb-4 pl-3">
                     <div className="flex items-center gap-3">
                        <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shrink-0 bg-purple-100 text-purple-600">
-                        {record.userId.fullName.charAt(0).toUpperCase()}
+                        {record.userId?.fullName?.charAt(0).toUpperCase() || '?'}
                       </div>
                       <div>
-                        <h4 className="text-base font-black text-text-primary tracking-tight m-0">{record.userId.fullName}</h4>
-                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{record.userId.role}</span>
+                        <h4 className="text-base font-black text-text-primary tracking-tight m-0">{record.userId?.fullName || t('attendanceLogs.deletedUser', 'Deleted User')}</h4>
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{record.userId?.role || '-'}</span>
                       </div>
                     </div>
                     <div className="text-right">
@@ -625,7 +625,7 @@ export default function AttendanceLogs() {
                   {record.permit?.evidence && (
                     <div
                       className="ml-3 relative bg-bg-secondary rounded-xl overflow-hidden cursor-pointer aspect-video group border-2 border-border-light hover:border-primary transition-all"
-                      onClick={() => setEvidenceModal({ open: true, url: getImageUrl(record.permit?.evidence), worker: record.userId.fullName })}
+                      onClick={() => setEvidenceModal({ open: true, url: getImageUrl(record.permit?.evidence), worker: record.userId?.fullName || 'Worker' })}
                     >
                       <img
                         src={getImageUrl(record.permit?.evidence)}
@@ -687,11 +687,11 @@ export default function AttendanceLogs() {
               {/* Worker context */}
               <div className="flex items-center gap-3 p-4 bg-bg-secondary rounded-2xl border-2 border-border-light">
                 <div className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center font-black text-lg shrink-0">
-                  {invalidateRecord.userId.fullName.charAt(0).toUpperCase()}
+                  {invalidateRecord.userId?.fullName?.charAt(0).toUpperCase() || '?'}
                 </div>
                 <div className="flex-1">
-                  <span className="block font-black text-text-primary">{invalidateRecord.userId.fullName}</span>
-                  <span className="text-xs font-bold text-text-muted uppercase">{invalidateRecord.userId.role} · {formatDateDisplay(invalidateRecord.date)}</span>
+                  <span className="block font-black text-text-primary">{invalidateRecord.userId?.fullName || 'Deleted User'}</span>
+                  <span className="text-xs font-bold text-text-muted uppercase">{invalidateRecord.userId?.role || '-'} · {formatDateDisplay(invalidateRecord.date)}</span>
                 </div>
                 <div className="text-right">
                   <span className="block text-xs font-bold text-text-muted">Checked in at</span>
@@ -799,8 +799,8 @@ export default function AttendanceLogs() {
                {/* Context Banner */}
                <div className="flex items-center gap-4 p-4 bg-primary-bg rounded-xl mb-6 border-2 border-primary/20">
                   <div className="flex-1">
-                    <span className="block text-[10px] font-bold text-primary uppercase mb-1">{selectedRecord.userId.role}</span>
-                    <span className="text-base font-black text-primary">{selectedRecord.userId.fullName}</span>
+                    <span className="block text-[10px] font-bold text-primary uppercase mb-1">{selectedRecord.userId?.role || '-'}</span>
+                    <span className="text-base font-black text-primary">{selectedRecord.userId?.fullName || 'Deleted User'}</span>
                   </div>
                   <div className="text-right border-l-2 border-primary/20 pl-4">
                      <span className="block text-[10px] font-bold text-primary uppercase mb-1">Date</span>
