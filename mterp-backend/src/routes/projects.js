@@ -354,6 +354,114 @@ router.get('/:id/material-logs', auth, async (req, res) => {
     res.status(500).json({ msg: 'Server error' });
   }
 });
+// === DAILY REPORT ROUTE ===
+
+// POST /api/projects/:id/daily-report - Submit a daily report
+router.post('/:id/daily-report', auth, uploadLimiter,
+  upload.array('photos', 5),
+  async (req, res) => {
+    try {
+      const project = await Project.findById(req.params.id);
+      if (!project) {
+        return res.status(404).json({ msg: 'Project not found' });
+      }
+
+      const { weather, materials, workforce, notes, date } = req.body;
+      const workItemUpdates = JSON.parse(req.body.workItemUpdates || '[]');
+      const supplyUpdates = JSON.parse(req.body.supplyUpdates || '[]');
+
+      // Collect photo paths
+      const photoPaths = (req.files || []).map(f => f.path);
+
+      // Build DailyReport workItemUpdates with previous progress
+      const reportWorkItems = [];
+      for (const wu of workItemUpdates) {
+        const existing = project.workItems.id(wu.workItemId);
+        const previousProgress = existing ? (existing.progress || 0) : 0;
+        reportWorkItems.push({
+          workItemId: wu.workItemId,
+          name: existing ? existing.name : '',
+          previousProgress,
+          newProgress: wu.newProgress,
+          actualCost: wu.actualCost || 0,
+        });
+
+        // Update the work item on the project
+        if (existing) {
+          existing.progress = wu.newProgress;
+          if (wu.actualCost !== undefined) existing.actualCost = wu.actualCost;
+        }
+      }
+
+      // Build DailyReport supplyUpdates with previous status
+      const reportSupplyUpdates = [];
+      for (const su of supplyUpdates) {
+        const supply = await Supply.findById(su.supplyId);
+        const previousStatus = supply ? (supply.status || 'Pending') : 'Pending';
+        reportSupplyUpdates.push({
+          supplyId: su.supplyId,
+          item: supply ? supply.item : '',
+          previousStatus,
+          newStatus: su.newStatus,
+          actualCost: su.actualCost || 0,
+        });
+
+        // Update the supply document
+        if (supply) {
+          supply.status = su.newStatus;
+          if (su.actualCost !== undefined) supply.actualCost = su.actualCost;
+          await supply.save();
+        }
+      }
+
+      // Calculate overall progress (cost-weighted across work items + supplies)
+      const STATUS_PROGRESS = { 'Pending': 0, 'Ordered': 50, 'Delivered': 100 };
+      const allItems = [
+        ...project.workItems.map(w => ({ cost: w.cost || 0, progress: w.progress || 0 })),
+        ...(await Supply.find({ projectId: project._id }).lean()).map(s => ({
+          cost: s.cost || 0,
+          progress: STATUS_PROGRESS[s.status] || 0,
+        })),
+      ];
+      const totalCost = allItems.reduce((s, i) => s + i.cost, 0);
+      const computedProgress = totalCost > 0
+        ? Math.round(allItems.reduce((s, i) => s + (i.cost / totalCost) * i.progress, 0))
+        : 0;
+
+      // Update project progress
+      project.progress = computedProgress;
+      project.updatedAt = nowWIB();
+      await project.save();
+
+      // Save the DailyReport document
+      const dailyReport = new DailyReport({
+        projectId: project._id,
+        date: parseWIBDate(date) || new Date(),
+        progressPercent: computedProgress,
+        workItemUpdates: reportWorkItems,
+        supplyUpdates: reportSupplyUpdates,
+        weather: weather || 'Cerah',
+        materials,
+        workforce,
+        notes,
+        photos: photoPaths,
+        createdBy: req.user._id,
+      });
+
+      await dailyReport.save();
+
+      res.status(201).json({
+        msg: 'Daily report submitted',
+        progress: computedProgress,
+        dailyReport,
+      });
+    } catch (error) {
+      console.error('Submit daily report error:', error);
+      res.status(500).json({ msg: 'Server error' });
+    }
+  }
+);
+
 // === PROJECT REPORT ROUTES ===
 
 // GET /api/projects/:id/reports - List submitted reports for a project
