@@ -298,6 +298,165 @@ router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
   }
 );
 
+// DELETE /api/projects/:id - Delete a project and its related data
+router.delete('/:id', auth, authorize('owner'), async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    // Delete related data
+    await Promise.all([
+      Supply.deleteMany({ projectId: project._id }),
+      DailyReport.deleteMany({ projectId: project._id }),
+      MaterialLog.deleteMany({ projectId: project._id }),
+      ProjectReport.deleteMany({ projectId: project._id }),
+    ]);
+
+    await project.deleteOne();
+    res.json({ msg: 'Project and related data deleted' });
+  } catch (error) {
+    console.error('Delete project error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// PUT /api/projects/:id/progress - Manually update project progress
+router.put('/:id/progress', auth, authorize('owner', 'director', 'supervisor'), async (req, res) => {
+  try {
+    const { progress } = req.body;
+    if (progress === undefined || progress < 0 || progress > 100) {
+      return res.status(400).json({ msg: 'Progress must be between 0 and 100' });
+    }
+
+    const project = await Project.findByIdAndUpdate(
+      req.params.id,
+      { $set: { progress: Number(progress), updatedAt: nowWIB() } },
+      { new: true }
+    );
+
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    res.json(project);
+  } catch (error) {
+    console.error('Update progress error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// POST /api/projects/:id/duplicate - Clone a project
+router.post('/:id/duplicate', auth, authorize('owner', 'director'), async (req, res) => {
+  try {
+    const { newName, options = {} } = req.body;
+    const source = await Project.findById(req.params.id).lean();
+    if (!source) {
+      return res.status(404).json({ msg: 'Source project not found' });
+    }
+
+    // Build new project data
+    const newProject = new Project({
+      nama: newName || `Copy of ${source.nama}`,
+      lokasi: source.lokasi,
+      description: source.description,
+      totalBudget: source.totalBudget || 0,
+      startDate: source.startDate,
+      endDate: source.endDate,
+      progress: 0,
+      status: 'Planning',
+      documents: options.includeDocuments ? source.documents : {},
+      workItems: options.includeWorkItems
+        ? (source.workItems || []).map(w => ({
+            ...w,
+            _id: undefined,
+            progress: 0,
+            actualCost: 0,
+          }))
+        : [],
+      assignedTo: options.includeAssignedUsers ? source.assignedTo : [],
+      createdBy: req.user._id,
+    });
+
+    await newProject.save();
+
+    // Clone supplies if requested
+    if (options.includeSupplies) {
+      const sourceSupplies = await Supply.find({ projectId: source._id }).lean();
+      if (sourceSupplies.length > 0) {
+        const clonedSupplies = sourceSupplies.map(s => ({
+          projectId: newProject._id,
+          item: s.item,
+          qty: s.qty,
+          unit: s.unit,
+          cost: s.cost,
+          actualCost: 0,
+          totalQtyUsed: 0,
+          status: 'Pending',
+          startDate: s.startDate,
+          endDate: s.endDate,
+        }));
+        await Supply.insertMany(clonedSupplies);
+      }
+    }
+
+    res.status(201).json(newProject);
+  } catch (error) {
+    console.error('Duplicate project error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// POST /api/projects/:id/material-logs - Log material usage
+router.post('/:id/material-logs', auth, async (req, res) => {
+  try {
+    const { supplyId, qtyUsed, notes, date } = req.body;
+
+    if (!supplyId || !qtyUsed || Number(qtyUsed) <= 0) {
+      return res.status(400).json({ msg: 'supplyId and a positive qtyUsed are required' });
+    }
+
+    // Find the supply and validate
+    const supply = await Supply.findOne({ _id: supplyId, projectId: req.params.id });
+    if (!supply) {
+      return res.status(404).json({ msg: 'Supply not found for this project' });
+    }
+
+    const remaining = supply.qty - (supply.totalQtyUsed || 0);
+    if (Number(qtyUsed) > remaining) {
+      return res.status(400).json({ msg: `Insufficient stock. Only ${remaining} ${supply.unit} remaining.` });
+    }
+
+    // Update supply's totalQtyUsed
+    supply.totalQtyUsed = (supply.totalQtyUsed || 0) + Number(qtyUsed);
+    await supply.save();
+
+    const qtyLeft = supply.qty - supply.totalQtyUsed;
+
+    // Create the material log
+    const log = new MaterialLog({
+      projectId: req.params.id,
+      supplyId,
+      date: parseWIBDate(date) || nowWIB(),
+      qtyUsed: Number(qtyUsed),
+      qtyLeft,
+      notes: notes || '',
+      recordedBy: req.user._id,
+    });
+
+    await log.save();
+
+    // Populate for response
+    await log.populate('supplyId', 'item unit qty totalQtyUsed');
+    await log.populate('recordedBy', 'fullName');
+
+    res.status(201).json(log);
+  } catch (error) {
+    console.error('Log material usage error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
 
 // GET /api/projects/:id/members - Get project members (assignedTo populated)
 router.get('/:id/members', auth, authorize('owner', 'director', 'supervisor', 'asset_admin', 'admin_project'), async (req, res) => {
