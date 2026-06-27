@@ -132,4 +132,18 @@ export const deleteUser = async (id: string) => {
   return response.data;
 };
 
+// === PROJECT DOCUMENTS API ===
+
+export const uploadProjectDocuments = async (projectId: string, formData: FormData) => {
+  const response = await api.post(`/projects/${projectId}/documents`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const deleteProjectDocument = async (projectId: string, docId: string) => {
+  const response = await api.delete(`/projects/${projectId}/documents/${docId}`);
+  return response.data;
+};
+
 export default api;

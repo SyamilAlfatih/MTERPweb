@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Calendar, DollarSign, FileText, Wrench, ArrowLeft,
   TrendingUp, Package, BarChart3, Layers,
-  AlertTriangle, CheckCircle2, Clock, Target,
+  AlertTriangle, CheckCircle2, Clock, Target, FolderOpen,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1056,6 +1056,13 @@ export default function ProjectDetail() {
             title={t('projectDetail.actions.projectReports')}
             icon={FileText}
             onClick={() => navigate(`/project-reports/${id}`)}
+            variant="outline"
+            fullWidth
+          />
+          <Button
+            title="Documents"
+            icon={FolderOpen}
+            onClick={() => navigate(`/project-documents/${id}`)}
             variant="outline"
             fullWidth
           />

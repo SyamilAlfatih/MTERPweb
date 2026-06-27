@@ -203,3 +203,14 @@ export interface KasbonItem {
   reason: string;
   date: string;
 }
+
+export interface ProjectDocument {
+  _id: string;
+  name: string;
+  category: 'shopDrawing' | 'hse' | 'manPowerList' | 'materialList' | 'contract' | 'permit' | 'asBuilt' | 'other';
+  filePath: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedBy: { _id: string; fullName: string } | string;
+  uploadedAt: string;
+}

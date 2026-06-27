@@ -28,6 +28,7 @@ import ProjectReports from './pages/ProjectReports';
 import Users from './pages/Users';
 import AttendanceRecap from './pages/AttendanceRecap';
 import ProjectAssign from './pages/ProjectAssign';
+import ProjectDocuments from './pages/ProjectDocuments';
 
 function AuthRedirectHandler() {
   const navigate = useNavigate();
@@ -76,6 +77,7 @@ function App() {
             <Route path="/my-payments" element={<MyPayments />} />
             <Route path="/slip-gaji" element={<SlipGaji />} />
             <Route path="/project-reports/:id" element={<ProjectReports />} />
+            <Route path="/project-documents/:id" element={<ProjectDocuments />} />
             <Route path="/users" element={<Users />} />
             <Route path="/project-assign" element={<ProjectAssign />} />
           </Route>

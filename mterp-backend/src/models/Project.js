@@ -42,13 +42,28 @@ const projectSchema = new mongoose.Schema({
   startDate: Date,
   endDate: Date,
 
-  // Documents
+  // Documents (legacy flat object from creation)
   documents: {
     shopDrawing: String,
     hse: String,
     manPowerList: String,
     materialList: String,
   },
+
+  // Document files (array-based, supports post-creation management)
+  documentFiles: [{
+    name: { type: String, required: true },
+    category: {
+      type: String,
+      enum: ['shopDrawing', 'hse', 'manPowerList', 'materialList', 'contract', 'permit', 'asBuilt', 'other'],
+      default: 'other',
+    },
+    filePath: { type: String, required: true },
+    fileSize: { type: Number, default: 0 },
+    mimeType: { type: String, default: '' },
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    uploadedAt: { type: Date, default: Date.now },
+  }],
 
   // Work items stay embedded (bounded, always loaded with project)
   workItems: [workItemSchema],

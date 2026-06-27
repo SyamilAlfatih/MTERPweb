@@ -752,4 +752,149 @@ router.get('/reports/:reportId', auth, async (req, res) => {
   }
 });
 
+// === PROJECT DOCUMENT ROUTES ===
+
+// Helper: category labels for legacy migration
+const LEGACY_DOC_LABELS = {
+  shopDrawing: 'shopDrawing',
+  hse: 'hse',
+  manPowerList: 'manPowerList',
+  materialList: 'materialList',
+};
+
+// GET /api/projects/:id/documents - List all documents (migrates legacy on first access)
+router.get('/:id/documents', auth, async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id)
+      .populate('documentFiles.uploadedBy', 'fullName')
+      .lean();
+
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    let docs = project.documentFiles || [];
+
+    // Migrate legacy flat documents → documentFiles array (one-time)
+    if (project.documents && Object.keys(project.documents).length > 0 && docs.length === 0) {
+      const legacyDocs = [];
+      for (const [key, filePath] of Object.entries(project.documents)) {
+        if (filePath && LEGACY_DOC_LABELS[key]) {
+          const path = require('path');
+          const fs = require('fs');
+          let fileSize = 0;
+          try {
+            if (fs.existsSync(filePath)) {
+              fileSize = fs.statSync(filePath).size;
+            }
+          } catch (_) { /* ignore */ }
+
+          legacyDocs.push({
+            name: path.basename(filePath),
+            category: LEGACY_DOC_LABELS[key],
+            filePath,
+            fileSize,
+            mimeType: filePath.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+            uploadedBy: project.createdBy,
+            uploadedAt: project.createdAt,
+          });
+        }
+      }
+
+      if (legacyDocs.length > 0) {
+        await Project.findByIdAndUpdate(req.params.id, {
+          $push: { documentFiles: { $each: legacyDocs } },
+        });
+        // Re-fetch with populated data
+        const updated = await Project.findById(req.params.id)
+          .populate('documentFiles.uploadedBy', 'fullName')
+          .lean();
+        docs = updated.documentFiles || [];
+      }
+    }
+
+    res.json(docs);
+  } catch (error) {
+    console.error('Get project documents error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// POST /api/projects/:id/documents - Upload documents
+router.post('/:id/documents', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), uploadLimiter,
+  upload.array('files', 10),
+  async (req, res) => {
+    try {
+      const project = await Project.findById(req.params.id);
+      if (!project) {
+        return res.status(404).json({ msg: 'Project not found' });
+      }
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ msg: 'No files uploaded' });
+      }
+
+      const category = req.body.category || 'other';
+      const validCategories = ['shopDrawing', 'hse', 'manPowerList', 'materialList', 'contract', 'permit', 'asBuilt', 'other'];
+      if (!validCategories.includes(category)) {
+        return res.status(400).json({ msg: 'Invalid category' });
+      }
+
+      const newDocs = req.files.map(file => ({
+        name: file.originalname,
+        category,
+        filePath: file.path,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        uploadedBy: req.user._id,
+        uploadedAt: nowWIB(),
+      }));
+
+      project.documentFiles.push(...newDocs);
+      project.updatedAt = nowWIB();
+      await project.save();
+
+      // Return populated docs
+      const updated = await Project.findById(req.params.id)
+        .populate('documentFiles.uploadedBy', 'fullName')
+        .lean();
+
+      res.status(201).json(updated.documentFiles || []);
+    } catch (error) {
+      console.error('Upload project documents error:', error);
+      res.status(500).json({ msg: 'Server error' });
+    }
+  }
+);
+
+// DELETE /api/projects/:id/documents/:docId - Remove a document
+router.delete('/:id/documents/:docId', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    const doc = project.documentFiles.id(req.params.docId);
+    if (!doc) {
+      return res.status(404).json({ msg: 'Document not found' });
+    }
+
+    // Delete file from disk
+    const fs = require('fs');
+    if (doc.filePath && fs.existsSync(doc.filePath)) {
+      fs.unlinkSync(doc.filePath);
+    }
+
+    doc.deleteOne();
+    project.updatedAt = nowWIB();
+    await project.save();
+
+    res.json({ msg: 'Document deleted' });
+  } catch (error) {
+    console.error('Delete project document error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 module.exports = router;
