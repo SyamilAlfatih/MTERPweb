@@ -10,6 +10,7 @@ const DailyReport = require('./DailyReport');
 const Supply = require('./Supply');
 const MaterialLog = require('./MaterialLog');
 const ProjectReport = require('./ProjectReport');
+const Notification = require('./Notification');
 
 module.exports = {
   User,
@@ -24,4 +25,5 @@ module.exports = {
   Supply,
   MaterialLog,
   ProjectReport,
+  Notification,
 };

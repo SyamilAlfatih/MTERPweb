@@ -214,3 +214,33 @@ export interface ProjectDocument {
   uploadedBy: { _id: string; fullName: string } | string;
   uploadedAt: string;
 }
+
+export type NotificationType =
+  | 'task_assigned'
+  | 'task_completed'
+  | 'request_approved'
+  | 'request_rejected'
+  | 'kasbon_approved'
+  | 'kasbon_rejected'
+  | 'daily_report'
+  | 'project_created'
+  | 'report_approved'
+  | 'attendance_permit'
+  | 'general';
+
+export interface AppNotification {
+  _id: string;
+  recipient: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  data?: {
+    taskId?: string;
+    projectId?: string;
+    requestId?: string;
+    kasbonId?: string;
+    reportId?: string;
+  };
+  isRead: boolean;
+  createdAt: string;
+}

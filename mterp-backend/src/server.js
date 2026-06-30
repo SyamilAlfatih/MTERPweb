@@ -1,9 +1,12 @@
 process.env.TZ = 'Asia/Jakarta';
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const http = require('http');
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
 const { authLimiter } = require('./middleware/rateLimiter');
 
 // Import routes
@@ -20,8 +23,11 @@ const {
 } = require('./routes');
 const updatesRoutes = require('./routes/updates');
 const dashboardRoutes = require('./routes/dashboard');
+const notificationRoutes = require('./routes/notifications');
+const { setIO } = require('./utils/notify');
 
 const app = express();
+const server = http.createServer(app);
 
 app.set('trust proxy', 1);
 
@@ -67,6 +73,7 @@ app.use('/api/slipgaji', slipGajiRoutes);
 app.use('/api/updates', updatesRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -111,9 +118,54 @@ mongoose.connect(MONGODB_URI)
     console.log('✅ Connected to MongoDB');
     console.log(`   Database: ${mongoose.connection.name}`);
 
-    app.listen(PORT, () => {
+    // Socket.io setup
+    const io = new Server(server, {
+      cors: {
+        origin: (origin, callback) => {
+          if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+          } else {
+            callback(new Error('Not allowed by CORS'));
+          }
+        },
+        credentials: true,
+      },
+    });
+
+    // Socket.io JWT authentication middleware
+    io.use((socket, next) => {
+      const token = socket.handshake.auth?.token;
+      if (!token) {
+        return next(new Error('Authentication required'));
+      }
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        socket.userId = decoded.userId;
+        socket.userRole = decoded.role;
+        next();
+      } catch (err) {
+        return next(new Error('Invalid token'));
+      }
+    });
+
+    // Socket.io connection handler
+    io.on('connection', (socket) => {
+      // Each user joins a room identified by their userId
+      socket.join(socket.userId);
+      console.log(`🔌 Socket connected: ${socket.userId}`);
+
+      socket.on('disconnect', () => {
+        console.log(`🔌 Socket disconnected: ${socket.userId}`);
+      });
+    });
+
+    // Wire up the notify utility with the io instance
+    setIO(io);
+
+    server.listen(PORT, () => {
       console.log(`✅ Server running on port ${PORT}`);
       console.log(`   API: http://localhost:${PORT}/api`);
+      console.log(`   WebSocket: ws://localhost:${PORT}`);
       console.log(`   Health: http://localhost:${PORT}/api/health`);
       console.log(`   Allowed Origins: ${allowedOrigins.join(', ')}`);
     });

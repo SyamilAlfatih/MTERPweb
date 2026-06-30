@@ -6,6 +6,7 @@ const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const ExcelJS = require('exceljs');
 const { parseWIBDate, nowWIB, wibDayRange } = require('../utils/date');
+const { notify, notifyByRole } = require('../utils/notify');
 
 const router = express.Router();
 
@@ -291,6 +292,18 @@ router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
       }
 
       res.status(201).json(project);
+
+      // Notify managers about new project (fire-and-forget)
+      notifyByRole(
+        ['owner', 'director', 'supervisor'],
+        {
+          type: 'project_created',
+          title: 'New Project',
+          message: `Project "${nama}" has been created at ${lokasi || 'N/A'}`,
+          data: { projectId: project._id },
+        },
+        req.user._id.toString()
+      ).catch(console.error);
     } catch (error) {
       console.error('Create project error:', error);
       res.status(500).json({ msg: 'Server error' });
@@ -614,6 +627,18 @@ router.post('/:id/daily-report', auth, uploadLimiter,
         progress: computedProgress,
         dailyReport,
       });
+
+      // Notify managers about new daily report (fire-and-forget)
+      notifyByRole(
+        ['owner', 'director'],
+        {
+          type: 'daily_report',
+          title: 'Daily Report Submitted',
+          message: `New daily report for "${project.nama}" — ${computedProgress}% progress`,
+          data: { projectId: project._id },
+        },
+        req.user._id.toString()
+      ).catch(console.error);
     } catch (error) {
       console.error('Submit daily report error:', error);
       res.status(500).json({ msg: 'Server error' });
@@ -723,6 +748,17 @@ router.put('/reports/:reportId/approve', auth, authorize('director', 'owner'), a
       .populate('authorization.directorId', 'fullName');
 
     res.json(populated);
+
+    // Notify the report submitter about approval (fire-and-forget)
+    if (report.submittedBy) {
+      notify({
+        recipient: report.submittedBy,
+        type: 'report_approved',
+        title: 'Report Approved',
+        message: `Your project report has been approved and signed`,
+        data: { reportId: report._id, projectId: report.projectId },
+      }).catch(console.error);
+    }
   } catch (error) {
     console.error('Approve project report error:', error);
     res.status(500).json({ msg: 'Server error' });

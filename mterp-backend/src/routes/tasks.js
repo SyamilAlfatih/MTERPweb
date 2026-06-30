@@ -2,6 +2,7 @@ const express = require('express');
 const { Task, Project, User } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const { parseWIBDate, nowWIB } = require('../utils/date');
+const { notify } = require('../utils/notify');
 
 const router = express.Router();
 
@@ -124,6 +125,17 @@ router.post('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin
     await task.populate('assignedBy', 'fullName');
     
     res.status(201).json(task);
+
+    // Notify the assigned user (fire-and-forget)
+    if (assignedTo) {
+      notify({
+        recipient: assignedTo,
+        type: 'task_assigned',
+        title: 'Task Assigned',
+        message: `You have been assigned "${title}" at ${task.projectId?.nama || 'a project'}`,
+        data: { taskId: task._id, projectId: projectId },
+      }).catch(console.error);
+    }
   } catch (error) {
     console.error('Create task error:', error);
     res.status(500).json({ msg: 'Server error' });
@@ -216,6 +228,17 @@ router.put('/:id/assign', auth, authorize('owner', 'director', 'supervisor', 'as
     }
     
     res.json(task);
+
+    // Notify the new assignee (fire-and-forget)
+    if (assignedTo) {
+      notify({
+        recipient: assignedTo,
+        type: 'task_assigned',
+        title: 'Task Assigned',
+        message: `You have been assigned "${task.title}" at ${task.projectId?.nama || 'a project'}`,
+        data: { taskId: task._id, projectId: task.projectId?._id },
+      }).catch(console.error);
+    }
   } catch (error) {
     console.error('Assign task error:', error);
     res.status(500).json({ msg: 'Server error' });
@@ -249,6 +272,17 @@ router.put('/:id/status', auth, async (req, res) => {
     await task.populate('assignedTo', 'fullName role');
     
     res.json(task);
+
+    // Notify the task creator when completed (fire-and-forget)
+    if (status === 'completed' && task.assignedBy) {
+      notify({
+        recipient: task.assignedBy,
+        type: 'task_completed',
+        title: 'Task Completed',
+        message: `"${task.title}" has been marked as completed`,
+        data: { taskId: task._id, projectId: task.projectId?._id },
+      }).catch(console.error);
+    }
   } catch (error) {
     console.error('Update status error:', error);
     res.status(500).json({ msg: 'Server error' });

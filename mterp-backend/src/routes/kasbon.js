@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { Kasbon, User } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
+const { notify, notifyByRole } = require('../utils/notify');
 
 const router = express.Router();
 
@@ -57,6 +58,18 @@ router.post('/', auth, async (req, res) => {
     await kasbon.populate('userId', 'fullName role');
     
     res.status(201).json(kasbon);
+
+    // Notify managers about new kasbon request (fire-and-forget)
+    notifyByRole(
+      ['owner', 'director'],
+      {
+        type: 'general',
+        title: 'New Kasbon Request',
+        message: `${kasbon.userId?.fullName || 'A user'} requested Rp ${Number(amount).toLocaleString('id-ID')} advance`,
+        data: { kasbonId: kasbon._id },
+      },
+      req.user._id.toString()
+    ).catch(console.error);
   } catch (error) {
     console.error('Create kasbon error:', error);
     res.status(500).json({ msg: 'Server error' });
@@ -111,6 +124,20 @@ router.put('/:id', auth, authorize('owner', 'director'), async (req, res) => {
     }
     
     res.json(kasbon);
+
+    // Notify the kasbon requester about approval/rejection (fire-and-forget)
+    if ((status === 'Approved' || status === 'Rejected') && kasbon.userId) {
+      const recipientId = typeof kasbon.userId === 'object' ? kasbon.userId._id : kasbon.userId;
+      notify({
+        recipient: recipientId,
+        type: status === 'Approved' ? 'kasbon_approved' : 'kasbon_rejected',
+        title: status === 'Approved' ? 'Kasbon Approved' : 'Kasbon Rejected',
+        message: status === 'Approved'
+          ? `Your kasbon of Rp ${kasbon.amount?.toLocaleString('id-ID')} has been approved`
+          : `Your kasbon request was rejected${rejectionReason ? ': ' + rejectionReason : ''}`,
+        data: { kasbonId: kasbon._id },
+      }).catch(console.error);
+    }
   } catch (error) {
     console.error('Update kasbon error:', error);
     res.status(500).json({ msg: 'Server error' });

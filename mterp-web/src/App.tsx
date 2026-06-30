@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import AppLayout from './components/layout/AppLayout';
 
 // Pages
@@ -29,6 +30,7 @@ import Users from './pages/Users';
 import AttendanceRecap from './pages/AttendanceRecap';
 import ProjectAssign from './pages/ProjectAssign';
 import ProjectDocuments from './pages/ProjectDocuments';
+import Notifications from './pages/Notifications';
 
 function AuthRedirectHandler() {
   const navigate = useNavigate();
@@ -48,44 +50,47 @@ function AuthRedirectHandler() {
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AuthRedirectHandler />
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+      <NotificationProvider>
+        <BrowserRouter>
+          <AuthRedirectHandler />
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-          {/* Protected Routes */}
-          <Route element={<AppLayout />}>
-            <Route path="/home" element={<Home />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/projects" element={<Projects />} />
-            <Route path="/project/:id" element={<ProjectDetail />} />
-            <Route path="/project-tools/:id" element={<ProjectTools />} />
-            <Route path="/add-project" element={<AddProject />} />
-            <Route path="/tools" element={<Tools />} />
-            <Route path="/materials" element={<Materials />} />
-            <Route path="/project-materials/:id" element={<ProjectMaterials />} />
-            <Route path="/project-material-usage/:id" element={<MaterialUsage />} />
-            <Route path="/approvals" element={<Approvals />} />
-            <Route path="/tasks" element={<Tasks />} />
-            <Route path="/attendance" element={<Attendance />} />
-            <Route path="/attendance-logs" element={<AttendanceLogs />} />
-            <Route path="/attendance-recap" element={<AttendanceRecap />} />
-            <Route path="/daily-report" element={<DailyReport />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/my-payments" element={<MyPayments />} />
-            <Route path="/slip-gaji" element={<SlipGaji />} />
-            <Route path="/project-reports/:id" element={<ProjectReports />} />
-            <Route path="/project-documents/:id" element={<ProjectDocuments />} />
-            <Route path="/users" element={<Users />} />
-            <Route path="/project-assign" element={<ProjectAssign />} />
-          </Route>
+            {/* Protected Routes */}
+            <Route element={<AppLayout />}>
+              <Route path="/home" element={<Home />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/projects" element={<Projects />} />
+              <Route path="/project/:id" element={<ProjectDetail />} />
+              <Route path="/project-tools/:id" element={<ProjectTools />} />
+              <Route path="/add-project" element={<AddProject />} />
+              <Route path="/tools" element={<Tools />} />
+              <Route path="/materials" element={<Materials />} />
+              <Route path="/project-materials/:id" element={<ProjectMaterials />} />
+              <Route path="/project-material-usage/:id" element={<MaterialUsage />} />
+              <Route path="/approvals" element={<Approvals />} />
+              <Route path="/tasks" element={<Tasks />} />
+              <Route path="/attendance" element={<Attendance />} />
+              <Route path="/attendance-logs" element={<AttendanceLogs />} />
+              <Route path="/attendance-recap" element={<AttendanceRecap />} />
+              <Route path="/daily-report" element={<DailyReport />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/my-payments" element={<MyPayments />} />
+              <Route path="/slip-gaji" element={<SlipGaji />} />
+              <Route path="/project-reports/:id" element={<ProjectReports />} />
+              <Route path="/project-documents/:id" element={<ProjectDocuments />} />
+              <Route path="/users" element={<Users />} />
+              <Route path="/project-assign" element={<ProjectAssign />} />
+              <Route path="/notifications" element={<Notifications />} />
+            </Route>
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </NotificationProvider>
     </AuthProvider>
   );
 }

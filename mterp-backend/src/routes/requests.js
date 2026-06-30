@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { Request, Project, User, Supply } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
+const { notify, notifyByRole } = require('../utils/notify');
 
 const router = express.Router();
 
@@ -112,6 +113,18 @@ router.post('/', auth, async (req, res) => {
     await request.populate('projectId', 'nama lokasi');
     
     res.status(201).json(request);
+
+    // Notify managers about new material request (fire-and-forget)
+    notifyByRole(
+      ['owner', 'director'],
+      {
+        type: 'general',
+        title: 'New Material Request',
+        message: `${request.requestedBy?.fullName || 'A user'} requested ${finalQty} ${finalUnit} of "${item}"`,
+        data: { requestId: request._id },
+      },
+      req.user._id.toString()
+    ).catch(console.error);
   } catch (error) {
     console.error('Create request error:', error);
     res.status(500).json({ msg: 'Server error' });
@@ -186,6 +199,20 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (r
     }
     
     res.json(request);
+
+    // Notify the requester about approval/rejection (fire-and-forget)
+    if ((status === 'Approved' || status === 'Rejected') && request.requestedBy) {
+      const recipientId = typeof request.requestedBy === 'object' ? request.requestedBy._id : request.requestedBy;
+      notify({
+        recipient: recipientId,
+        type: status === 'Approved' ? 'request_approved' : 'request_rejected',
+        title: status === 'Approved' ? 'Request Approved' : 'Request Rejected',
+        message: status === 'Approved'
+          ? `Your request for "${request.item}" has been approved`
+          : `Your request for "${request.item}" was rejected${rejectionReason ? ': ' + rejectionReason : ''}`,
+        data: { requestId: request._id },
+      }).catch(console.error);
+    }
   } catch (error) {
     console.error('Update request error:', error);
     res.status(500).json({ msg: 'Server error' });
