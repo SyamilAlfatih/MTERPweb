@@ -54,6 +54,19 @@ const fmtDate = (d: string | Date | undefined) => {
 
 const fmtShort = (d: Date | string) => formatWIBDate(d, { month: 'short', year: '2-digit' });
 const fmtDay = (d: Date | string) => formatWIBDate(d, { month: 'short', day: 'numeric' });
+const fmtWeek = (d: Date | string) => {
+  const dt = new Date(d);
+  const end = new Date(dt);
+  end.setDate(end.getDate() + 6);
+  return `${formatWIBDate(dt, { day: 'numeric', month: 'short' })} - ${formatWIBDate(end, { day: 'numeric', month: 'short' })}`;
+};
+
+function getMonday(d: Date) {
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(dt.setDate(diff));
+}
 
 /** Generate an array of first-of-month Date objects from start to end (inclusive). */
 function monthRange(start: Date, end: Date): Date[] {
@@ -77,6 +90,20 @@ function dayRange(start: Date, end: Date): Date[] {
     cur.setDate(cur.getDate() + 1);
   }
   return days;
+}
+
+/** Generate an array of Mondays from start to end (inclusive of the week containing end). */
+function weekRange(start: Date, end: Date): Date[] {
+  const weeks: Date[] = [];
+  const cur = getMonday(start);
+  cur.setHours(0,0,0,0);
+  const last = getMonday(end);
+  last.setHours(0,0,0,0);
+  while (cur <= last) {
+    weeks.push(new Date(cur));
+    cur.setDate(cur.getDate() + 7);
+  }
+  return weeks;
 }
 
 /**
@@ -121,6 +148,32 @@ function costInDay(
 
   const totalDays = Math.max(1, Math.round((iEnd.getTime() - iStart.getTime()) / 86400000) + 1);
   return totalCost / totalDays;
+}
+
+/**
+ * For a given item with [itemStart, itemEnd] and a given week (starting on Monday),
+ * return the fraction of the item's cost that falls in that week.
+ */
+function costInWeek(
+  itemStart: Date, itemEnd: Date, totalCost: number, weekStart: Date
+): number {
+  const wStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
+  const wEnd = new Date(wStart);
+  wEnd.setDate(wEnd.getDate() + 6);
+  wEnd.setHours(23, 59, 59, 999);
+
+  const iStart = new Date(itemStart.getFullYear(), itemStart.getMonth(), itemStart.getDate());
+  const iEnd = new Date(itemEnd.getFullYear(), itemEnd.getMonth(), itemEnd.getDate(), 23, 59, 59, 999);
+
+  if (wEnd < iStart || wStart > iEnd) return 0;
+
+  const overlapStart = wStart > iStart ? wStart : iStart;
+  const overlapEnd = wEnd < iEnd ? wEnd : iEnd;
+  const overlapDays = Math.max(0, Math.round((overlapEnd.getTime() - overlapStart.getTime()) / 86400000) + 1);
+
+  const totalDays = Math.max(1, Math.round((iEnd.getTime() - iStart.getTime()) / 86400000) + 1);
+  
+  return (totalCost / totalDays) * overlapDays;
 }
 
 /* ─── Tooltip ─── */
@@ -177,8 +230,12 @@ export default function ProjectDetail() {
   const { user } = useAuth();
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [vizMode, setVizMode] = useState<'scurve' | 'gantt'>('scurve');
-  const [granularity, setGranularity] = useState<'auto' | 'daily' | 'monthly'>('auto');
+  const [vizMode, setVizMode] = useState<'scurve' | 'gantt' | 'dynamic_scurve'>('scurve');
+  const [scurveType, setScurveType] = useState<'financial' | 'physical'>('financial');
+  const [granularity, setGranularity] = useState<'auto' | 'daily' | 'weekly' | 'monthly'>('auto');
+  const [filterStart, setFilterStart] = useState<string>('');
+  const [filterEnd, setFilterEnd] = useState<string>('');
+  const [dailyReports, setDailyReports] = useState<any[]>([]);
 
   const chartRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
@@ -199,13 +256,15 @@ export default function ProjectDetail() {
 
   const fetchProject = async () => {
     try {
-      const [projectRes, suppliesRes] = await Promise.all([
+      const [projectRes, suppliesRes, reportsRes] = await Promise.all([
         api.get(`/projects/${id}`),
         api.get(`/projects/${id}/supplies`),
+        api.get(`/projects/${id}/daily-reports`).catch(() => ({ data: [] })),
       ]);
       const data = projectRes.data;
       data.supplies = suppliesRes.data || [];
       setProject(data);
+      setDailyReports(reportsRes.data || []);
     } catch (err) {
       console.error('Failed to fetch project', err);
     } finally {
@@ -300,21 +359,40 @@ export default function ProjectDetail() {
     supplies.reduce((s: number, sup: any) => s + (sup.actualCost || 0), 0);
 
   const scurveData: SCurveDataPoint[] = (() => {
-    // Need global dates to construct X-axis
     const globalStart = project.startDate || (project.globalDates as any)?.planned?.start;
     const globalEnd = project.endDate || (project.globalDates as any)?.planned?.end;
 
     if (!globalStart || !globalEnd) return [];
     if (workItems.length === 0 && supplies.length === 0) return [];
 
-    const start = wibDate(globalStart);
-    const end = wibDate(globalEnd);
-    if (!start || !end) return [];
-    const months = monthRange(start, end);
-    if (months.length === 0) return [];
+    let startStr = globalStart;
+    let endStr = globalEnd;
+    if (vizMode === 'dynamic_scurve') {
+      if (filterStart) startStr = filterStart;
+      if (filterEnd) endStr = filterEnd;
+    }
 
-    // Determine granularity: respect toggle or auto-detect
-    const useDailyMode = granularity === 'daily' ? true : granularity === 'monthly' ? false : months.length === 1;
+    const start = wibDate(startStr);
+    const end = wibDate(endStr);
+    const trueProjStart = wibDate(globalStart);
+    if (!start || !end || !trueProjStart) return [];
+
+    const months = monthRange(start, end);
+    const weeks = weekRange(start, end);
+    const days = dayRange(start, end);
+    if (days.length === 0) return [];
+
+    // Determine granularity
+    let useDailyMode = false;
+    let useWeeklyMode = false;
+    
+    if (vizMode === 'dynamic_scurve') {
+      useDailyMode = granularity === 'daily';
+      useWeeklyMode = granularity === 'weekly';
+      // If monthly, both are false. Default to monthly if 'auto' or unset.
+    } else {
+      useDailyMode = granularity === 'daily' ? true : granularity === 'monthly' ? false : months.length === 1;
+    }
 
     // Collect all items (work + supply) with their dates and costs
     interface ScheduleItem {
@@ -334,12 +412,24 @@ export default function ProjectDetail() {
       const dE = e ? wibDate(e) : end;
       
       if (dS && dE) {
-        allItems.push({
-          startDate: dS,
-          endDate: dE,
-          plannedCost: wi.cost || 0,
-          actualCost: wiAny.actualCost || 0,
-        });
+        if (scurveType === 'financial') {
+          allItems.push({
+            startDate: dS,
+            endDate: dE,
+            plannedCost: wi.cost || 0,
+            actualCost: wiAny.actualCost || 0,
+          });
+        } else {
+          // Physical Progress
+          const plannedWeight = wiAny.physicalWeight > 0 ? wiAny.physicalWeight : (wi.cost || 0);
+          const actualProgressWeight = plannedWeight * ((wiAny.progress || 0) / 100);
+          allItems.push({
+            startDate: dS,
+            endDate: dE,
+            plannedCost: plannedWeight, // Represents physical weight
+            actualCost: actualProgressWeight, // Represents actual physical completion
+          });
+        }
       }
     }
 
@@ -350,12 +440,24 @@ export default function ProjectDetail() {
       const dE = e ? wibDate(e) : end;
 
       if (dS && dE) {
-        allItems.push({
-          startDate: dS,
-          endDate: dE,
-          plannedCost: sup.cost || 0,
-          actualCost: sup.actualCost || 0,
-        });
+        if (scurveType === 'financial') {
+          allItems.push({
+            startDate: dS,
+            endDate: dE,
+            plannedCost: sup.cost || 0,
+            actualCost: sup.actualCost || 0,
+          });
+        } else {
+          // Physical Progress (Fallback to cost weighting for supplies)
+          const plannedWeight = sup.cost || 0;
+          const statusProgress = sup.status === 'Delivered' ? 1 : sup.status === 'Ordered' ? 0.5 : 0;
+          allItems.push({
+            startDate: dS,
+            endDate: dE,
+            plannedCost: plannedWeight,
+            actualCost: plannedWeight * statusProgress,
+          });
+        }
       }
     }
 
@@ -364,30 +466,83 @@ export default function ProjectDetail() {
     const totalCost = allItems.reduce((s, i) => s + i.plannedCost, 0);
     if (totalCost === 0) return [];
 
+    // ── Pre-process Daily Reports ──
+    const reportsByDate: Record<string, any[]> = {};
+    for (const r of dailyReports) {
+      const d = wibDate(r.date);
+      if (d) {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        if (!reportsByDate[key]) reportsByDate[key] = [];
+        reportsByDate[key].push(r);
+      }
+    }
+
+    const actualState: Record<string, number> = {};
+    const processReportsForDay = (d: Date) => {
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const reports = reportsByDate[key];
+      if (reports) {
+        for (const r of reports) {
+          if (r.workItemUpdates) {
+            for (const wu of r.workItemUpdates) {
+              if (scurveType === 'financial') {
+                actualState[wu.workItemId] = wu.actualCost || 0;
+              } else {
+                const wi = workItems.find((w: any) => String(w._id) === String(wu.workItemId));
+                const plannedWeight = (wi as any)?.physicalWeight > 0 ? (wi as any).physicalWeight : (wi?.cost || 0);
+                actualState[wu.workItemId] = plannedWeight * ((wu.newProgress || 0) / 100);
+              }
+            }
+          }
+          if (r.supplyUpdates) {
+            for (const su of r.supplyUpdates) {
+              if (scurveType === 'financial') {
+                actualState[su.supplyId] = su.actualCost || 0;
+              } else {
+                const sup = supplies.find((s: any) => String(s._id) === String(su.supplyId));
+                const plannedWeight = sup?.cost || 0;
+                const statusProgress = su.newStatus === 'Delivered' ? 1 : su.newStatus === 'Ordered' ? 0.5 : 0;
+                actualState[su.supplyId] = plannedWeight * statusProgress;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    // ── Baseline Calculation (accumulate cost before 'start') ──
     let cumPlanned = 0;
-    let cumActual = 0;
+    if (start.getTime() > trueProjStart.getTime()) {
+      const beforeEnd = new Date(start.getTime() - 86400000);
+      const beforeDays = dayRange(trueProjStart, beforeEnd);
+      for (const day of beforeDays) {
+        processReportsForDay(day);
+        for (const item of allItems) {
+          cumPlanned += costInDay(item.startDate, item.endDate, item.plannedCost, day);
+        }
+      }
+    }
+
     const now = new Date();
     const points: SCurveDataPoint[] = [];
 
     if (useDailyMode) {
       // ── Daily granularity ──
-      const days = dayRange(start, end);
-      if (days.length === 0) return [];
       const todayStr = todayWIB();
       const todayD = wibDate(todayStr);
       const todayDay = todayD ? new Date(todayD) : new Date();
 
       for (const day of days) {
+        processReportsForDay(day);
+
         let dayPlanned = 0;
-        let dayActual = 0;
 
         for (const item of allItems) {
           dayPlanned += costInDay(item.startDate, item.endDate, item.plannedCost, day);
-          dayActual += costInDay(item.startDate, item.endDate, item.actualCost, day);
         }
 
         cumPlanned += dayPlanned;
-        cumActual += dayActual;
+        const cumActual = Object.values(actualState).reduce((a, b) => a + b, 0);
 
         const pPct = Math.min((cumPlanned / totalCost) * 100, 100);
         const aPct = Math.min((cumActual / totalCost) * 100, 100);
@@ -412,6 +567,49 @@ export default function ProjectDetail() {
           actLabel: t('projectDetail.tooltip.act'),
         });
       }
+    } else if (useWeeklyMode) {
+      // ── Weekly granularity ──
+      const todayStr = todayWIB();
+      const todayD = wibDate(todayStr);
+      const nowWeek = todayD ? getMonday(todayD) : getMonday(new Date());
+
+      for (const week of weeks) {
+        const weekDays = dayRange(week, new Date(week.getFullYear(), week.getMonth(), week.getDate() + 6));
+        for (const d of weekDays) {
+          processReportsForDay(d);
+        }
+
+        let weekPlanned = 0;
+
+        for (const item of allItems) {
+          weekPlanned += costInWeek(item.startDate, item.endDate, item.plannedCost, week);
+        }
+
+        cumPlanned += weekPlanned;
+        const cumActual = Object.values(actualState).reduce((a, b) => a + b, 0);
+
+        const pPct = Math.min((cumPlanned / totalCost) * 100, 100);
+        const aPct = Math.min((cumActual / totalCost) * 100, 100);
+
+        points.push({
+          date: fmtWeek(week),
+          timestamp: week.getTime(),
+          planned: pPct,
+          actual: aPct,
+          plannedCost: cumPlanned,
+          actualCost: cumActual,
+          deviation: aPct - pPct,
+          isToday: week.getTime() === nowWeek.getTime(),
+          todayLabel: t('projectDetail.tooltip.today'),
+          plannedLabel: t('projectDetail.tooltip.planned'),
+          actualLabel: t('projectDetail.tooltip.actual'),
+          deviationLabel: t('projectDetail.tooltip.deviation'),
+          aheadLabel: t('projectDetail.tooltip.ahead'),
+          behindLabel: t('projectDetail.tooltip.behind'),
+          planLabel: t('projectDetail.tooltip.plan'),
+          actLabel: t('projectDetail.tooltip.act'),
+        });
+      }
     } else {
       // ── Monthly granularity ──
       const todayStr = todayWIB();
@@ -420,16 +618,20 @@ export default function ProjectDetail() {
       nowMonth.setUTCDate(1);
 
       for (const month of months) {
+        const endOfMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+        const monthDays = dayRange(month, endOfMonth);
+        for (const d of monthDays) {
+          processReportsForDay(d);
+        }
+
         let monthPlanned = 0;
-        let monthActual = 0;
 
         for (const item of allItems) {
           monthPlanned += costInMonth(item.startDate, item.endDate, item.plannedCost, month);
-          monthActual += costInMonth(item.startDate, item.endDate, item.actualCost, month);
         }
 
         cumPlanned += monthPlanned;
-        cumActual += monthActual;
+        const cumActual = Object.values(actualState).reduce((a, b) => a + b, 0);
 
         const pPct = Math.min((cumPlanned / totalCost) * 100, 100);
         const aPct = Math.min((cumActual / totalCost) * 100, 100);
@@ -499,6 +701,13 @@ export default function ProjectDetail() {
           </div>
         </Card>
 
+        {project.description && (
+          <Card className="mb-4">
+            <h3 className="text-base font-bold text-text-primary mb-3 mt-0">{t('projectDetail.description.title')}</h3>
+            <p className="text-base text-text-secondary leading-relaxed m-0">{project.description}</p>
+          </Card>
+        )}
+
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4 max-sm:grid-cols-1">
           <Card className="flex items-center gap-3 p-4">
@@ -559,19 +768,38 @@ export default function ProjectDetail() {
             <div className="flex justify-between items-start mb-4 gap-3 flex-wrap max-lg:flex-col max-lg:gap-2">
               <div>
                 <h3 className="text-lg font-bold text-text-primary m-0">
-                  {vizMode === 'scurve' ? t('projectDetail.scurve.title') : t('projectDetail.gantt.title')}
+                  {vizMode === 'scurve' ? t('projectDetail.scurve.title') : vizMode === 'dynamic_scurve' ? 'Dynamic S-Curve' : t('projectDetail.gantt.title')}
                 </h3>
                 <p className="text-xs text-text-muted mt-[2px]">
-                  {vizMode === 'scurve' ? t('projectDetail.scurve.subtitle') : t('projectDetail.gantt.subtitle')}
+                  {vizMode === 'scurve' ? t('projectDetail.scurve.subtitle') : vizMode === 'dynamic_scurve' ? 'Analyze specific date ranges and intervals' : t('projectDetail.gantt.subtitle')}
                 </p>
               </div>
               <div className="flex gap-2 shrink-0 max-lg:w-full max-lg:justify-between">
+                {/* S-Curve Type Switcher */}
+                {(vizMode === 'scurve' || vizMode === 'dynamic_scurve') && (
+                  <div className="flex bg-bg-secondary rounded-lg p-[3px] gap-[2px]">
+                    {[
+                      { id: 'financial', label: 'Financial' },
+                      { id: 'physical', label: 'Physical' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        className={`py-[6px] px-[12px] border-none bg-transparent rounded-md text-[10px] font-bold uppercase tracking-wider text-text-muted cursor-pointer transition-all hover:text-text-primary${scurveType === opt.id ? ' bg-bg-primary !text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : ''}`}
+                        onClick={() => setScurveType(opt.id as any)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {/* Granularity Switcher (S-Curve Only) */}
-                {vizMode === 'scurve' && (
+                {(vizMode === 'scurve' || vizMode === 'dynamic_scurve') && (
                   <div className="flex bg-bg-secondary rounded-lg p-[3px] gap-[2px]">
                     {[
                       { id: 'auto', label: 'Auto' },
                       { id: 'daily', label: 'Daily' },
+                      ...(vizMode === 'dynamic_scurve' ? [{ id: 'weekly', label: 'Weekly' }] : []),
                       { id: 'monthly', label: 'Monthly' },
                     ].map((opt) => (
                       <button
@@ -595,6 +823,18 @@ export default function ProjectDetail() {
                     S-Curve
                   </button>
                   <button
+                    className={`flex items-center gap-[6px] py-[6px] px-[14px] border-none bg-transparent rounded-md text-xs font-semibold text-text-muted cursor-pointer transition-all hover:text-text-primary hover:bg-bg-primary whitespace-nowrap${vizMode === 'dynamic_scurve' ? ' bg-bg-primary !text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : ''}`}
+                    onClick={() => {
+                      setVizMode('dynamic_scurve');
+                      if (granularity !== 'weekly' && granularity !== 'daily' && granularity !== 'monthly') {
+                        setGranularity('weekly');
+                      }
+                    }}
+                  >
+                    <Target size={14} />
+                    Dynamic
+                  </button>
+                  <button
                     className={`flex items-center gap-[6px] py-[6px] px-[14px] border-none bg-transparent rounded-md text-xs font-semibold text-text-muted cursor-pointer transition-all hover:text-text-primary hover:bg-bg-primary whitespace-nowrap${vizMode === 'gantt' ? ' bg-bg-primary !text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : ''}`}
                     onClick={() => setVizMode('gantt')}
                   >
@@ -605,8 +845,32 @@ export default function ProjectDetail() {
               </div>
             </div>
 
+            {/* Date Range Picker Row for Dynamic S-Curve */}
+            {vizMode === 'dynamic_scurve' && (
+              <div className="flex gap-4 mb-4 p-3 bg-bg-secondary rounded-lg max-sm:flex-col">
+                <div className="flex flex-col gap-1 flex-1">
+                  <label className="text-[10px] font-bold text-text-muted uppercase">Start Date</label>
+                  <input
+                    type="date"
+                    className="p-2 rounded-md border border-border bg-bg-white text-sm outline-none focus:border-primary"
+                    value={filterStart}
+                    onChange={(e) => setFilterStart(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1 flex-1">
+                  <label className="text-[10px] font-bold text-text-muted uppercase">End Date</label>
+                  <input
+                    type="date"
+                    className="p-2 rounded-md border border-border bg-bg-white text-sm outline-none focus:border-primary"
+                    value={filterEnd}
+                    onChange={(e) => setFilterEnd(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* ── S-Curve View ── */}
-            {vizMode === 'scurve' && scurveData.length >= 1 && (
+            {(vizMode === 'scurve' || vizMode === 'dynamic_scurve') && scurveData.length >= 1 && (
               <>
                 <div className="flex justify-between items-start mb-4 max-lg:flex-col max-lg:gap-2" style={{ marginTop: 0 }}>
                   <div />
@@ -891,6 +1155,55 @@ export default function ProjectDetail() {
         </div>
       )}
 
+      {/* Quick Actions */}
+      <Card className="mb-4">
+        <h3 className="text-base font-bold text-text-primary mb-4 mt-0">{t('projectDetail.actions.title')}</h3>
+        <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+          <Button
+            title={t('projectDetail.actions.dailyReport')}
+            icon={FileText}
+            onClick={() => navigate(`/daily-report?projectId=${id}`)}
+            variant="outline"
+            fullWidth
+          />
+          <Button
+            title={t('projectDetail.actions.toolInventory')}
+            icon={Wrench}
+            onClick={() => navigate(`/project-tools/${id}`)}
+            variant="outline"
+            fullWidth
+          />
+          <Button
+            title="Material Usage"
+            icon={BarChart3}
+            onClick={() => navigate(`/project-material-usage/${id}`)}
+            variant="outline"
+            fullWidth
+          />
+          <Button
+            title={t('projectDetail.actions.materialPlan')}
+            icon={Package}
+            onClick={() => navigate(`/project-materials/${id}`)}
+            variant="outline"
+            fullWidth
+          />
+          <Button
+            title={t('projectDetail.actions.projectReports')}
+            icon={FileText}
+            onClick={() => navigate(`/project-reports/${id}`)}
+            variant="outline"
+            fullWidth
+          />
+          <Button
+            title="Documents"
+            icon={FolderOpen}
+            onClick={() => navigate(`/project-documents/${id}`)}
+            variant="outline"
+            fullWidth
+          />
+        </div>
+      </Card>
+
       {/* Work Items Table */}
       {workItems.length > 0 && (
         <div ref={tableRef}>
@@ -1020,61 +1333,7 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* Quick Actions */}
-      <Card className="mb-4">
-        <h3 className="text-base font-bold text-text-primary mb-4 mt-0">{t('projectDetail.actions.title')}</h3>
-        <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
-          <Button
-            title={t('projectDetail.actions.dailyReport')}
-            icon={FileText}
-            onClick={() => navigate(`/daily-report?projectId=${id}`)}
-            variant="outline"
-            fullWidth
-          />
-          <Button
-            title={t('projectDetail.actions.toolInventory')}
-            icon={Wrench}
-            onClick={() => navigate(`/project-tools/${id}`)}
-            variant="outline"
-            fullWidth
-          />
-          <Button
-            title="Material Usage"
-            icon={BarChart3}
-            onClick={() => navigate(`/project-material-usage/${id}`)}
-            variant="outline"
-            fullWidth
-          />
-          <Button
-            title={t('projectDetail.actions.materialPlan')}
-            icon={Package}
-            onClick={() => navigate(`/project-materials/${id}`)}
-            variant="outline"
-            fullWidth
-          />
-          <Button
-            title={t('projectDetail.actions.projectReports')}
-            icon={FileText}
-            onClick={() => navigate(`/project-reports/${id}`)}
-            variant="outline"
-            fullWidth
-          />
-          <Button
-            title="Documents"
-            icon={FolderOpen}
-            onClick={() => navigate(`/project-documents/${id}`)}
-            variant="outline"
-            fullWidth
-          />
-        </div>
-      </Card>
 
-      {project.description && (
-        <Card className="mt-4">
-          <h3 className="text-base font-bold text-text-primary mb-3 mt-0">{t('projectDetail.description.title')}</h3>
-          <p className="text-base text-text-secondary leading-relaxed m-0">{project.description}</p>
-        </Card>
-      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ const workItemSchema = new mongoose.Schema({
   cost: { type: Number, default: 0 },
   progress: { type: Number, default: 0 },
   actualCost: { type: Number, default: 0 },
+  physicalWeight: { type: Number, default: 0 },
   startDate: Date,
   endDate: Date,
 });

@@ -244,6 +244,20 @@ router.get('/:id/supplies', auth, async (req, res) => {
   }
 });
 
+// GET /api/projects/:id/daily-reports - Get all daily reports for a project
+router.get('/:id/daily-reports', auth, async (req, res) => {
+  try {
+    const reports = await DailyReport.find({ projectId: req.params.id })
+      .sort({ date: 1 })
+      .populate('createdBy', 'fullName')
+      .lean();
+    res.json(reports);
+  } catch (error) {
+    console.error('Get project daily reports error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 // POST /api/projects - Create project
 router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
   upload.fields([
@@ -555,6 +569,7 @@ router.post('/:id/daily-report', auth, uploadLimiter,
           name: existing ? existing.name : '',
           previousProgress,
           newProgress: wu.newProgress,
+          volumeCompleted: wu.volumeCompleted || 0,
           actualCost: wu.actualCost || 0,
         });
 

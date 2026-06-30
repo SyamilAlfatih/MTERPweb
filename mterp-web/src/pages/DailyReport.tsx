@@ -53,6 +53,7 @@ interface WorkItemUpdate {
   cost: number;
   currentProgress: number;
   newProgress: number;
+  volumeCompleted: number;
   actualCost: number;
   startDate?: string;
   endDate?: string;
@@ -140,6 +141,9 @@ export default function DailyReport() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>(preselectedId || '');
   const [selectedProjectName, setSelectedProjectName] = useState('');
   const [selectedProjectData, setSelectedProjectData] = useState<ProjectData | null>(null);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [availableWorkItems, setAvailableWorkItems] = useState<WorkItemUpdate[]>([]);
+  const [availableSupplies, setAvailableSupplies] = useState<SupplyUpdate[]>([]);
   const [workItemUpdates, setWorkItemUpdates] = useState<WorkItemUpdate[]>([]);
   const [supplyUpdates, setSupplyUpdates] = useState<SupplyUpdate[]>([]);
   const [equipmentData, setEquipmentData] = useState<{ _id: string; nama?: string; kategori?: string; stok?: number; satuan?: string; kondisi?: string; assignedTo?: { fullName?: string } }[]>([]);
@@ -255,6 +259,8 @@ export default function DailyReport() {
     if (selectedProjectId) {
       fetchProjectData(selectedProjectId);
     } else {
+      setAvailableWorkItems([]);
+      setAvailableSupplies([]);
       setWorkItemUpdates([]);
       setSupplyUpdates([]);
       setEquipmentData([]);
@@ -286,11 +292,13 @@ export default function DailyReport() {
         cost: item.cost || 0,
         currentProgress: item.progress || 0,
         newProgress: item.progress || 0,
+        volumeCompleted: 0,
         actualCost: item.actualCost || 0,
         startDate: item.startDate,
         endDate: item.endDate,
       }));
-      setWorkItemUpdates(items);
+      setAvailableWorkItems(items);
+      setWorkItemUpdates([]);
 
       const supplies: SupplyUpdate[] = (suppliesData || []).map((s: { _id: string; item: string; qty?: number; unit?: string; cost?: number; status?: string; actualCost?: number; startDate?: string; endDate?: string }) => ({
         supplyId: s._id,
@@ -304,7 +312,8 @@ export default function DailyReport() {
         startDate: s.startDate,
         endDate: s.endDate,
       }));
-      setSupplyUpdates(supplies);
+      setAvailableSupplies(supplies);
+      setSupplyUpdates([]);
     } catch (err) {
       console.error('Failed to fetch project details', err);
     } finally {
@@ -334,6 +343,39 @@ export default function DailyReport() {
     const updated = [...supplyUpdates];
     updated[index].actualCost = value;
     setSupplyUpdates(updated);
+  };
+
+  const handleAddWorkItem = (id: string) => {
+    if (!id) return;
+    const item = availableWorkItems.find(w => w.workItemId === id);
+    if (item && !workItemUpdates.some(w => w.workItemId === id)) {
+      setWorkItemUpdates([...workItemUpdates, { ...item }]);
+    }
+  };
+
+  const handleRemoveWorkItem = (index: number) => {
+    setWorkItemUpdates(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateItemVolume = (index: number, value: number) => {
+    const updated = [...workItemUpdates];
+    updated[index].volumeCompleted = value;
+    if (updated[index].qty > 0) {
+      updated[index].newProgress = Math.min(100, Math.round(updated[index].currentProgress + (value / updated[index].qty) * 100));
+    }
+    setWorkItemUpdates(updated);
+  };
+
+  const handleAddSupply = (id: string) => {
+    if (!id) return;
+    const item = availableSupplies.find(s => s.supplyId === id);
+    if (item && !supplyUpdates.some(s => s.supplyId === id)) {
+      setSupplyUpdates([...supplyUpdates, { ...item }]);
+    }
+  };
+
+  const handleRemoveSupply = (index: number) => {
+    setSupplyUpdates(prev => prev.filter((_, i) => i !== index));
   };
 
   // Calculate computed overall progress (work items + supplies, cost-weighted)
@@ -393,6 +435,7 @@ export default function DailyReport() {
       fd.append('workItemUpdates', JSON.stringify(workItemUpdates.map(w => ({
         workItemId: w.workItemId,
         newProgress: w.newProgress,
+        volumeCompleted: w.volumeCompleted,
         actualCost: w.actualCost,
       }))));
       fd.append('supplyUpdates', JSON.stringify(supplyUpdates.map(s => ({
@@ -1070,43 +1113,56 @@ export default function DailyReport() {
         </div>
       )}
 
-      {/* Work Item Updates - CARD BASED FOR FIELD WORK */}
-      {!loadingProject && workItemUpdates.length > 0 && (
+      {/* Work Item Updates - Dropdown & Chips */}
+      {!loadingProject && selectedProjectId && (
         <Section title="Pekerjaan / Work Items" icon={Layers}>
-          <div className="grid grid-cols-1 gap-4">
+          <div className="mb-4 relative">
+            <select
+              className="w-full py-3 pr-10 pl-4 border-2 border-border-light rounded-xl bg-bg-white text-text-primary font-bold cursor-pointer transition-all outline-none focus:border-primary shadow-sm appearance-none"
+              value=""
+              onChange={(e) => handleAddWorkItem(e.target.value)}
+            >
+              <option value="" disabled>+ Tambah Pekerjaan / Add Work Item</option>
+              {availableWorkItems.filter(wi => !workItemUpdates.some(u => u.workItemId === wi.workItemId)).map(wi => (
+                <option key={wi.workItemId} value={wi.workItemId}>{wi.name} (Target: {wi.qty} {wi.unit})</option>
+              ))}
+            </select>
+            <ChevronDown size={20} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+          </div>
+
+          <div className="space-y-3">
             {workItemUpdates.map((item, i) => (
-              <Card key={item.workItemId} className="!p-5 border-2 border-border-light hover:border-primary transition-all">
-                <div className="flex justify-between items-start mb-4">
+              <div key={item.workItemId} className="flex flex-col gap-3 p-4 bg-bg-white border-2 border-border-light rounded-xl shadow-sm hover:border-primary transition-all">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="flex-1">
-                    <h4 className="text-lg font-bold text-text-primary m-0">{item.name}</h4>
-                    <p className="text-xs text-text-muted m-0">Target Qty: {item.qty} {item.unit}</p>
+                    <h4 className="text-base font-bold text-text-primary m-0 leading-tight">{item.name}</h4>
+                    <p className="text-[11px] font-bold text-text-muted mt-1 uppercase">Target: <span className="text-text-secondary">{item.qty} {item.unit}</span> &bull; Current: <span className="text-primary">{item.currentProgress}%</span></p>
                   </div>
-                  <Badge label={`${item.newProgress}%`} variant={item.newProgress === 100 ? 'success' : 'primary'} />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <input 
+                      type="number"
+                      placeholder="Vol..."
+                      value={item.volumeCompleted || ''}
+                      onChange={(e) => updateItemVolume(i, Number(e.target.value))}
+                      className="w-20 p-2 rounded-lg border-2 border-border-light text-center font-black text-primary focus:border-primary outline-none text-sm"
+                    />
+                    <span className="text-xs font-bold text-text-muted w-8">{item.unit}</span>
+                    <button 
+                      onClick={() => handleRemoveWorkItem(i)}
+                      className="w-8 h-8 rounded-lg bg-red-50 text-red-500 flex items-center justify-center border border-red-100 hover:bg-red-500 hover:text-white transition-all ml-2"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
                 </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-text-muted uppercase mb-2">Update Progress (%)</label>
-                    <div className="flex items-center gap-4">
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="5"
-                        value={item.newProgress}
-                        onChange={(e) => updateItemProgress(i, Number(e.target.value))}
-                        className="flex-1 h-3 bg-bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                      <input 
-                        type="number"
-                        value={item.newProgress}
-                        onChange={(e) => updateItemProgress(i, Number(e.target.value))}
-                        className="w-16 p-2 rounded-lg border-2 border-border-light text-center font-black text-primary focus:border-primary outline-none"
-                      />
-                    </div>
+                
+                {/* Cost Row */}
+                <div className="pt-3 border-t border-border-light flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
+                  <div className="flex-1">
+                    <span className="text-[10px] font-bold text-text-muted uppercase block mb-1">Planned Cost</span>
+                    <span className="text-sm font-bold text-text-primary">{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(item.cost || 0)}</span>
                   </div>
-
-                  <div>
+                  <div className="flex-1 sm:max-w-[200px]">
                     <CostInput
                       label="ACTUAL COST IMPACT"
                       value={item.actualCost}
@@ -1114,50 +1170,69 @@ export default function DailyReport() {
                     />
                   </div>
                 </div>
-              </Card>
+              </div>
             ))}
           </div>
         </Section>
       )}
 
-      {/* Supply Updates - CARD BASED */}
-      {!loadingProject && supplyUpdates.length > 0 && (
+      {/* Supply Updates - Dropdown & Chips */}
+      {!loadingProject && selectedProjectId && (
         <Section title="Material & Logistik / Supplies" icon={Truck}>
-          <div className="grid grid-cols-1 gap-4">
-            {supplyUpdates.map((item, i) => (
-              <Card key={item.supplyId} className="!p-5 border-2 border-border-light hover:border-primary transition-all">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1">
-                    <h4 className="text-lg font-bold text-text-primary m-0">{item.item}</h4>
-                    <p className="text-xs text-text-muted m-0">Planning Qty: {item.qty} {item.unit}</p>
-                  </div>
-                  <Badge 
-                    label={item.newStatus} 
-                    variant={item.newStatus === 'Delivered' ? 'success' : item.newStatus === 'Ordered' ? 'primary' : 'neutral'} 
-                  />
-                </div>
+          <div className="mb-4 relative">
+            <select
+              className="w-full py-3 pr-10 pl-4 border-2 border-border-light rounded-xl bg-bg-white text-text-primary font-bold cursor-pointer transition-all outline-none focus:border-primary shadow-sm appearance-none"
+              value=""
+              onChange={(e) => handleAddSupply(e.target.value)}
+            >
+              <option value="" disabled>+ Tambah Material / Add Supply Item</option>
+              {availableSupplies.filter(s => !supplyUpdates.some(u => u.supplyId === s.supplyId)).map(s => (
+                <option key={s.supplyId} value={s.supplyId}>{s.item} (Qty: {s.qty} {s.unit})</option>
+              ))}
+            </select>
+            <ChevronDown size={20} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+          </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-text-muted uppercase mb-2">Update Status</label>
-                    <div className="grid grid-cols-3 gap-2">
+          <div className="space-y-3">
+            {supplyUpdates.map((item, i) => (
+              <div key={item.supplyId} className="flex flex-col gap-3 p-4 bg-bg-white border-2 border-border-light rounded-xl shadow-sm hover:border-primary transition-all">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex-1">
+                    <h4 className="text-base font-bold text-text-primary m-0 leading-tight">{item.item}</h4>
+                    <p className="text-[11px] font-bold text-text-muted mt-1 uppercase">Qty: <span className="text-text-secondary">{item.qty} {item.unit}</span> &bull; Current: <span className="text-primary">{item.currentStatus}</span></p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0">
+                    <div className="flex bg-bg-secondary p-1 rounded-lg">
                       {['Pending', 'Ordered', 'Delivered'].map((status) => (
                         <button
                           key={status}
                           onClick={() => updateSupplyStatus(i, status)}
-                          className={`py-3 rounded-lg text-xs font-bold border-2 transition-all ${
+                          className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
                             item.newStatus === status 
-                              ? 'bg-primary border-primary text-white' 
-                              : 'bg-bg-white border-border-light text-text-secondary hover:border-primary/50'
+                              ? 'bg-primary text-white shadow-sm' 
+                              : 'text-text-secondary hover:text-primary'
                           }`}
                         >
                           {status}
                         </button>
                       ))}
                     </div>
+                    <button 
+                      onClick={() => handleRemoveSupply(i)}
+                      className="w-8 h-8 rounded-lg bg-red-50 text-red-500 flex items-center justify-center border border-red-100 hover:bg-red-500 hover:text-white transition-all sm:ml-2"
+                    >
+                      <X size={16} />
+                    </button>
                   </div>
+                </div>
 
-                  <div>
+                {/* Cost Row */}
+                <div className="pt-3 border-t border-border-light flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
+                  <div className="flex-1">
+                    <span className="text-[10px] font-bold text-text-muted uppercase block mb-1">Planned Cost</span>
+                    <span className="text-sm font-bold text-text-primary">{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(item.cost || 0)}</span>
+                  </div>
+                  <div className="flex-1 sm:max-w-[200px]">
                     <CostInput
                       label="ACTUAL PROCUREMENT COST"
                       value={item.actualCost}
@@ -1165,7 +1240,7 @@ export default function DailyReport() {
                     />
                   </div>
                 </div>
-              </Card>
+              </div>
             ))}
           </div>
         </Section>
@@ -1306,8 +1381,8 @@ export default function DailyReport() {
           <Button
             className="flex-1 !h-16 !rounded-xl !text-xl !font-black uppercase tracking-widest shadow-lg shadow-primary/20"
             variant="primary"
-            title={loading ? t('dailyReport.actions.submitting') : t('dailyReport.actions.submit')}
-            onClick={handleSubmit}
+            title={loading ? t('dailyReport.actions.submitting') : "Review & Submit"}
+            onClick={() => setShowSummaryModal(true)}
             disabled={loading || !selectedProjectId}
           />
           <Button
@@ -1321,6 +1396,90 @@ export default function DailyReport() {
           />
         </div>
       </div>
+
+      {/* Summary Preview Modal */}
+      {showSummaryModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-bg-primary/80 backdrop-blur-sm">
+          <div className="bg-bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border-2 border-border-light shadow-2xl flex flex-col">
+            <div className="p-6 border-b-2 border-border-light flex justify-between items-center sticky top-0 bg-bg-white z-10">
+              <h2 className="text-xl font-black text-text-primary uppercase tracking-tight m-0">Report Summary Preview</h2>
+              <button onClick={() => setShowSummaryModal(false)} className="text-text-muted hover:text-red-500 transition-all">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div>
+                <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 border-b-2 border-border-light pb-2">Detail Laporan</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm font-bold text-text-primary">
+                  <div><span className="text-text-muted block text-[10px]">TANGGAL</span>{selectedDate}</div>
+                  <div><span className="text-text-muted block text-[10px]">CUACA</span>{getWeatherLabel(formData.weather)}</div>
+                </div>
+              </div>
+
+              {workItemUpdates.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 border-b-2 border-border-light pb-2">Pekerjaan ({workItemUpdates.length})</h4>
+                  <ul className="space-y-2 m-0 p-0 list-none">
+                    {workItemUpdates.map(wi => (
+                      <li key={wi.workItemId} className="flex justify-between items-center text-sm font-bold bg-bg-secondary p-3 rounded-xl border border-border-light">
+                        <span className="text-text-primary">{wi.name}</span>
+                        <span className="text-primary bg-primary/10 px-2 py-1 rounded text-xs">+ {wi.volumeCompleted} {wi.unit}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {supplyUpdates.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 border-b-2 border-border-light pb-2">Material / Supplies ({supplyUpdates.length})</h4>
+                  <ul className="space-y-2 m-0 p-0 list-none">
+                    {supplyUpdates.map(s => (
+                      <li key={s.supplyId} className="flex justify-between items-center text-sm font-bold bg-bg-secondary p-3 rounded-xl border border-border-light">
+                        <span className="text-text-primary">{s.item}</span>
+                        <span className="text-primary bg-primary/10 px-2 py-1 rounded text-xs">{s.currentStatus} &rarr; {s.newStatus}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {formData.materials && (
+                <div>
+                  <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Materials</h4>
+                  <p className="text-sm font-medium text-text-secondary m-0 bg-bg-secondary p-3 whitespace-pre-wrap rounded-xl">{formData.materials}</p>
+                </div>
+              )}
+              {formData.workforce && (
+                <div>
+                  <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Workforce</h4>
+                  <p className="text-sm font-medium text-text-secondary m-0 bg-bg-secondary p-3 whitespace-pre-wrap rounded-xl">{formData.workforce}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t-2 border-border-light flex gap-3 bg-bg-secondary/50 sticky bottom-0 z-10">
+              <Button 
+                variant="secondary" 
+                title="Edit Report" 
+                className="flex-1 !h-14 !rounded-xl font-bold uppercase" 
+                onClick={() => setShowSummaryModal(false)}
+              />
+              <Button 
+                variant="primary" 
+                title={loading ? t('dailyReport.actions.submitting') : "Confirm & Submit"}
+                className="flex-1 !h-14 !rounded-xl font-black uppercase shadow-lg shadow-primary/20" 
+                onClick={() => {
+                  setShowSummaryModal(false);
+                  handleSubmit();
+                }}
+                disabled={loading}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* S-Curve Canvas (Hidden for PDF generation) */}
       <canvas ref={scurveCanvasRef} style={{ display: 'none' }} width={1400} height={560} />

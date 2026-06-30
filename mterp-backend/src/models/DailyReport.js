@@ -13,6 +13,7 @@ const dailyReportSchema = new mongoose.Schema({
     name: String,
     previousProgress: { type: Number, default: 0 },
     newProgress: { type: Number, default: 0 },
+    volumeCompleted: { type: Number, default: 0 },
     actualCost: { type: Number, default: 0 },
   }],
   supplyUpdates: [{

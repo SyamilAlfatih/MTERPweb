@@ -122,6 +122,16 @@ export const updateUserRole = async (id: string, role: string) => {
   return response.data;
 };
 
+export const getProjectSupplies = async (id: string) => {
+  const response = await api.get(`/projects/${id}/supplies`);
+  return response.data;
+};
+
+export const getProjectDailyReports = async (id: string) => {
+  const response = await api.get(`/projects/${id}/daily-reports`);
+  return response.data;
+};
+
 export const verifyUserManually = async (id: string) => {
   const response = await api.put(`/users/${id}/verify`);
   return response.data;
