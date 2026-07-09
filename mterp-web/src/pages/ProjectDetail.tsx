@@ -4,6 +4,7 @@ import {
   Calendar, DollarSign, FileText, Wrench, ArrowLeft,
   TrendingUp, Package, BarChart3, Layers,
   AlertTriangle, CheckCircle2, Clock, Target, FolderOpen,
+  Trash2, Edit3, Eye, Image as ImageIcon, ChevronDown, ChevronUp, Download, X
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -236,6 +237,14 @@ export default function ProjectDetail() {
   const [filterStart, setFilterStart] = useState<string>('');
   const [filterEnd, setFilterEnd] = useState<string>('');
   const [dailyReports, setDailyReports] = useState<any[]>([]);
+  
+  // Daily Reports View State
+  const [expandedReports, setExpandedReports] = useState<string[]>([]);
+  const [reportToDelete, setReportToDelete] = useState<string | null>(null);
+  const [editingReport, setEditingReport] = useState<any>(null);
+  const [editFormData, setEditFormData] = useState({ weather: '', notes: '', materials: '', workforce: '' });
+  const [deletingReport, setDeletingReport] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const chartRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
@@ -243,6 +252,7 @@ export default function ProjectDetail() {
 
   const userRole = user?.role?.toLowerCase() || 'worker';
   const canSeeFinancials = ['owner', 'director', 'supervisor', 'asset_admin'].includes(userRole);
+  const canEditReports = ['owner', 'director', 'supervisor'].includes(userRole);
 
   useEffect(() => {
     fetchProject();
@@ -342,6 +352,60 @@ export default function ProjectDetail() {
       </div>
     );
   }
+
+  /* ─── Daily Report Handlers ─── */
+  const toggleReportExpand = (reportId: string) => {
+    setExpandedReports(prev => 
+      prev.includes(reportId) ? prev.filter(id => id !== reportId) : [...prev, reportId]
+    );
+  };
+
+  const handleDeleteReport = async () => {
+    if (!reportToDelete) return;
+    setDeletingReport(true);
+    try {
+      await api.delete(`/projects/${id}/daily-reports/${reportToDelete}`);
+      setDailyReports(prev => prev.filter(r => r._id !== reportToDelete));
+      setReportToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete report:', err);
+    } finally {
+      setDeletingReport(false);
+    }
+  };
+
+  const openEditModal = (report: any) => {
+    setEditingReport(report);
+    setEditFormData({
+      weather: report.weather || '',
+      notes: report.notes || '',
+      materials: report.materials || '',
+      workforce: report.workforce || '',
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingReport) return;
+    setSavingEdit(true);
+    try {
+      const fd = new FormData();
+      fd.append('weather', editFormData.weather);
+      fd.append('notes', editFormData.notes);
+      fd.append('materials', editFormData.materials);
+      fd.append('workforce', editFormData.workforce);
+
+      const res = await api.patch(`/projects/${id}/daily-reports/${editingReport._id}`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      
+      setDailyReports(prev => prev.map(r => r._id === editingReport._id ? res.data.dailyReport : r));
+      setEditingReport(null);
+    } catch (err) {
+      console.error('Failed to update report:', err);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const budget = project.totalBudget || project.budget || 0;
   const progress = project.progress || 0;
@@ -1203,6 +1267,198 @@ export default function ProjectDetail() {
           />
         </div>
       </Card>
+
+      {/* Reported Daily Reports */}
+      {dailyReports.length > 0 && (
+        <Card className="mb-4 overflow-hidden">
+          <div className="flex items-center gap-2 p-4 pb-3 max-sm:p-3">
+            <FileText size={20} color="var(--primary)" />
+            <h3 className="text-base font-bold text-text-primary m-0 flex-1">Laporan Harian / Daily Reports</h3>
+            <Badge label={`${dailyReports.length} Laporan`} variant="neutral" size="small" />
+          </div>
+          <div className="flex flex-col gap-2 p-4 pt-0">
+            {dailyReports.map((report) => {
+              const isExpanded = expandedReports.includes(report._id);
+              return (
+                <div key={report._id} className="border border-border rounded-xl overflow-hidden bg-bg-secondary">
+                  {/* Header Row */}
+                  <div 
+                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-bg-white transition-colors"
+                    onClick={() => toggleReportExpand(report._id)}
+                  >
+                    <div className="flex items-center gap-4 flex-wrap flex-1">
+                      <div className="flex items-center gap-2 text-sm font-bold">
+                        <Calendar size={14} className="text-text-muted" />
+                        {fmtDate(report.date)}
+                      </div>
+                      <Badge label={`${report.progressPercent}% Progress`} variant="primary" size="small" />
+                      <div className="text-xs text-text-muted">
+                        Oleh: <span className="font-semibold text-text-primary">{report.createdBy?.fullName || 'Unknown'}</span>
+                      </div>
+                      {(report.photos?.length > 0) && (
+                        <div className="flex items-center gap-1 text-xs text-text-muted">
+                          <ImageIcon size={14} /> {report.photos.length}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        className="p-2 rounded-lg bg-bg-white border border-border hover:border-primary text-text-secondary hover:text-primary transition-colors flex items-center gap-1 text-xs font-bold"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/daily-report?projectId=${id}`); /* Note: to properly support generating old PDFs, we'd need a dedicated route. Redirecting to new report for now */ }}
+                        title="Export PDF (Requires opening in Daily Report page)"
+                      >
+                        <Download size={14} /> <span className="hidden sm:inline">PDF</span>
+                      </button>
+                      {isExpanded ? <ChevronUp size={18} className="text-text-muted" /> : <ChevronDown size={18} className="text-text-muted" />}
+                    </div>
+                  </div>
+
+                  {/* Expanded Content */}
+                  {isExpanded && (
+                    <div className="p-4 border-t border-border bg-bg-white flex flex-col gap-4">
+                      {/* Updates */}
+                      {report.notes && (
+                        <div>
+                          <div className="text-xs font-bold text-text-muted mb-1 uppercase tracking-wider">Catatan / Notes</div>
+                          <p className="text-sm m-0 text-text-secondary">{report.notes}</p>
+                        </div>
+                      )}
+                      
+                      <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+                        {report.weather && (
+                          <div>
+                            <div className="text-xs font-bold text-text-muted mb-1 uppercase tracking-wider">Cuaca / Weather</div>
+                            <p className="text-sm m-0 text-text-secondary">{report.weather}</p>
+                          </div>
+                        )}
+                        {report.workforce && (
+                          <div>
+                            <div className="text-xs font-bold text-text-muted mb-1 uppercase tracking-wider">Tenaga Kerja / Workforce</div>
+                            <p className="text-sm m-0 text-text-secondary">{report.workforce}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Photo Previews */}
+                      {report.photos?.length > 0 && (
+                        <div>
+                          <div className="text-xs font-bold text-text-muted mb-2 uppercase tracking-wider">Foto / Photos</div>
+                          <div className="flex gap-2 overflow-x-auto pb-2">
+                            {report.photos.map((p: any, i: number) => {
+                              const url = typeof p === 'string' ? p : p.path;
+                              const alt = typeof p === 'string' ? '' : p.altText;
+                              return url ? (
+                                <div key={i} className="relative shrink-0 flex flex-col gap-1 w-[120px]">
+                                  <div className="w-[120px] h-[120px] rounded-lg overflow-hidden border border-border">
+                                    <img src={`http://localhost:3001/${url.replace(/\\/g, '/').split('uploads/')[1]}`} alt={alt || `Foto ${i+1}`} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/120?text=Error'; }} />
+                                  </div>
+                                  {alt && <span className="text-[10px] text-text-muted truncate">{alt}</span>}
+                                </div>
+                              ) : null;
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      {canEditReports && (
+                        <div className="flex items-center gap-2 pt-3 border-t border-border mt-2 justify-end">
+                          <Button 
+                            title="Revisi" 
+                            icon={Edit3} 
+                            onClick={() => openEditModal(report)} 
+                            variant="outline" 
+                            className="!py-1.5 !px-3 !text-xs" 
+                          />
+                          <Button 
+                            title="Hapus" 
+                            icon={Trash2} 
+                            onClick={() => setReportToDelete(report._id)} 
+                            variant="danger" 
+                            className="!py-1.5 !px-3 !text-xs" 
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {reportToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-bg-primary rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500/10 text-red-500 mb-4 mx-auto">
+              <AlertTriangle size={24} />
+            </div>
+            <h3 className="text-xl font-bold text-center text-text-primary m-0 mb-2">Hapus Laporan?</h3>
+            <p className="text-center text-text-secondary text-sm mb-6">
+              Laporan harian ini akan dihapus permanen. Perlu diingat bahwa progres dari work item <b>TIDAK</b> akan dikembalikan (Audit Trail).
+            </p>
+            <div className="flex gap-3">
+              <Button title="Batal" onClick={() => setReportToDelete(null)} variant="outline" fullWidth />
+              <Button title="Hapus" onClick={handleDeleteReport} variant="danger" fullWidth loading={deletingReport} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Revise Edit Modal */}
+      {editingReport && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-bg-primary rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-text-primary m-0">Revisi Laporan</h3>
+              <button onClick={() => setEditingReport(null)} className="p-2 rounded-full hover:bg-bg-secondary text-text-muted transition-colors border-none bg-transparent cursor-pointer">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto pr-2 pb-4 flex flex-col gap-4">
+              <div>
+                <label className="text-xs font-bold text-text-muted uppercase mb-1 block">Cuaca / Weather</label>
+                <select 
+                  className="w-full p-3 rounded-xl border-2 border-border focus:border-primary bg-bg-white outline-none"
+                  value={editFormData.weather}
+                  onChange={(e) => setEditFormData({...editFormData, weather: e.target.value})}
+                >
+                  <option value="Cerah">Cerah</option>
+                  <option value="Berawan">Berawan</option>
+                  <option value="Hujan Ringan">Hujan Ringan</option>
+                  <option value="Hujan Deras">Hujan Deras</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="text-xs font-bold text-text-muted uppercase mb-1 block">Tenaga Kerja / Workforce</label>
+                <textarea 
+                  className="w-full p-3 rounded-xl border-2 border-border focus:border-primary bg-bg-white outline-none resize-none h-24"
+                  value={editFormData.workforce}
+                  onChange={(e) => setEditFormData({...editFormData, workforce: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-text-muted uppercase mb-1 block">Catatan / Notes</label>
+                <textarea 
+                  className="w-full p-3 rounded-xl border-2 border-border focus:border-primary bg-bg-white outline-none resize-none h-24"
+                  value={editFormData.notes}
+                  onChange={(e) => setEditFormData({...editFormData, notes: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t border-border mt-auto">
+              <Button title="Batal" onClick={() => setEditingReport(null)} variant="outline" fullWidth />
+              <Button title="Simpan" onClick={handleSaveEdit} variant="primary" fullWidth loading={savingEdit} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Work Items Table */}
       {workItems.length > 0 && (

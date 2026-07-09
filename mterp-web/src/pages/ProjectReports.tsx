@@ -11,6 +11,7 @@ import api from '../api/api';
 import { Card, Button, Input, Alert, Badge } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
+import { getImageUrl } from '../utils/image';
 
 /* ─── Helpers ─── */
 
@@ -323,38 +324,39 @@ export default function ProjectReports() {
         : reportType === 'weekly' ? 'MINGGUAN / WEEKLY'
         : reportType === 'monthly' ? 'BULANAN / MONTHLY'
         : 'KUSTOM / CUSTOM';
+      const typeLabel = report.reportType.charAt(0).toUpperCase() + report.reportType.slice(1);
       doc.setFillColor(49, 46, 89);
       doc.rect(margin, y, contentW, 8, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.setTextColor(255, 255, 255);
-      doc.text(`LAPORAN ${reportTypeLabel} / ${reportTypeLabel.split(' / ')[1]} REPORT`, pageW / 2, y + 5.5, { align: 'center' });
+      doc.text(`LAPORAN ${typeLabel} / ${typeLabel.split(' / ')[1]} REPORT`, pageW / 2, y + 5.5, { align: 'center' });
       y += 12;
 
-      // ── 3. Meta Info ──
+      // ── 3. Meta Info (dedicated row per field — no overlap) ──
       doc.setFontSize(9);
       doc.setTextColor(30, 41, 59);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Proyek / Project:', margin, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(projectName, margin + 35, y);
+      const labelX = margin;
+      const valueX = margin + 38;
 
-      doc.setFont('helvetica', 'bold');
-      doc.text('Periode / Period:', pageW / 2 + 5, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`${fmtDateLong(report.startDate)} - ${fmtDateLong(report.endDate)}`, pageW / 2 + 33, y);
-      y += 5;
+      const addMetaRow = (label: string, value: string) => {
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, labelX, y);
+        doc.setFont('helvetica', 'normal');
+        // Wrap long values to avoid overflow
+        const maxW = contentW - 40;
+        const lines = doc.splitTextToSize(value, maxW);
+        doc.text(lines, valueX, y);
+        y += 5 * Math.max(1, lines.length);
+      };
 
-      doc.setFont('helvetica', 'bold');
-      doc.text('Status:', margin, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text('APPROVED ✓', margin + 15, y);
+      addMetaRow('Proyek / Project:', projectName);
+      addMetaRow('Periode / Period:', `${fmtDate(report.startDate)} — ${fmtDate(report.endDate)}`);
+      addMetaRow('Tipe / Type:', typeLabel);
+      addMetaRow('Status / Status:', 'APPROVED ✓');
+      addMetaRow('Jumlah Laporan:', `${dailyReports.length} laporan harian`);
 
-      doc.setFont('helvetica', 'bold');
-      doc.text('Jumlah Laporan:', pageW / 2 + 5, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`${dailyReports.length} laporan harian`, pageW / 2 + 37, y);
-      y += 3;
+      y += 1;
 
       doc.setDrawColor(49, 46, 89);
       doc.setLineWidth(0.5);
@@ -373,12 +375,12 @@ export default function ProjectReports() {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(49, 46, 89);
-        doc.text('S-CURVE PROGRESS', margin + 3, y + 4);
+        doc.text('S-CURVE PROGRESS (PHYSICAL / FISIK)', margin + 3, y + 4);
         y += 9;
 
         // Draw S-Curve on canvas
         const canvas = document.createElement('canvas');
-        const W = 1400, H = 560;
+        const W = 1400, H = 580;
         canvas.width = W; canvas.height = H;
         const ctx = canvas.getContext('2d');
         if (ctx) {
@@ -396,11 +398,13 @@ export default function ProjectReports() {
             const scheduleItems: ScheduleItem[] = (projectData.workItems || []).map((w: any) => {
               const sD = w.startDate ? wibDate(w.startDate) : pStart;
               const eD = w.endDate ? wibDate(w.endDate) : pEnd;
+              const plannedWeight = w.physicalWeight > 0 ? w.physicalWeight : (w.cost || 0);
+              const actualWeight = plannedWeight * ((w.progress || 0) / 100);
               return {
                 startDate: sD || pStart,
                 endDate: eD || pEnd,
-                plannedCost: w.cost || 0,
-                actualCost: w.actualCost || 0,
+                plannedCost: plannedWeight,
+                actualCost: actualWeight,
               };
             });
 
@@ -484,7 +488,14 @@ export default function ProjectReports() {
         const scurveData = canvas.toDataURL('image/png');
         const scurveH = contentW * (H / W);
         doc.addImage(scurveData, 'PNG', margin, y, contentW, scurveH);
-        y += scurveH + 5;
+        y += scurveH + 2;
+
+        // Physical progress footnote
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(148, 163, 184);
+        doc.text('* Berdasarkan Physical Progress / Based on Physical Progress', margin + 3, y);
+        y += 6;
       }
 
       // ── Table helper ──
@@ -623,9 +634,72 @@ export default function ProjectReports() {
       doc.setFontSize(7);
       doc.setTextColor(120, 120, 120);
       doc.text('Nama / Name: .............................', sigX3 + 2, y + sigW);
+      
+      // ── Photo Appendix ──
+      const allPhotos: { url: string, date: string, altText: string }[] = [];
+      for (const dr of dailyReports) {
+        if (dr.photos && dr.photos.length > 0) {
+          const formattedDate = fmtDate(dr.date);
+          dr.photos.forEach((p: any) => {
+            const url = typeof p === 'string' ? p : p.path;
+            if (url) {
+              allPhotos.push({
+                url: getImageUrl(url),
+                date: formattedDate,
+                altText: typeof p === 'string' ? '' : p.altText || ''
+              });
+            }
+          });
+        }
+      }
+
+      if (allPhotos.length > 0) {
+        doc.addPage();
+        y = 12;
+
+        doc.setFillColor(49, 46, 89);
+        doc.rect(margin, y, contentW, 8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text('LAMPIRAN FOTO / PHOTO APPENDIX', pageW / 2, y + 5.5, { align: 'center' });
+        y += 14;
+
+        const photoW = (contentW - 6) / 2;
+        const photoH = 55;
+        for (let i = 0; i < allPhotos.length; i++) {
+          const col = i % 2;
+          if (col === 0) checkPage(photoH + 20);
+          try {
+            const imgData = await loadImageAsBase64(allPhotos[i].url);
+            const px = margin + col * (photoW + 6);
+
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.3);
+            doc.rect(px, y, photoW, photoH, 'S');
+            doc.addImage(imgData, 'WEBP', px + 0.5, y + 0.5, photoW - 1, photoH - 1);
+
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(49, 46, 89);
+            doc.text(`Foto ${i + 1} - ${allPhotos[i].date}`, px + 2, y + photoH + 4);
+
+            const altText = allPhotos[i].altText;
+            if (altText) {
+              doc.setFont('helvetica', 'italic');
+              doc.setTextColor(100, 116, 139);
+              const captionLines = doc.splitTextToSize(altText, photoW - 4);
+              doc.text(captionLines, px + 2, y + photoH + 8);
+            }
+
+            if (col === 1 || i === allPhotos.length - 1) {
+              y += photoH + 18;
+            }
+          } catch { /* skip broken image */ }
+        }
+      }
 
       // ── Save ──
-      const typeLabel = report.reportType.charAt(0).toUpperCase() + report.reportType.slice(1);
       doc.save(`${typeLabel}_Report_${projectName.replace(/\s+/g, '_')}_${fmtDate(report.startDate)}.pdf`);
     } catch (err) {
       console.error('PDF export failed:', err);

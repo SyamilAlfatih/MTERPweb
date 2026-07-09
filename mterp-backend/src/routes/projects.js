@@ -7,6 +7,36 @@ const { uploadLimiter } = require('../middleware/rateLimiter');
 const ExcelJS = require('exceljs');
 const { parseWIBDate, nowWIB, wibDayRange } = require('../utils/date');
 const { notify, notifyByRole } = require('../utils/notify');
+const sharp = require('sharp');
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * Convert an uploaded image file to WebP format using sharp.
+ * Replaces the original file on disk and returns the new path.
+ * Accepts all common image formats (JPEG, PNG, TIFF, GIF, etc.).
+ */
+async function convertToWebP(filePath) {
+  try {
+    const parsed = path.parse(filePath);
+    // If already webp, skip conversion
+    if (parsed.ext.toLowerCase() === '.webp') return filePath;
+
+    const webpPath = path.join(parsed.dir, parsed.name + '.webp');
+    await sharp(filePath)
+      .webp({ quality: 80 })
+      .toFile(webpPath);
+
+    // Remove original file
+    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+
+    return webpPath;
+  } catch (err) {
+    console.warn('WebP conversion failed for', filePath, err.message);
+    // Return original path if conversion fails (e.g. non-image file)
+    return filePath;
+  }
+}
 
 const router = express.Router();
 
@@ -556,8 +586,17 @@ router.post('/:id/daily-report', auth, uploadLimiter,
       const workItemUpdates = JSON.parse(req.body.workItemUpdates || '[]');
       const supplyUpdates = JSON.parse(req.body.supplyUpdates || '[]');
 
-      // Collect photo paths
-      const photoPaths = (req.files || []).map(f => f.path);
+      // Convert uploaded photos to WebP and collect paths with alt texts
+      const photoAltTexts = JSON.parse(req.body.photoAltTexts || '[]');
+      const uploadedFiles = req.files || [];
+      const photoEntries = [];
+      for (let i = 0; i < uploadedFiles.length; i++) {
+        const webpPath = await convertToWebP(uploadedFiles[i].path);
+        photoEntries.push({
+          path: webpPath,
+          altText: photoAltTexts[i] || '',
+        });
+      }
 
       // Build DailyReport workItemUpdates with previous progress
       const reportWorkItems = [];
@@ -631,7 +670,7 @@ router.post('/:id/daily-report', auth, uploadLimiter,
         materials,
         workforce,
         notes,
-        photos: photoPaths,
+        photos: photoEntries,
         createdBy: req.user._id,
       });
 
@@ -656,6 +695,93 @@ router.post('/:id/daily-report', auth, uploadLimiter,
       ).catch(console.error);
     } catch (error) {
       console.error('Submit daily report error:', error);
+      res.status(500).json({ msg: 'Server error' });
+    }
+  }
+);
+
+// DELETE /api/projects/:id/daily-reports/:reportId - Delete a daily report
+router.delete('/:id/daily-reports/:reportId', auth, authorize('supervisor', 'director', 'owner'), async (req, res) => {
+  try {
+    const report = await DailyReport.findOne({ _id: req.params.reportId, projectId: req.params.id });
+    if (!report) {
+      return res.status(404).json({ msg: 'Daily report not found' });
+    }
+
+    // Remove photo files from disk
+    for (const photo of (report.photos || [])) {
+      const filePath = typeof photo === 'string' ? photo : photo.path;
+      if (filePath) {
+        try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
+      }
+    }
+
+    await DailyReport.findByIdAndDelete(req.params.reportId);
+    res.json({ msg: 'Daily report deleted' });
+  } catch (error) {
+    console.error('Delete daily report error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// PATCH /api/projects/:id/daily-reports/:reportId - Revise (edit-in-place) a daily report
+router.patch('/:id/daily-reports/:reportId', auth, authorize('supervisor', 'director', 'owner'),
+  uploadLimiter, upload.array('newPhotos', 5),
+  async (req, res) => {
+    try {
+      const report = await DailyReport.findOne({ _id: req.params.reportId, projectId: req.params.id });
+      if (!report) {
+        return res.status(404).json({ msg: 'Daily report not found' });
+      }
+
+      const { weather, materials, workforce, notes } = req.body;
+
+      // Update basic fields if provided
+      if (weather !== undefined) report.weather = weather;
+      if (materials !== undefined) report.materials = materials;
+      if (workforce !== undefined) report.workforce = workforce;
+      if (notes !== undefined) report.notes = notes;
+
+      // Handle photo removals (array of indices to remove)
+      const removePhotoIndices = JSON.parse(req.body.removePhotoIndices || '[]');
+      if (removePhotoIndices.length > 0) {
+        // Delete files from disk
+        for (const idx of removePhotoIndices) {
+          const photo = report.photos[idx];
+          if (photo) {
+            const filePath = typeof photo === 'string' ? photo : photo.path;
+            if (filePath) {
+              try { fs.unlinkSync(filePath); } catch { /* ok */ }
+            }
+          }
+        }
+        // Remove from array (filter by index)
+        report.photos = report.photos.filter((_, i) => !removePhotoIndices.includes(i));
+      }
+
+      // Handle existing photo alt text updates
+      const existingAltTexts = JSON.parse(req.body.existingAltTexts || '[]');
+      for (let i = 0; i < existingAltTexts.length && i < report.photos.length; i++) {
+        if (existingAltTexts[i] !== undefined && existingAltTexts[i] !== null) {
+          report.photos[i].altText = existingAltTexts[i];
+        }
+      }
+
+      // Handle new photo uploads
+      const newPhotoAltTexts = JSON.parse(req.body.newPhotoAltTexts || '[]');
+      const newFiles = req.files || [];
+      for (let i = 0; i < newFiles.length; i++) {
+        const webpPath = await convertToWebP(newFiles[i].path);
+        report.photos.push({
+          path: webpPath,
+          altText: newPhotoAltTexts[i] || '',
+        });
+      }
+
+      await report.save();
+      res.json({ msg: 'Daily report updated', dailyReport: report });
+    } catch (error) {
+      console.error('Revise daily report error:', error);
       res.status(500).json({ msg: 'Server error' });
     }
   }

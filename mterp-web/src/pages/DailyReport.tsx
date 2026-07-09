@@ -168,6 +168,7 @@ export default function DailyReport() {
   // Photo state
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  const [photoAltTexts, setPhotoAltTexts] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const MAX_PHOTOS = 5;
@@ -402,6 +403,7 @@ export default function DailyReport() {
 
     const newUrls = newFiles.map(f => URL.createObjectURL(f));
     setPhotoPreviewUrls(prev => [...prev, ...newUrls]);
+    setPhotoAltTexts(prev => [...prev, ...newFiles.map(() => '')]);
 
     // Reset input so the same file can be re-selected
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -411,6 +413,7 @@ export default function DailyReport() {
     URL.revokeObjectURL(photoPreviewUrls[index]);
     setPhotos(prev => prev.filter((_, i) => i !== index));
     setPhotoPreviewUrls(prev => prev.filter((_, i) => i !== index));
+    setPhotoAltTexts(prev => prev.filter((_, i) => i !== index));
   };
 
   // Cleanup URLs on unmount
@@ -449,10 +452,11 @@ export default function DailyReport() {
       fd.append('notes', formData.notes);
       fd.append('date', selectedDate);
 
-      // Append photos
+      // Append photos and alt texts
       photos.forEach(photo => {
         fd.append('photos', photo);
       });
+      fd.append('photoAltTexts', JSON.stringify(photoAltTexts));
 
       await api.post(`/projects/${selectedProjectId}/daily-report`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -498,13 +502,17 @@ export default function DailyReport() {
     interface ScheduleItem { startDate: Date; endDate: Date; plannedCost: number; actualCost: number; }
     const allItems: ScheduleItem[] = [];
 
+    // Physical Progress: use physicalWeight for planned, weighted by progress for actual
     for (const wi of wItems) {
       const s = wi.startDate || wi.dates?.plannedStart;
       const e = wi.endDate || wi.dates?.plannedEnd;
       const dS = s ? wibDate(s as string) : start;
       const dE = e ? wibDate(e as string) : end;
       if (dS && dE) {
-        allItems.push({ startDate: dS, endDate: dE, plannedCost: wi.cost || 0, actualCost: wi.actualCost || 0 });
+        const wiAny = wi as any;
+        const plannedWeight = wiAny.physicalWeight > 0 ? wiAny.physicalWeight : (wi.cost || 0);
+        const actualProgressWeight = plannedWeight * ((wiAny.progress || 0) / 100);
+        allItems.push({ startDate: dS, endDate: dE, plannedCost: plannedWeight, actualCost: actualProgressWeight });
       }
     }
 
@@ -514,7 +522,10 @@ export default function DailyReport() {
       const dS = s ? wibDate(s as string) : start;
       const dE = e ? wibDate(e as string) : end;
       if (dS && dE) {
-        allItems.push({ startDate: dS, endDate: dE, plannedCost: sup.cost || 0, actualCost: sup.actualCost || 0 });
+        const plannedWeight = sup.cost || 0;
+        const supAny = sup as any;
+        const statusProgress = supAny.status === 'Delivered' ? 1 : supAny.status === 'Ordered' ? 0.5 : 0;
+        allItems.push({ startDate: dS, endDate: dE, plannedCost: plannedWeight, actualCost: plannedWeight * statusProgress });
       }
     }
 
@@ -677,6 +688,12 @@ export default function DailyReport() {
     ctx.fillRect(W - 130, legendY - 4, 10, 10);
     ctx.fillStyle = '#334155';
     ctx.fillText('Actual', W - 116, legendY + 5);
+
+    // Physical progress footnote
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = 'italic 9px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('* Berdasarkan Physical Progress / Based on Physical Progress', W / 2, H - 5);
   }, [selectedProjectData]);
 
   /* ─── PDF Export (jsPDF) ─── */
@@ -740,31 +757,31 @@ export default function DailyReport() {
       doc.text('LAPORAN HARIAN / DAILY REPORT', pageW / 2, y + 5.5, { align: 'center' });
       y += 12;
 
-      // ── 3. Meta Info ──
+      // ── 3. Meta Info (dedicated row per field — no overlap) ──
       doc.setFontSize(9);
       doc.setTextColor(30, 41, 59);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Proyek / Project:', margin, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(selectedProjectName, margin + 35, y);
+      const labelX = margin;
+      const valueX = margin + 38;
+
+      const addMetaRow = (label: string, value: string) => {
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, labelX, y);
+        doc.setFont('helvetica', 'normal');
+        // Wrap long values to avoid overflow
+        const maxW = contentW - 40;
+        const lines = doc.splitTextToSize(value, maxW);
+        doc.text(lines, valueX, y);
+        y += 5 * Math.max(1, lines.length);
+      };
+
+      addMetaRow('Proyek / Project:', selectedProjectName);
 
       const dateStr = formatWIBDate(selectedDate, { day: 'numeric', month: 'long', year: 'numeric' });
-      doc.setFont('helvetica', 'bold');
-      doc.text('Tanggal / Date:', pageW / 2 + 5, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(dateStr, pageW / 2 + 33, y);
-      y += 5;
+      addMetaRow('Tanggal / Date:', dateStr);
+      addMetaRow('Cuaca / Weather:', getWeatherLabel(formData.weather));
+      addMetaRow('Progress:', `${computedProgress}%`);
 
-      doc.setFont('helvetica', 'bold');
-      doc.text('Cuaca / Weather:', margin, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(getWeatherLabel(formData.weather), margin + 35, y);
-
-      doc.setFont('helvetica', 'bold');
-      doc.text('Progress:', pageW / 2 + 5, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`${computedProgress}%`, pageW / 2 + 23, y);
-      y += 3;
+      y += 1;
 
       // Divider
       doc.setDrawColor(49, 46, 89);
@@ -772,9 +789,9 @@ export default function DailyReport() {
       doc.line(margin, y, pageW - margin, y);
       y += 5;
 
-      // ── 4. S-Curve Chart ──
+      // ── 4. S-Curve Chart (Physical Progress) ──
       if (selectedProjectData) {
-        checkPage(55);
+        checkPage(60);
         // Section title
         doc.setFillColor(241, 240, 255);
         doc.rect(margin, y, contentW, 6, 'F');
@@ -784,18 +801,25 @@ export default function DailyReport() {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(49, 46, 89);
-        doc.text('S-CURVE PROGRESS', margin + 3, y + 4);
+        doc.text('S-CURVE PROGRESS (PHYSICAL / FISIK)', margin + 3, y + 4);
         y += 9;
 
         // Draw S-Curve on hidden canvas and embed
         const canvas = document.createElement('canvas');
         canvas.width = 1400;
-        canvas.height = 560;
+        canvas.height = 580;
         drawSCurveOnCanvas(canvas);
         const scurveData = canvas.toDataURL('image/png');
-        const scurveH = contentW * (560 / 1400);
+        const scurveH = contentW * (580 / 1400);
         doc.addImage(scurveData, 'PNG', margin, y, contentW, scurveH);
-        y += scurveH + 5;
+        y += scurveH + 2;
+
+        // Physical progress footnote
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(148, 163, 184);
+        doc.text('* Berdasarkan Physical Progress / Based on Physical Progress', margin + 3, y);
+        y += 6;
       }
 
       // ── Helper: draw a table ──
@@ -950,31 +974,54 @@ export default function DailyReport() {
       if (formData.workforce) drawTextSection('TENAGA KERJA / WORKFORCE', formData.workforce);
       if (formData.notes) drawTextSection('CATATAN / NOTES', formData.notes);
 
-      // ── 8. Photos ──
+      // ── 8. Photo Appendix ──
       if (photoPreviewUrls.length > 0) {
-        checkPage(20);
-        doc.setFillColor(241, 240, 255);
-        doc.rect(margin, y, contentW, 6, 'F');
-        doc.setDrawColor(49, 46, 89);
-        doc.setLineWidth(0.8);
-        doc.line(margin, y, margin, y + 6);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.setTextColor(49, 46, 89);
-        doc.text('DOKUMENTASI / SITE PHOTOS', margin + 3, y + 4);
-        y += 9;
+        // Start new page for photo appendix
+        doc.addPage();
+        y = 12;
 
-        const photoW = (contentW - 4) / 2;
-        const photoH = 50;
+        // Appendix header
+        doc.setFillColor(49, 46, 89);
+        doc.rect(margin, y, contentW, 8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text('LAMPIRAN FOTO / PHOTO APPENDIX', pageW / 2, y + 5.5, { align: 'center' });
+        y += 14;
+
+        const photoW = (contentW - 6) / 2;
+        const photoH = 55;
         for (let i = 0; i < photoPreviewUrls.length; i++) {
           const col = i % 2;
-          if (col === 0) checkPage(photoH + 5);
+          if (col === 0) checkPage(photoH + 16);
           try {
             const imgData = await loadImageAsBase64(photoPreviewUrls[i]);
-            const px = margin + col * (photoW + 4);
-            doc.addImage(imgData, 'JPEG', px, y, photoW, photoH);
+            const px = margin + col * (photoW + 6);
+
+            // Photo border
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.3);
+            doc.rect(px, y, photoW, photoH, 'S');
+            doc.addImage(imgData, 'WEBP', px + 0.5, y + 0.5, photoW - 1, photoH - 1);
+
+            // Photo number
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(49, 46, 89);
+            doc.text(`Foto ${i + 1}`, px + 2, y + photoH + 4);
+
+            // Alt text caption (if provided)
+            const altText = photoAltTexts[i] || '';
+            if (altText) {
+              doc.setFont('helvetica', 'italic');
+              doc.setFontSize(7);
+              doc.setTextColor(100, 116, 139);
+              const captionLines = doc.splitTextToSize(altText, photoW - 4);
+              doc.text(captionLines, px + 2, y + photoH + 8);
+            }
+
             if (col === 1 || i === photoPreviewUrls.length - 1) {
-              y += photoH + 4;
+              y += photoH + 14;
             }
           } catch { /* skip broken image */ }
         }
@@ -1350,16 +1397,28 @@ export default function DailyReport() {
       <Section title={t('dailyReport.photos.title')} icon={Camera}>
         <div className="grid grid-cols-3 gap-3">
           {photoPreviewUrls.map((url, i) => (
-            <div key={i} className="relative aspect-square rounded-xl overflow-hidden border-2 border-border-light group">
-              <PhotoView src={url}>
-                <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover cursor-pointer" />
-              </PhotoView>
-              <button 
-                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center border-none shadow-lg active:scale-90" 
-                onClick={() => handleRemovePhoto(i)}
-              >
-                <X size={18} />
-              </button>
+            <div key={i} className="flex flex-col gap-2">
+              <div className="relative aspect-square rounded-xl overflow-hidden border-2 border-border-light group">
+                <PhotoView src={url}>
+                  <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover cursor-pointer" />
+                </PhotoView>
+                <button 
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center border-none shadow-lg active:scale-90" 
+                  onClick={() => handleRemovePhoto(i)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <Input
+                placeholder="Optional caption..."
+                value={photoAltTexts[i]}
+                onChangeText={(val) => {
+                  const newTexts = [...photoAltTexts];
+                  newTexts[i] = val;
+                  setPhotoAltTexts(newTexts);
+                }}
+                className="!text-xs !p-2 !rounded-lg"
+              />
             </div>
           ))}
           {photos.length < MAX_PHOTOS && (
