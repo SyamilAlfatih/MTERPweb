@@ -17,6 +17,7 @@ import { Card, ProgressBar, Button, LoadingOverlay, Badge } from '../components/
 import { ProjectData, WorkItem } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
+import { getImageUrl } from '../utils/image';
 
 /* ─── Types ─── */
 
@@ -1349,8 +1350,8 @@ export default function ProjectDetail() {
                               const alt = typeof p === 'string' ? '' : p.altText;
                               return url ? (
                                 <div key={i} className="relative shrink-0 flex flex-col gap-1 w-[120px]">
-                                  <div className="w-[120px] h-[120px] rounded-lg overflow-hidden border border-border">
-                                    <img src={`http://localhost:3001/${url.replace(/\\/g, '/').split('uploads/')[1]}`} alt={alt || `Foto ${i+1}`} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/120?text=Error'; }} />
+                                  <div className="w-[120px] h-[120px] rounded-lg overflow-hidden border border-border bg-bg-secondary flex items-center justify-center">
+                                    <img src={getImageUrl(url)} alt={alt || `Foto ${i+1}`} className="w-full h-full object-cover text-[10px] text-text-muted text-center" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                   </div>
                                   {alt && <span className="text-[10px] text-text-muted truncate">{alt}</span>}
                                 </div>
