@@ -404,6 +404,177 @@ router.put('/:id/progress', auth, authorize('owner', 'director', 'supervisor'), 
   }
 });
 
+// === WORK ITEM CRUD ROUTES (for Gantt Chart editing) ===
+
+// PUT /api/projects/:id/work-items/:itemId - Update a work item
+router.put('/:id/work-items/:itemId', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ msg: 'Project not found' });
+
+    const workItem = project.workItems.id(req.params.itemId);
+    if (!workItem) return res.status(404).json({ msg: 'Work item not found' });
+
+    const allowedFields = ['name', 'qty', 'volume', 'unit', 'cost', 'progress', 'actualCost', 'physicalWeight', 'startDate', 'endDate', 'predecessors', 'parentId'];
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        if (field === 'startDate' || field === 'endDate') {
+          workItem[field] = req.body[field] ? parseWIBDate(req.body[field]) || new Date(req.body[field]) : undefined;
+        } else if (field === 'progress') {
+          workItem.progress = Math.max(0, Math.min(100, Number(req.body.progress)));
+        } else {
+          workItem[field] = req.body[field];
+        }
+      }
+    }
+
+    project.updatedAt = nowWIB();
+    await project.save();
+
+    // Recalculate project progress
+    const supplies = await Supply.find({ projectId: project._id }).lean();
+    project.progress = project.calculateProgress(supplies);
+    await project.save();
+
+    res.json(workItem);
+  } catch (error) {
+    console.error('Update work item error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// POST /api/projects/:id/work-items - Add a new work item
+router.post('/:id/work-items', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ msg: 'Project not found' });
+
+    const { name, qty, volume, unit, cost, startDate, endDate, physicalWeight, predecessors, parentId } = req.body;
+    if (!name) return res.status(400).json({ msg: 'Work item name is required' });
+
+    const newItem = {
+      name,
+      qty: Number(qty) || 0,
+      volume: volume || 'M2',
+      unit: unit || 'M2',
+      cost: Number(cost) || 0,
+      progress: 0,
+      actualCost: 0,
+      physicalWeight: Number(physicalWeight) || 0,
+      startDate: startDate ? (parseWIBDate(startDate) || new Date(startDate)) : undefined,
+      endDate: endDate ? (parseWIBDate(endDate) || new Date(endDate)) : undefined,
+      predecessors: predecessors || [],
+      parentId: parentId || null,
+    };
+
+    project.workItems.push(newItem);
+    project.updatedAt = nowWIB();
+    await project.save();
+
+    const created = project.workItems[project.workItems.length - 1];
+    res.status(201).json(created);
+  } catch (error) {
+    console.error('Add work item error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// DELETE /api/projects/:id/work-items/:itemId - Remove a work item
+router.delete('/:id/work-items/:itemId', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ msg: 'Project not found' });
+
+    const workItem = project.workItems.id(req.params.itemId);
+    if (!workItem) return res.status(404).json({ msg: 'Work item not found' });
+
+    workItem.deleteOne();
+    project.updatedAt = nowWIB();
+    await project.save();
+
+    // Recalculate project progress
+    const supplies = await Supply.find({ projectId: project._id }).lean();
+    project.progress = project.calculateProgress(supplies);
+    await project.save();
+
+    res.json({ msg: 'Work item deleted' });
+  } catch (error) {
+    console.error('Delete work item error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// === SUPPLY CRUD ROUTES (for Gantt Chart editing) ===
+
+// POST /api/projects/:id/supplies - Create a new supply
+router.post('/:id/supplies', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ msg: 'Project not found' });
+
+    const { item, qty, unit, cost, startDate, endDate, status } = req.body;
+    if (!item) return res.status(400).json({ msg: 'Supply item name is required' });
+
+    const supply = new Supply({
+      projectId: project._id,
+      item,
+      qty: Number(qty) || 0,
+      unit: unit || 'pcs',
+      cost: Number(cost) || 0,
+      startDate: startDate ? (parseWIBDate(startDate) || new Date(startDate)) : undefined,
+      endDate: endDate ? (parseWIBDate(endDate) || new Date(endDate)) : undefined,
+      status: status || 'Pending',
+    });
+
+    await supply.save();
+    res.status(201).json(supply);
+  } catch (error) {
+    console.error('Create supply error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// PUT /api/projects/:id/supplies/:supplyId - Update a supply (full update)
+router.put('/:id/supplies/:supplyId', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const supply = await Supply.findOne({ _id: req.params.supplyId, projectId: req.params.id });
+    if (!supply) return res.status(404).json({ msg: 'Supply not found' });
+
+    const allowedFields = ['item', 'qty', 'unit', 'cost', 'status', 'startDate', 'endDate', 'deliveryDate', 'actualCost'];
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        if (['startDate', 'endDate', 'deliveryDate'].includes(field)) {
+          supply[field] = req.body[field] ? (parseWIBDate(req.body[field]) || new Date(req.body[field])) : undefined;
+        } else if (['qty', 'cost', 'actualCost'].includes(field)) {
+          supply[field] = Number(req.body[field]) || 0;
+        } else {
+          supply[field] = req.body[field];
+        }
+      }
+    }
+
+    await supply.save();
+    res.json(supply);
+  } catch (error) {
+    console.error('Update supply error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// DELETE /api/projects/:id/supplies/:supplyId - Delete a supply
+router.delete('/:id/supplies/:supplyId', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const supply = await Supply.findOne({ _id: req.params.supplyId, projectId: req.params.id });
+    if (!supply) return res.status(404).json({ msg: 'Supply not found' });
+
+    await supply.deleteOne();
+    res.json({ msg: 'Supply deleted' });
+  } catch (error) {
+    console.error('Delete supply error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 // POST /api/projects/:id/duplicate - Clone a project
 router.post('/:id/duplicate', auth, authorize('owner', 'director'), async (req, res) => {
   try {

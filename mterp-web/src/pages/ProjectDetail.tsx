@@ -4,7 +4,7 @@ import {
   Calendar, DollarSign, FileText, Wrench, ArrowLeft,
   TrendingUp, Package, BarChart3, Layers,
   AlertTriangle, CheckCircle2, Clock, Target, FolderOpen,
-  Trash2, Edit3, Eye, Image as ImageIcon, ChevronDown, ChevronUp, Download, X
+  Trash2, Edit3, Eye, Image as ImageIcon, ChevronDown, ChevronUp, Download, X, GanttChart
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -831,10 +831,20 @@ export default function ProjectDetail() {
           <Card className="mb-4 p-5 overflow-visible max-sm:p-3">
             {/* ── Viz Tab Switcher ── */}
             <div className="flex justify-between items-start mb-4 gap-3 flex-wrap max-lg:flex-col max-lg:gap-2">
-              <div>
-                <h3 className="text-lg font-bold text-text-primary m-0">
-                  {vizMode === 'scurve' ? t('projectDetail.scurve.title') : vizMode === 'dynamic_scurve' ? 'Dynamic S-Curve' : t('projectDetail.gantt.title')}
-                </h3>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-lg font-bold text-text-primary m-0">
+                    {vizMode === 'scurve' ? t('projectDetail.scurve.title') : vizMode === 'dynamic_scurve' ? 'Dynamic S-Curve' : t('projectDetail.gantt.title')}
+                  </h3>
+                  {vizMode === 'gantt' && (
+                    <button
+                      className="text-xs font-bold text-primary hover:text-primary-hover transition-colors bg-transparent border-none cursor-pointer p-0 underline decoration-primary/30 underline-offset-4"
+                      onClick={() => navigate(`/project-gantt/${id}`)}
+                    >
+                      Open Full View &rarr;
+                    </button>
+                  )}
+                </div>
                 <p className="text-xs text-text-muted mt-[2px]">
                   {vizMode === 'scurve' ? t('projectDetail.scurve.subtitle') : vizMode === 'dynamic_scurve' ? 'Analyze specific date ranges and intervals' : t('projectDetail.gantt.subtitle')}
                 </p>
@@ -1264,6 +1274,13 @@ export default function ProjectDetail() {
             icon={FolderOpen}
             onClick={() => navigate(`/project-documents/${id}`)}
             variant="outline"
+            fullWidth
+          />
+          <Button
+            title="Gantt Chart"
+            icon={GanttChart}
+            onClick={() => navigate(`/project-gantt/${id}`)}
+            variant="primary"
             fullWidth
           />
         </div>

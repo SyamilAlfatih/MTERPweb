@@ -35,6 +35,14 @@ export interface WorkItem {
   // Logic
   logic: 'Flexible' | 'Semi-flexible' | 'Inflexible';
 
+  // Task dependencies (MS Project-style predecessors)
+  predecessors?: {
+    workItemId: string;
+    type: 'FS' | 'FF' | 'SS' | 'SF';
+    lag: number;
+  }[];
+  parentId?: string;
+
   // Allocated Resources (Plan)
   resources: Resource[];
   

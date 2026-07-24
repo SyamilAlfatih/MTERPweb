@@ -11,6 +11,13 @@ const workItemSchema = new mongoose.Schema({
   physicalWeight: { type: Number, default: 0 },
   startDate: Date,
   endDate: Date,
+  // Task dependencies (MS Project-style predecessors)
+  predecessors: [{
+    workItemId: { type: mongoose.Schema.Types.ObjectId },
+    type: { type: String, enum: ['FS', 'FF', 'SS', 'SF'], default: 'FS' }, // Finish-to-Start, etc.
+    lag: { type: Number, default: 0 }, // Lag in days (can be negative for lead)
+  }],
+  parentId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkItem', default: null },
 });
 
 const projectSchema = new mongoose.Schema({

@@ -31,6 +31,7 @@ import AttendanceRecap from './pages/AttendanceRecap';
 import ProjectAssign from './pages/ProjectAssign';
 import ProjectDocuments from './pages/ProjectDocuments';
 import Notifications from './pages/Notifications';
+import ProjectGantt from './pages/ProjectGantt';
 
 function AuthRedirectHandler() {
   const navigate = useNavigate();
@@ -64,6 +65,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/project/:id" element={<ProjectDetail />} />
+              <Route path="/project-gantt/:id" element={<ProjectGantt />} />
               <Route path="/project-tools/:id" element={<ProjectTools />} />
               <Route path="/add-project" element={<AddProject />} />
               <Route path="/tools" element={<Tools />} />
