@@ -7,6 +7,7 @@ const kasbonRoutes = require('./kasbon');
 const taskRoutes = require('./tasks');
 const slipGajiRoutes = require('./slipgaji');
 const userRoutes = require('./users');
+const attendanceSessionRoutes = require('./attendanceSession');
 
 module.exports = {
   authRoutes,
@@ -18,4 +19,5 @@ module.exports = {
   taskRoutes,
   slipGajiRoutes,
   userRoutes,
+  attendanceSessionRoutes,
 };

@@ -77,8 +77,15 @@ const NAV_ITEMS: NavItem[] = [
     id: 'attendance',
     label: 'sidebar.attendance',
     icon: Clock,
+    route: '/group-attendance',
+    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin', 'admin_project', 'foreman'],
+  },
+  {
+    id: 'attendance-legacy',
+    label: 'sidebar.attendance',
+    icon: Clock,
     route: '/attendance',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin', 'admin_project', 'worker', 'foreman', 'tukang', 'helper'],
+    roles: ['worker', 'tukang', 'helper'],
   },
   {
     id: 'tasks',

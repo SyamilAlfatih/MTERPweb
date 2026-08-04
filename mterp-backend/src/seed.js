@@ -1,26 +1,22 @@
-require('dotenv').config({ path: '/home/adminmte/MTERPweb/mterp-backend/.env' });
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt'); // Import bcrypt
-const { User } = require('/home/adminmte/MTERPweb/mterp-backend/src/models');
+const { User } = require('./models');
 
-const saltRounds = 10; // Standard security level
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/mterp';
 
-mongoose.connect(process.env.MONGO_URI).then(async () => {
-  console.log('Connected to MongoDB...');
+mongoose.connect(MONGODB_URI).then(async () => {
+  console.log('Connected to MongoDB at', MONGODB_URI);
 
   // 1. Wipe existing users
   await User.deleteMany({});
   console.log('All existing users deleted.');
 
-  // 2. Hash the password manually for the seed script
-  const plainPassword = '@kvsy@m1l115';
-  const hashedPassword = await bcrypt.hash(plainPassword, saltRounds);
-
-  // 3. Create the new owner user with the hashed password
+  // 2. Create the new owner user (User model pre('save') hook will auto-hash this password)
   const user = await User.create({
-    username: 'supusrsyam',
+    username: 'owner',
     email: 'poemalfatih115@gmail.com',
-    password: hashedPassword, // Store the hash, not the plain text
+    password: 'password123',
     fullName: 'Project Owner',
     role: 'owner',
     isVerified: true,
@@ -32,3 +28,5 @@ mongoose.connect(process.env.MONGO_URI).then(async () => {
   console.error('Error during seeding:', e);
   process.exit(1);
 });
+
+

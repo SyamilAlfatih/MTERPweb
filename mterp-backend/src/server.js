@@ -20,6 +20,7 @@ const {
   taskRoutes,
   slipGajiRoutes,
   userRoutes,
+  attendanceSessionRoutes,
 } = require('./routes');
 const updatesRoutes = require('./routes/updates');
 const dashboardRoutes = require('./routes/dashboard');
@@ -74,6 +75,7 @@ app.use('/api/updates', updatesRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/attendance-session', attendanceSessionRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

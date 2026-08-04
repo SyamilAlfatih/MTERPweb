@@ -13,7 +13,9 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     let subDir = 'misc';
     
-    if (file.fieldname.includes('photo') || file.fieldname === 'photo') {
+    if (file.fieldname === 'groupPhoto') {
+      subDir = 'attendance-sessions';
+    } else if (file.fieldname.includes('photo') || file.fieldname === 'photo') {
       subDir = 'photos';
     } else if (file.fieldname.includes('Document') || file.fieldname.includes('Drawing')) {
       subDir = 'documents';

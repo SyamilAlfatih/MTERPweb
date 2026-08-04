@@ -3,3 +3,6 @@ APIv1.md
 .agents
 skills-lock.json
 graphify-out
+mterp-backend/src/seed.js
+mterp-web/package-lock.json
+mterp-web/package.json

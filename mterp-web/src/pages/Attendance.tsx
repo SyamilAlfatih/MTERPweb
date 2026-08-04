@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Upload, Clock, DollarSign, AlertCircle, Check, LogOut, FileText,
   Building, CalendarOff, MapPin, Timer, Calendar, ChevronRight,
-  Shield, TrendingUp, Loader, Users,
+  Shield, TrendingUp, Loader, Users, Camera,
 } from 'lucide-react';
 import { useTranslation, Trans } from 'react-i18next';
 import api from '../api/api';
@@ -265,6 +265,25 @@ export default function Attendance() {
         message={alertData.message}
         onClose={() => setAlertData({ ...alertData, visible: false })}
       />
+
+      {/* Deprecation Banner for Supervisors */}
+      {isSupervisor && (
+        <div className="flex items-start gap-3 p-4 mb-5 rounded-xl bg-amber-50 border border-amber-200">
+          <AlertCircle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-amber-800 m-0 mb-1">Halaman ini sudah deprecated</p>
+            <p className="text-xs text-amber-700 m-0 mb-2">Gunakan Absensi Foto Grup untuk mencatat kehadiran seluruh pekerja sekaligus.</p>
+            <button
+              onClick={() => navigate('/group-attendance')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors"
+            >
+              <Camera size={14} />
+              <span>Buka Absensi Foto Grup</span>
+              <ChevronRight size={13} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Header with live clock */}
       <div className="flex flex-col mb-8 p-6 rounded-2xl bg-bg-white border-2 border-border-light shadow-sm">
