@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Camera, Check, Users, Search, ChevronRight, ChevronLeft,
@@ -101,6 +101,8 @@ export default function GroupAttendance() {
   const [todaySession, setTodaySession] = useState<ActiveSession | null>(null);
   const [loadingTodaySession, setLoadingTodaySession] = useState(true);
   const [resuming, setResuming] = useState(false);
+  // Flag to prevent useEffect from re-fetching workers (and clearing selection) during resume
+  const skipProjectFetchRef = useRef(false);
 
   // ── Derived ──
   const selectedProject = projects.find(p => p._id === selectedProjectId);
@@ -132,9 +134,11 @@ export default function GroupAttendance() {
   }, []);
 
   useEffect(() => {
-    if (selectedProjectId) {
+    if (selectedProjectId && !skipProjectFetchRef.current) {
       fetchProjectWorkers(selectedProjectId);
     }
+    // Reset the flag after consuming it
+    skipProjectFetchRef.current = false;
   }, [selectedProjectId]);
 
   // ── API Calls ──
@@ -166,7 +170,7 @@ export default function GroupAttendance() {
     }
   };
 
-  const fetchProjectWorkers = async (projectId: string) => {
+  const fetchProjectWorkers = async (projectId: string, preserveSelection = false) => {
     setLoadingWorkers(true);
     try {
       const response = await api.get(`/projects/${projectId}`);
@@ -182,7 +186,10 @@ export default function GroupAttendance() {
         }))
         .sort((a: WorkerItem, b: WorkerItem) => a.fullName.localeCompare(b.fullName));
       setWorkers(assignedWorkers);
-      setSelectedWorkerIds(new Set());
+      // Only reset selection when NOT resuming a session
+      if (!preserveSelection) {
+        setSelectedWorkerIds(new Set());
+      }
     } catch (err) {
       console.error('Failed to fetch project workers', err);
       setWorkers([]);
@@ -369,12 +376,6 @@ export default function GroupAttendance() {
         ? fullSession.projectId
         : fullSession.projectId?._id;
 
-      // Populate workers from the project
-      if (projectId) {
-        await fetchProjectWorkers(projectId);
-        setSelectedProjectId(projectId);
-      }
-
       // Reconstruct the worker ID set (initial + late)
       const workerIdList: string[] = [
         ...(fullSession.workerIds || []).map((w: any) =>
@@ -384,6 +385,18 @@ export default function GroupAttendance() {
           typeof lw.workerId === 'string' ? lw.workerId : lw.workerId?._id
         ).filter(Boolean),
       ];
+
+      // Populate workers from the project.
+      // Pass preserveSelection=true so fetchProjectWorkers does NOT reset
+      // selectedWorkerIds — we set them right after.
+      if (projectId) {
+        await fetchProjectWorkers(projectId, true);
+        // Raise flag BEFORE setting projectId so the useEffect skip fires correctly
+        skipProjectFetchRef.current = true;
+        setSelectedProjectId(projectId);
+      }
+
+      // Restore the full worker selection from the session
       setSelectedWorkerIds(new Set(workerIdList));
 
       // Set result so we jump straight to the post-submit view
