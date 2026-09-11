@@ -12,6 +12,7 @@ const MaterialLog = require('./MaterialLog');
 const ProjectReport = require('./ProjectReport');
 const Notification = require('./Notification');
 const AttendanceSession = require('./AttendanceSession');
+const ApiKey = require('./ApiKey');
 
 module.exports = {
   User,
@@ -28,4 +29,5 @@ module.exports = {
   ProjectReport,
   Notification,
   AttendanceSession,
+  ApiKey,
 };

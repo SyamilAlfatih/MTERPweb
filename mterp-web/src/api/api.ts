@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { CreateToolDTO, CreateMaterialRequestDTO, AddProjectSupplyDTO } from '../types';
+import { CreateToolDTO, CreateMaterialRequestDTO, AddProjectSupplyDTO, User, ApiKey } from '../types';
 
 // API Base URL - use local backend or production
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -107,8 +107,8 @@ export const deleteProjectSupply = async (projectId: string, supplyId: string) =
 
 // === USER MANAGEMENT API ===
 
-export const getUsers = async () => {
-  const response = await api.get('/users');
+export const getUsers = async (params?: { search?: string; role?: string; employmentType?: string }) => {
+  const response = await api.get('/users', { params });
   return response.data;
 };
 
@@ -117,18 +117,13 @@ export const createUser = async (data: Record<string, any>) => {
   return response.data;
 };
 
+export const updateUser = async (id: string, data: Partial<User>) => {
+  const response = await api.put(`/users/${id}`, data);
+  return response.data;
+};
+
 export const updateUserRole = async (id: string, role: string) => {
   const response = await api.put(`/users/${id}/role`, { role });
-  return response.data;
-};
-
-export const getProjectSupplies = async (id: string) => {
-  const response = await api.get(`/projects/${id}/supplies`);
-  return response.data;
-};
-
-export const getProjectDailyReports = async (id: string) => {
-  const response = await api.get(`/projects/${id}/daily-reports`);
   return response.data;
 };
 
@@ -139,6 +134,109 @@ export const verifyUserManually = async (id: string) => {
 
 export const deleteUser = async (id: string) => {
   const response = await api.delete(`/users/${id}`);
+  return response.data;
+};
+
+export const exportUsersExcel = async (columns?: string[], headers = true) => {
+  const params = new URLSearchParams();
+  if (columns && columns.length > 0) params.append('columns', columns.join(','));
+  params.append('headers', headers ? 'true' : 'false');
+
+  const response = await api.get(`/users/export-excel?${params.toString()}`, {
+    responseType: 'blob',
+  });
+  const blob = new Blob([response.data], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', 'pekerja-export.xlsx');
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const exportUsersCsv = async (columns?: string[], headers = true) => {
+  const params = new URLSearchParams();
+  if (columns && columns.length > 0) params.append('columns', columns.join(','));
+  params.append('headers', headers ? 'true' : 'false');
+
+  const response = await api.get(`/users/export-csv?${params.toString()}`, {
+    responseType: 'blob',
+  });
+  const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', 'pekerja-export.csv');
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const downloadImportTemplate = async () => {
+  const response = await api.get('/users/import-template', {
+    responseType: 'blob',
+  });
+  const blob = new Blob([response.data], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', 'MTERP_Template_Import_Pekerja.xlsx');
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const importUsers = async (file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/users/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const bulkCreateUsers = async (users: any[]) => {
+  const response = await api.post('/users/bulk', { users });
+  return response.data;
+};
+
+// === API KEY MANAGEMENT API ===
+
+export const getApiKeys = async (): Promise<ApiKey[]> => {
+  const response = await api.get('/apikeys');
+  return response.data;
+};
+
+export const createApiKey = async (name: string): Promise<ApiKey> => {
+  const response = await api.post('/apikeys', { name });
+  return response.data;
+};
+
+export const updateApiKey = async (id: string, data: { name?: string; isActive?: boolean }): Promise<ApiKey> => {
+  const response = await api.put(`/apikeys/${id}`, data);
+  return response.data;
+};
+
+export const deleteApiKey = async (id: string) => {
+  const response = await api.delete(`/apikeys/${id}`);
+  return response.data;
+};
+
+export const getProjectSupplies = async (id: string) => {
+  const response = await api.get(`/projects/${id}/supplies`);
+  return response.data;
+};
+
+export const getProjectDailyReports = async (id: string) => {
+  const response = await api.get(`/projects/${id}/daily-reports`);
   return response.data;
 };
 

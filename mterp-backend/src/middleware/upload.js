@@ -45,12 +45,19 @@ const fileFilter = (req, file, cb) => {
   else if (file.mimetype === 'application/pdf') {
     cb(null, true);
   }
-  // Accept documents
-  else if (file.mimetype.includes('document') || file.mimetype.includes('spreadsheet')) {
+  // Accept documents, spreadsheets, and CSVs
+  else if (
+    file.mimetype.includes('document') || 
+    file.mimetype.includes('spreadsheet') ||
+    file.mimetype.includes('excel') ||
+    file.mimetype.includes('csv') ||
+    file.mimetype === 'text/plain' ||
+    file.originalname.match(/\.(xlsx|xls|csv)$/i)
+  ) {
     cb(null, true);
   }
   else {
-    cb(new Error('Invalid file type'), false);
+    cb(new Error('Invalid file type. Allowed: images, PDFs, spreadsheets (.xlsx, .csv), and documents'), false);
   }
 };
 

@@ -6,6 +6,12 @@
       "sourceType": "github",
       "computedHash": "5e249dbda26f877a9b139f8f4559e8bf694774fc7f57ec93bb074cd5a3b4532f"
     },
+    "mongodb": {
+      "source": "hoodini/ai-agents-skills",
+      "sourceType": "github",
+      "skillPath": "skills/mongodb/SKILL.md",
+      "computedHash": "7307fd4f2e946457587880475908c63d9df7017150ca1abde5629055f7961f69"
+    },
     "ui-ux-pro-max": {
       "source": "nextlevelbuilder/ui-ux-pro-max-skill",
       "sourceType": "github",

@@ -63,6 +63,18 @@ const userSchema = new mongoose.Schema({
     bankPlatform: { type: String, trim: true, default: '' },
     accountName: { type: String, trim: true, default: '' },
   },
+  employmentType: {
+    type: String,
+    enum: ['tetap', 'kontrak', 'harian_lepas', 'magang'],
+    default: 'tetap',
+  },
+  contractStartDate: Date,
+  contractEndDate: Date,
+  emergencyContact: {
+    name: { type: String, trim: true, default: '' },
+    phone: { type: String, trim: true, default: '' },
+    relationship: { type: String, trim: true, default: '' },
+  },
   createdAt: {
     type: Date,
     default: Date.now,

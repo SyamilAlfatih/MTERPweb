@@ -93,18 +93,50 @@ export interface ProjectData {
   endDate?: string;
 }
 
+export type EmploymentType = 'tetap' | 'kontrak' | 'harian_lepas' | 'magang';
+
+export interface EmergencyContact {
+  name?: string;
+  phone?: string;
+  relationship?: string;
+}
+
+export interface UserPaymentInfo {
+  bankAccount?: string;
+  bankPlatform?: string;
+  accountName?: string;
+}
+
 export interface User {
   _id?: string;
   username: string;
   fullName: string;
   email?: string;
   role: string; // worker, tukang, helper, supervisor, site_manager, foreman, asset_admin, admin_project, director, president_director, operational_director, owner
+  position?: string;
+  employmentType?: EmploymentType;
+  contractStartDate?: string;
+  contractEndDate?: string;
+  emergencyContact?: EmergencyContact;
+  paymentInfo?: UserPaymentInfo;
   token?: string;
   phone?: string;
   address?: string;
   profileImage?: string;
   profilePhoto?: string;
   isVerified?: boolean;
+  createdAt?: string;
+}
+
+export interface ApiKey {
+  _id: string;
+  name: string;
+  keyPrefix: string;
+  rawKey?: string;
+  isActive: boolean;
+  createdBy?: { _id: string; fullName: string; username?: string } | string;
+  lastUsedAt?: string;
+  createdAt: string;
 }
 
 export interface CreateToolDTO {

@@ -8,6 +8,8 @@ const taskRoutes = require('./tasks');
 const slipGajiRoutes = require('./slipgaji');
 const userRoutes = require('./users');
 const attendanceSessionRoutes = require('./attendanceSession');
+const pekerjaRoutes = require('./pekerja');
+const apiKeyRoutes = require('./apikeys');
 
 module.exports = {
   authRoutes,
@@ -20,4 +22,6 @@ module.exports = {
   slipGajiRoutes,
   userRoutes,
   attendanceSessionRoutes,
+  pekerjaRoutes,
+  apiKeyRoutes,
 };
