@@ -13,6 +13,7 @@ const { authLimiter } = require('./middleware/rateLimiter');
 const {
   authRoutes,
   projectRoutes,
+  projectPlanRoutes,
   requestRoutes,
   toolRoutes,
   attendanceRoutes,
@@ -66,6 +67,7 @@ app.use('/uploads', (req, res, next) => {
 
 // API Routes
 app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/projects/:projectId/plan', projectPlanRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/tools', toolRoutes);

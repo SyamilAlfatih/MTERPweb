@@ -276,3 +276,207 @@ export interface AppNotification {
   isRead: boolean;
   createdAt: string;
 }
+
+// === MS Project-like Project Planning Types ===
+
+export type ZoomLevel = 'day' | 'week' | 'month' | 'quarter';
+
+export interface ColumnDef {
+  id: string;
+  label: string;
+  width: number;
+  minWidth?: number;
+  visible: boolean;
+  align?: 'left' | 'center' | 'right';
+}
+
+export type DependencyType = 'FS' | 'FF' | 'SS' | 'SF';
+
+export interface TaskPredecessor {
+  taskId: string | { _id: string; name?: string; wbsCode?: string; sortOrder?: number };
+  type: DependencyType;
+  lagDays: number;
+}
+
+export type ResourceType = 'Work' | 'Material' | 'Cost';
+
+export interface ProjectResource {
+  _id: string;
+  projectId: string;
+  userId?: string | { _id: string; name?: string; role?: string };
+  name: string;
+  type: ResourceType;
+  materialLabel?: string;
+  initials?: string;
+  group?: string;
+  maxUnits: number; // e.g. 100 for 100% (1 worker)
+  standardRate: number; // Rp / day or Rp / unit
+  overtimeRate?: number;
+  costPerUse?: number;
+  accrueAt: 'Start' | 'Prorated' | 'End';
+  baseCalendar?: string;
+  code?: string;
+  notes?: string;
+  isOverallocated?: boolean;
+}
+
+export interface TaskResource {
+  userId: string | { _id: string; name?: string; role?: string };
+  units: number;
+  costRate: number;
+}
+
+export interface CalendarException {
+  _id?: string;
+  name: string;
+  startDate: string;
+  finishDate: string;
+  isWorkingDay: boolean;
+}
+
+export interface ProjectCalendar {
+  _id?: string;
+  projectId: string;
+  name: string;
+  isDefault: boolean;
+  workingDays: number[]; // 1=Mon, ..., 6=Sat, 0=Sun
+  hoursPerDay: number;
+  exceptions: CalendarException[];
+}
+
+export interface TaskBaselineRecord {
+  baselineIndex: number;
+  name: string;
+  startDate: string | null;
+  finishDate: string | null;
+  duration: number | null;
+  cost: number;
+  work: number;
+  savedAt: string;
+}
+
+export type TaskType = 'FixedUnits' | 'FixedDuration' | 'FixedWork';
+
+export interface ProjectTask {
+  _id: string;
+  projectId: string;
+  wbsCode: string;
+  outlineLevel: number;
+  parentTaskId?: string | null;
+  sortOrder: number;
+  isSummary: boolean;
+  isMilestone: boolean;
+
+  name: string;
+  duration: number;
+  durationUnit: 'days' | 'weeks' | 'months';
+  startDate: string;
+  finishDate: string;
+  percentComplete: number;
+
+  baselineStart?: string | null;
+  baselineFinish?: string | null;
+  baselineDuration?: number | null;
+  baselineCost?: number | null;
+
+  baselines?: TaskBaselineRecord[];
+
+  predecessors: TaskPredecessor[];
+
+  constraintType?: 'ASAP' | 'ALAP' | 'MSO' | 'MFO' | 'SNET' | 'SNLT' | 'FNET' | 'FNLT';
+  constraintDate?: string | null;
+  deadlineDate?: string | null;
+
+  calendarId?: string | null;
+  taskType?: TaskType;
+  isEffortDriven?: boolean;
+  levelingDelay?: number;
+
+  assignedResources: TaskResource[];
+
+  plannedCost: number;
+  actualCost: number;
+  plannedWork: number;
+  actualWork: number;
+  remainingWork: number;
+
+  barColor?: string;
+  notes?: string;
+  priority: number;
+
+  isCritical?: boolean;
+  totalFloat?: number;
+  freeFloat?: number;
+  isDeadlineMissed?: boolean;
+  isOverallocated?: boolean;
+  earlyStart?: string;
+  earlyFinish?: string;
+  lateStart?: string;
+  lateFinish?: string;
+
+  // Client UI state
+  isExpanded?: boolean;
+  isSelected?: boolean;
+  isEditing?: boolean;
+}
+
+export interface ProjectPlanSummary {
+  totalTasks: number;
+  completedTasks: number;
+  inProgressTasks: number;
+  notStartedTasks: number;
+  milestonesCount: number;
+  totalDurationDays: number;
+  earliestStartDate: string | null;
+  latestFinishDate: string | null;
+  overallPercentComplete: number;
+  totalPlannedCost: number;
+  totalActualCost: number;
+  totalPlannedWork: number;
+  totalActualWork: number;
+  criticalTasksCount: number;
+  hasBaseline: boolean;
+}
+
+export interface EarnedValueMetrics {
+  statusDate: string;
+  bac: number;
+  bcws: number;
+  bcwp: number;
+  acwp: number;
+  sv: number;
+  cv: number;
+  spi: number;
+  cpi: number;
+  eac: number;
+  etc: number;
+  vac: number;
+  tcpi: number;
+  totalPlannedCost: number;
+  totalActualCost: number;
+  overallProgress: number;
+}
+
+export interface SCurveDataPoint {
+  date: string;
+  plannedCumulative: number;
+  earnedCumulative: number | null;
+  actualCumulative: number | null;
+}
+
+export interface SCurveData {
+  mode: 'cost' | 'progress';
+  statusDate: string;
+  dataPoints: SCurveDataPoint[];
+  projectEV: EarnedValueMetrics;
+}
+
+export interface ExcelImportPreview {
+  preview: boolean;
+  sheetName: string;
+  totalTasks: number;
+  columnMapping: Record<string, string | null>;
+  sampleTasks: Partial<ProjectTask>[];
+  warnings: string[];
+}
+

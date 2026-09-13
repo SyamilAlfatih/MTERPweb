@@ -10,10 +10,12 @@ const userRoutes = require('./users');
 const attendanceSessionRoutes = require('./attendanceSession');
 const pekerjaRoutes = require('./pekerja');
 const apiKeyRoutes = require('./apikeys');
+const projectPlanRoutes = require('./projectPlan');
 
 module.exports = {
   authRoutes,
   projectRoutes,
+  projectPlanRoutes,
   requestRoutes,
   toolRoutes,
   attendanceRoutes,

@@ -13,6 +13,9 @@ const ProjectReport = require('./ProjectReport');
 const Notification = require('./Notification');
 const AttendanceSession = require('./AttendanceSession');
 const ApiKey = require('./ApiKey');
+const ProjectTask = require('./ProjectTask');
+const ProjectCalendar = require('./ProjectCalendar');
+const ProjectResource = require('./ProjectResource');
 
 module.exports = {
   User,
@@ -30,4 +33,7 @@ module.exports = {
   Notification,
   AttendanceSession,
   ApiKey,
+  ProjectTask,
+  ProjectCalendar,
+  ProjectResource,
 };

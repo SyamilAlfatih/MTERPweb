@@ -4,7 +4,8 @@ import {
   Calendar, DollarSign, FileText, Wrench, ArrowLeft,
   TrendingUp, Package, BarChart3, Layers,
   AlertTriangle, CheckCircle2, Clock, Target, FolderOpen,
-  Trash2, Edit3, Eye, Image as ImageIcon, ChevronDown, ChevronUp, Download, X
+  Trash2, Edit3, Eye, Image as ImageIcon, ChevronDown, ChevronUp, Download, X,
+  CalendarRange
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -744,14 +745,23 @@ export default function ProjectDetail() {
   return (
     <div className="p-6 max-w-[900px] mx-auto max-lg:p-4 max-sm:p-3">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6 max-sm:flex-col max-sm:items-start max-sm:gap-3">
-        <button className="w-10 h-10 rounded-full bg-bg-secondary flex items-center justify-center cursor-pointer transition-colors border-none text-text-primary hover:bg-border" onClick={() => navigate(-1)}>
-          <ArrowLeft size={20} />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{project.nama || project.name}</h1>
-          <p className="text-sm text-text-muted mt-[2px]">{project.lokasi || project.location}</p>
+      <div className="flex items-center justify-between gap-4 mb-6 max-sm:flex-col max-sm:items-start max-sm:gap-3">
+        <div className="flex items-center gap-4">
+          <button className="w-10 h-10 rounded-full bg-bg-secondary flex items-center justify-center cursor-pointer transition-colors border-none text-text-primary hover:bg-border" onClick={() => navigate(-1)}>
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{project.nama || project.name}</h1>
+            <p className="text-sm text-text-muted mt-[2px]">{project.lokasi || project.location}</p>
+          </div>
         </div>
+        <button
+          onClick={() => navigate(`/project-plan/${id}`)}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white rounded-lg text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer max-sm:w-full justify-center"
+        >
+          <CalendarRange size={18} />
+          <span>📊 MS Project Plan</span>
+        </button>
       </div>
 
       <div ref={statsRef}>
@@ -1224,6 +1234,13 @@ export default function ProjectDetail() {
       <Card className="mb-4">
         <h3 className="text-base font-bold text-text-primary mb-4 mt-0">{t('projectDetail.actions.title')}</h3>
         <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+          <Button
+            title="MS Project Plan"
+            icon={CalendarRange}
+            onClick={() => navigate(`/project-plan/${id}`)}
+            variant="primary"
+            fullWidth
+          />
           <Button
             title={t('projectDetail.actions.dailyReport')}
             icon={FileText}

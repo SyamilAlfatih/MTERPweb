@@ -32,6 +32,7 @@ import AttendanceRecap from './pages/AttendanceRecap';
 import ProjectAssign from './pages/ProjectAssign';
 import ProjectDocuments from './pages/ProjectDocuments';
 import Notifications from './pages/Notifications';
+import ProjectPlan from './pages/ProjectPlan';
 
 function AuthRedirectHandler() {
   const navigate = useNavigate();
@@ -83,6 +84,8 @@ function App() {
               <Route path="/slip-gaji" element={<SlipGaji />} />
               <Route path="/project-reports/:id" element={<ProjectReports />} />
               <Route path="/project-documents/:id" element={<ProjectDocuments />} />
+              <Route path="/project-plan/:id" element={<ProjectPlan />} />
+              <Route path="/project/:id/plan" element={<ProjectPlan />} />
               <Route path="/users" element={<Users />} />
               <Route path="/project-assign" element={<ProjectAssign />} />
               <Route path="/notifications" element={<Notifications />} />
