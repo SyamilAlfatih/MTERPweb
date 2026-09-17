@@ -719,9 +719,9 @@ export const ProjectPlan: React.FC = () => {
               }}
             />
           ) : activeView === 'resource_usage' ? (
-            <ResourceUsageView tasks={tasks} resources={resources} />
+            <ResourceUsageView tasks={tasks} resources={resources} onUpdateTask={handleUpdateTask} />
           ) : activeView === 'task_usage' ? (
-            <TaskUsageView tasks={tasks} resources={resources} />
+            <TaskUsageView tasks={tasks} resources={resources} onUpdateTask={handleUpdateTask} />
           ) : activeView === 'kurva_s' ? (
             <div className="flex-1 overflow-y-auto">
               <SCurveView projectId={id || ''} project={project} />
