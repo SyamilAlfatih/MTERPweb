@@ -16,6 +16,7 @@ import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { useSidebar } from '../../contexts/SidebarContext';
 import type { AppNotification, NotificationType } from '../../types';
 
 /* ── Notification type → icon/color ── */
@@ -53,6 +54,7 @@ export default function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { notifications, unreadCount, markAsRead, markAllRead } = useNotifications();
+  const { isCollapsed } = useSidebar();
 
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -158,9 +160,11 @@ export default function AppLayout() {
       <Sidebar />
 
       {/* Main area — offset by sidebar on desktop */}
-      <div className="flex-1 flex flex-col lg:ml-[260px] min-w-0">
+      <div className={`flex-1 flex flex-col min-w-0 transition-[margin] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+        isCollapsed ? 'lg:ml-[72px]' : 'lg:ml-[260px]'
+      }`}>
         {/* Top Header */}
-        <header className="sticky top-0 z-40 flex items-center justify-between px-4 lg:px-6 bg-bg-white/95 backdrop-blur-md border-b border-border-light shadow-sm"
+        <header className="sticky top-0 z-40 flex items-center justify-between px-4 lg:px-6 bg-bg-white/95 backdrop-blur-md border-b border-border-light shadow-[0_1px_0_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.03)]"
           style={{ height: '64px' }}
         >
           {/* Left: page title / greeting */}
@@ -195,19 +199,18 @@ export default function AppLayout() {
                 <Bell size={18} />
                 {/* Unread badge */}
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center px-1 rounded-full bg-red-500 text-white text-[10px] font-black leading-none shadow-sm"
-                    style={{ animation: 'pulse 2s cubic-bezier(.4,0,.6,1) infinite' }}
-                  >
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
+                  <div className="absolute -top-1 -right-1 flex items-center justify-center pointer-events-none">
+                    <span className="absolute inset-0 rounded-full bg-red-400 animate-badge-ping" />
+                    <span className="relative min-w-[18px] h-[18px] flex items-center justify-center px-1 rounded-full bg-red-500 text-white text-[10px] font-black leading-none shadow-sm">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  </div>
                 )}
               </button>
 
               {/* Dropdown Panel */}
               {showDropdown && (
-                <div className="absolute right-0 top-[calc(100%+8px)] w-[340px] sm:w-[380px] max-h-[420px] bg-bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.12),0_4px_10px_rgba(0,0,0,0.05)] border border-border-light overflow-hidden z-50"
-                  style={{ animation: 'overlay-fade-in 150ms ease-out' }}
-                >
+                <div className="absolute right-0 top-[calc(100%+8px)] w-[340px] sm:w-[380px] max-h-[420px] bg-bg-white rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.05)] border border-border-light overflow-hidden z-50 animate-dropdown-enter">
                   {/* Dropdown Header */}
                   <div className="flex items-center justify-between px-4 py-3 border-b border-border-light bg-bg-secondary/50">
                     <div className="flex items-center gap-2">

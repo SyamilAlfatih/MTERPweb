@@ -79,7 +79,7 @@ export const ViewSidebar: React.FC<ViewSidebarProps> = ({
 }) => {
   return (
     <div
-      className={`bg-slate-900 border-r border-slate-800 text-slate-300 flex flex-col transition-all duration-200 select-none z-10 ${
+      className={`bg-slate-900 border-r border-slate-800 text-slate-300 flex flex-col transition-[width] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)] select-none z-10 ${
         isCollapsed ? 'w-12' : 'w-44'
       }`}
     >
@@ -89,10 +89,14 @@ export const ViewSidebar: React.FC<ViewSidebarProps> = ({
         <button
           type="button"
           onClick={onToggleCollapse}
-          className="p-1 hover:bg-slate-800 hover:text-white rounded transition-colors ml-auto"
+          className="p-1 hover:bg-slate-800 hover:text-white rounded transition-colors ml-auto cursor-pointer"
           title={isCollapsed ? 'Expand View Bar' : 'Collapse View Bar'}
         >
-          {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+          {isCollapsed ? (
+            <ChevronRight className="w-3.5 h-3.5 transition-transform duration-200" />
+          ) : (
+            <ChevronLeft className="w-3.5 h-3.5 transition-transform duration-200" />
+          )}
         </button>
       </div>
 
@@ -108,16 +112,16 @@ export const ViewSidebar: React.FC<ViewSidebarProps> = ({
               type="button"
               onClick={() => onSelectView(item.id)}
               title={isCollapsed ? `${item.label} - ${item.description}` : item.description}
-              className={`w-full flex items-center gap-2 px-2.5 py-2 text-xs transition-all relative ${
+              className={`w-full flex items-center gap-2 px-2.5 py-2 text-xs transition-all duration-150 relative cursor-pointer ${
                 isActive
                   ? 'bg-blue-600 text-white font-semibold shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 hover:translate-x-0.5'
               }`}
             >
               {isActive && (
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-300" />
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-300 animate-slide-indicator origin-center" />
               )}
-              <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+              <Icon className={`w-4 h-4 shrink-0 transition-transform ${isActive ? 'text-white' : 'text-slate-400'}`} />
               {!isCollapsed && <span className="truncate">{item.label}</span>}
             </button>
           );

@@ -217,7 +217,7 @@ export default function MobileNav() {
               <button
                 key={item.id}
                 className={`flex items-center gap-3 py-3 pr-4 pl-3 rounded-[14px] min-w-[180px] transition-all duration-300 transform ${
-                  isOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-5'
+                  isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
                 } ${
                   isActive ? 'bg-primary-bg' : 'bg-bg-secondary hover:bg-bg-white hover:-translate-x-1 active:scale-95'
                 }`}
@@ -239,7 +239,7 @@ export default function MobileNav() {
           {/* Logout Button */}
           <button
             className={`flex items-center gap-3 py-3 pr-4 pl-3 bg-bg-secondary rounded-[14px] min-w-[180px] transition-all duration-300 transform mt-1 border-t border-border-light pt-4 hover:bg-red-50 hover:-translate-x-1 active:scale-95 ${
-              isOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-5'
+              isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
             }`}
             onClick={handleLogout}
             style={{ transitionDelay: `${isOpen ? filteredItems.length * 40 : 0}ms` }}
@@ -255,7 +255,7 @@ export default function MobileNav() {
       {/* FAB Button */}
       <button
         className={`fixed bottom-6 right-6 w-14 h-14 flex items-center justify-center z-[1000] cursor-pointer transition-all duration-300 lg:hidden shadow-[0_4px_20px_rgba(30,64,175,0.4),0_8px_32px_rgba(30,64,175,0.2)] active:scale-95 hover:scale-105 ${
-          isOpen ? 'rounded-full bg-bg-primary !shadow-[0_4px_20px_rgba(0,0,0,0.1)]' : 'rounded-2xl bg-gradient-to-br from-primary to-primary-light text-white'
+          isOpen ? 'rounded-full bg-bg-primary !shadow-[0_0_0_4px_rgba(30,64,175,0.15),0_4px_20px_rgba(0,0,0,0.1)]' : 'rounded-2xl bg-gradient-to-br from-primary to-primary-light text-white'
         }`}
         onClick={() => setIsOpen(!isOpen)}
         aria-label="Navigation menu"

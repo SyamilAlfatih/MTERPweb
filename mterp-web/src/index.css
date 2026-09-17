@@ -3,7 +3,6 @@
 /* CSS Variables */
 @import "tailwindcss";
 @config "../tailwind.config.js";
-@config "../tailwind.config.js";
 
 :root {
   /* Navy Blue Accent Colors - ENHANCED FOR FIELD WORK (Higher Contrast) */
@@ -201,3 +200,61 @@ body {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+
+/* ── Interactive & Layout Animations ───────────────────────── */
+@keyframes slide-indicator {
+  from {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+.animate-slide-indicator {
+  animation: slide-indicator 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes dropdown-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-dropdown-enter {
+  animation: dropdown-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes badge-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  75%, 100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+.animate-badge-ping {
+  animation: badge-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-card-enter {
+  animation: card-enter 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
