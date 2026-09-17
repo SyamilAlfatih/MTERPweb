@@ -19,8 +19,8 @@ interface GanttChartProps {
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
 }
 
-const ROW_HEIGHT = 36;
-const BAR_HEIGHT = 18;
+const ROW_HEIGHT = 40;
+const BAR_HEIGHT = 20;
 
 export const GanttChart: React.FC<GanttChartProps> = ({
   tasks,
@@ -52,25 +52,32 @@ export const GanttChart: React.FC<GanttChartProps> = ({
     currentY?: number;
   } | null>(null);
 
-  // Filter out tasks hidden by collapsed summaries
+  // Filter out tasks hidden by collapsed summaries (transitive check)
   const visibleTasks = useMemo(() => {
-    const list: ProjectTask[] = [];
-    const hiddenParents = new Set<string>();
+    // Map each task to its parent ID
+    const parentMap = new Map<string, string>();
 
-    for (const task of tasks) {
-      if (task.parentTaskId && hiddenParents.has(task.parentTaskId.toString())) {
-        if (task.isSummary) hiddenParents.add(task._id.toString());
-        continue;
+    tasks.forEach(t => {
+      const id = String(t._id);
+      const rawParent = t.parentTaskId;
+      const pId = rawParent
+        ? typeof rawParent === 'object' && rawParent !== null
+          ? String((rawParent as { _id?: unknown; id?: unknown })._id || (rawParent as { id?: unknown }).id || rawParent)
+          : String(rawParent)
+        : null;
+      if (pId) parentMap.set(id, pId);
+    });
+
+    const isTaskHidden = (taskId: string): boolean => {
+      let currentParentId = parentMap.get(taskId);
+      while (currentParentId) {
+        if (collapsedTaskIds.has(currentParentId)) return true;
+        currentParentId = parentMap.get(currentParentId);
       }
+      return false;
+    };
 
-      list.push(task);
-
-      if (task.isSummary && collapsedTaskIds.has(task._id.toString())) {
-        hiddenParents.add(task._id.toString());
-      }
-    }
-
-    return list;
+    return tasks.filter(t => !isTaskHidden(String(t._id)));
   }, [tasks, collapsedTaskIds]);
 
   // Determine timeline boundary dates
@@ -148,20 +155,25 @@ export const GanttChart: React.FC<GanttChartProps> = ({
 
   // Compute Task bar coordinates map for DependencyArrows overlay
   const taskCoordinates = useMemo(() => {
-    const map = new Map<string, { x: number; y: number; width: number; isCritical?: boolean }>();
+    const map = new Map<string, { x: number; y: number; width: number; isMilestone?: boolean; isCritical?: boolean }>();
 
     visibleTasks.forEach((task, idx) => {
       if (!task.startDate || !task.finishDate) return;
+      const sTime = new Date(task.startDate).getTime();
+      const fTime = new Date(task.finishDate).getTime();
+      if (isNaN(sTime) || isNaN(fTime)) return;
+
       const startX = dateToX(task.startDate);
       const finishX = dateToX(task.finishDate) + dayWidth;
       const width = Math.max(dayWidth, finishX - startX);
       const y = idx * ROW_HEIGHT + ROW_HEIGHT / 2;
 
-      map.set(task._id, {
+      map.set(String(task._id), {
         x: startX,
         y,
         width: task.isMilestone ? dayWidth : width,
-        isCritical: task.isCritical,
+        isMilestone: Boolean(task.isMilestone),
+        isCritical: Boolean(task.isCritical),
       });
     });
 
@@ -286,10 +298,10 @@ export const GanttChart: React.FC<GanttChartProps> = ({
           {/* Today Indicator Vertical Line */}
           {todayX >= 0 && todayX <= totalWidth && (
             <div
-              className="absolute top-0 bottom-0 pointer-events-none border-l-2 border-dashed border-rose-500 z-30"
+              className="absolute top-0 bottom-0 pointer-events-none border-l-2 border-blue-500 z-30 today-indicator-line"
               style={{ left: todayX }}
             >
-              <div className="bg-rose-500 text-white text-[9px] font-bold px-1 rounded-xs -ml-4 -mt-2 shadow-xs">
+              <div className="bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm -ml-[18px] -mt-2 tracking-wider uppercase today-pulse-badge">
                 TODAY
               </div>
             </div>
@@ -313,7 +325,8 @@ export const GanttChart: React.FC<GanttChartProps> = ({
               const barX = dateToX(task.startDate);
               const finishX = dateToX(task.finishDate) + dayWidth;
               const barW = Math.max(dayWidth, finishX - barX);
-              const topY = idx * ROW_HEIGHT + (ROW_HEIGHT - BAR_HEIGHT) / 2;
+              // Local vertical alignment within the row container
+              const barTop = Math.round((ROW_HEIGHT - BAR_HEIGHT) / 2); // 10px
 
               const isCritical = Boolean(showCriticalPath && task.isCritical);
 
@@ -344,13 +357,13 @@ export const GanttChart: React.FC<GanttChartProps> = ({
                   className="absolute"
                   style={{ top: idx * ROW_HEIGHT, left: 0, width: totalWidth, height: ROW_HEIGHT }}
                 >
-                  {/* Baseline shadow bar */}
+                  {/* Baseline shadow bar - positioned right below main bar without overlapping */}
                   {hasBaseline && (
                     <div
                       className={`absolute rounded-xs pointer-events-none border ${
                         activeView === 'tracking'
-                          ? 'h-2 bg-slate-500/80 border-slate-600 top-[23px]'
-                          : 'h-2 bg-slate-400/60 border-slate-500/40 top-[24px]'
+                          ? 'h-[5px] bg-slate-500/80 border-slate-600 top-[32px]'
+                          : 'h-[5px] bg-slate-400/60 border-slate-500/40 top-[32px]'
                       }`}
                       style={{ left: baselineX, width: baselineW }}
                       title={`Baseline: ${task.baselineStart?.slice(0, 10)} - ${task.baselineFinish?.slice(0, 10)}`}
@@ -360,7 +373,7 @@ export const GanttChart: React.FC<GanttChartProps> = ({
                   {/* Slippage indicator bar */}
                   {hasSlip && (
                     <div
-                      className="absolute h-1.5 bg-rose-500/70 border border-rose-600 top-[24px] pointer-events-none rounded-xs"
+                      className="absolute h-[5px] bg-gradient-to-r from-rose-500 to-rose-600 border border-rose-600 top-[32px] pointer-events-none rounded-xs"
                       style={{ left: slipX, width: slipW }}
                       title={`Schedule Slip: ${Math.round(slipW / dayWidth)} working days behind baseline`}
                     />
@@ -390,14 +403,17 @@ export const GanttChart: React.FC<GanttChartProps> = ({
                       }}
                       onMouseLeave={() => setHoveredTask(null)}
                       className="absolute cursor-pointer flex items-center group z-20"
-                      style={{ left: barX - 8, top: topY + 1 }}
+                      style={{ left: barX - 8, top: (ROW_HEIGHT - 16) / 2 }}
                     >
                       <div className={`w-4 h-4 rotate-45 border-2 shadow-xs transition-transform group-hover:scale-125 ${
                         isCompleted
                           ? (isCritical ? 'bg-rose-600 border-rose-800' : 'bg-emerald-600 border-emerald-800')
                           : (isCritical ? 'bg-rose-100 border-rose-600' : 'bg-amber-100 border-amber-600')
                       }`} />
-                      <span className="ml-3 text-[11px] font-medium text-slate-800 whitespace-nowrap drop-shadow-xs">
+                      <span
+                        className="ml-3 max-w-[220px] truncate text-[11px] font-medium text-slate-800 drop-shadow-xs pointer-events-none"
+                        title={`${task.name} (${task.startDate ? task.startDate.slice(5, 10) : ''})`}
+                      >
                         {task.name} ({task.startDate ? task.startDate.slice(5, 10) : ''})
                         {isCompleted && <span className="ml-1 text-emerald-600 font-bold">✓</span>}
                       </span>
@@ -412,7 +428,7 @@ export const GanttChart: React.FC<GanttChartProps> = ({
                       }}
                       onMouseLeave={() => setHoveredTask(null)}
                       className="absolute cursor-pointer group z-20"
-                      style={{ left: barX, top: topY + 1, width: barW }}
+                      style={{ left: barX, top: barTop, width: barW }}
                     >
                       {/* Top bracket bar */}
                       <div className={`h-[8px] relative rounded-xs shadow-xs ${
@@ -436,7 +452,10 @@ export const GanttChart: React.FC<GanttChartProps> = ({
                           }`}
                         />
                       </div>
-                      <span className="absolute left-[calc(100%+10px)] -top-1 text-[11px] font-bold text-slate-900 whitespace-nowrap">
+                      <span
+                        className="absolute left-[calc(100%+10px)] -top-1 max-w-[240px] truncate text-[11px] font-bold text-slate-900 whitespace-nowrap pointer-events-none"
+                        title={`${task.name} (${task.percentComplete || 0}%)`}
+                      >
                         {task.name}
                         <span className="ml-1.5 text-[10px] font-normal text-slate-500">
                           ({task.percentComplete || 0}%)
@@ -453,7 +472,7 @@ export const GanttChart: React.FC<GanttChartProps> = ({
                         setTooltipPos({ x: e.clientX, y: e.clientY });
                       }}
                       onMouseLeave={() => setHoveredTask(null)}
-                      className={`absolute rounded-xs h-[18px] cursor-move shadow-xs flex items-center group overflow-hidden border ${
+                      className={`absolute rounded-xs h-[20px] cursor-move shadow-xs flex items-center group overflow-hidden border hover:ring-2 hover:ring-blue-400/60 hover:shadow-md transition-shadow ${
                         isCritical
                           ? 'bg-rose-500 border-rose-700'
                           : task.barColor
@@ -462,7 +481,7 @@ export const GanttChart: React.FC<GanttChartProps> = ({
                       }`}
                       style={{
                         left: barX,
-                        top: topY,
+                        top: barTop,
                         width: barW,
                         backgroundColor: task.barColor || undefined,
                       }}
@@ -481,7 +500,10 @@ export const GanttChart: React.FC<GanttChartProps> = ({
                       />
 
                       {/* Task Name Label on the Right */}
-                      <span className="absolute left-[calc(100%+8px)] text-[11px] font-medium text-slate-800 whitespace-nowrap pointer-events-none drop-shadow-xs">
+                      <span
+                        className="absolute left-[calc(100%+8px)] max-w-[240px] truncate text-[11px] font-medium text-slate-800 whitespace-nowrap pointer-events-none drop-shadow-xs"
+                        title={`${task.name} ${task.percentComplete > 0 ? `(${task.percentComplete}%)` : ''}`}
+                      >
                         {task.name}
                         {task.percentComplete > 0 && (
                           <span className="ml-1 text-[10px] font-semibold text-slate-600">
@@ -501,10 +523,10 @@ export const GanttChart: React.FC<GanttChartProps> = ({
       {/* Floating Hover Tooltip */}
       {hoveredTask && tooltipPos && (
         <div
-          className="fixed z-50 pointer-events-none bg-slate-900/95 backdrop-blur-xs text-white text-xs rounded-lg shadow-2xl p-3 min-w-[220px] border border-slate-700"
+          className="fixed z-50 pointer-events-none bg-slate-900/95 backdrop-blur-md text-white text-xs rounded-xl shadow-2xl p-3.5 min-w-[240px] border border-slate-700/80"
           style={{
-            left: Math.min(window.innerWidth - 240, tooltipPos.x + 15),
-            top: Math.min(window.innerHeight - 200, tooltipPos.y + 15),
+            left: Math.min(window.innerWidth - 280, tooltipPos.x + 15),
+            top: Math.min(window.innerHeight - 240, tooltipPos.y + 15),
           }}
         >
           <div className="font-bold text-sm text-blue-300 mb-1 flex items-center justify-between border-b border-slate-700 pb-1">

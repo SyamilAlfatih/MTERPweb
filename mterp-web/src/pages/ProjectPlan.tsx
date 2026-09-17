@@ -531,36 +531,36 @@ export const ProjectPlan: React.FC = () => {
   return (
     <div className={`project-plan-page ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
       {/* Top Application Bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-900 text-white border-b border-slate-800 select-none">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#0d1b3e] text-white border-b border-slate-800/90 select-none shadow-xs">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => navigate(`/projects/${id}`)}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded text-xs transition-colors border border-slate-700"
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white rounded-md text-xs transition-colors border border-white/10"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to Project</span>
           </button>
-          <div className="h-4 w-px bg-slate-700" />
+          <div className="h-4 w-px bg-slate-700/80" />
           <div>
             <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-              <span>{project ? project.nama : 'Loading...'}</span>
-              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
+              <span>{project ? project.nama : 'Loading project...'}</span>
+              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
                 MS Project Schedule
               </span>
             </h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-slate-400">
+        <div className="flex items-center gap-3 text-xs text-slate-300">
           {project?.lokasi && (
-            <span className="flex items-center gap-1 text-slate-300">
-              <Briefcase className="w-3.5 h-3.5 text-slate-500" />
+            <span className="flex items-center gap-1 text-slate-300 bg-white/5 px-2 py-0.5 rounded border border-white/10">
+              <Briefcase className="w-3.5 h-3.5 text-blue-300" />
               {project.lokasi}
             </span>
           )}
           {tasks.length > 0 && (
-            <span className="bg-slate-800 px-2 py-0.5 rounded font-mono text-[11px] text-slate-300">
+            <span className="bg-white/10 px-2.5 py-0.5 rounded-full font-mono text-[11px] text-slate-200 border border-white/10">
               {tasks.length} {tasks.length === 1 ? 'Task' : 'Tasks'}
             </span>
           )}
@@ -726,33 +726,60 @@ export const ProjectPlan: React.FC = () => {
             <div className="flex-1 overflow-y-auto">
               <SCurveView projectId={id || ''} project={project} />
             </div>
+          ) : loading ? (
+            /* Split-Pane Loading Skeleton */
+            <div className="flex-1 flex overflow-hidden bg-white animate-pulse">
+              <div style={{ width: splitWidth, minWidth: 250 }} className="border-r border-slate-200 p-4 space-y-3 shrink-0">
+                <div className="h-6 bg-slate-200 rounded-md w-3/4 mb-4" />
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="h-4 bg-slate-200 rounded w-10" />
+                    <div className={`h-4 bg-slate-200 rounded ${i % 3 === 0 ? 'w-48 font-bold' : 'w-32'}`} />
+                    <div className="h-4 bg-slate-100 rounded w-14 ml-auto" />
+                  </div>
+                ))}
+              </div>
+              <div className="flex-1 p-4 space-y-4 bg-slate-50/50 overflow-hidden">
+                <div className="h-6 bg-slate-200 rounded-md w-full mb-4" />
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="relative h-6 w-full">
+                    <div
+                      className="absolute h-4 bg-blue-200/60 rounded-md"
+                      style={{ left: `${(i * 9) % 55 + 5}%`, width: `${((i * 13) % 30) + 15}%` }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : tasks.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center bg-slate-50 p-6">
-              <div className="max-w-md text-center p-8 bg-white rounded-lg shadow-sm border border-slate-200">
-                <Calendar className="w-12 h-12 text-blue-600 mx-auto mb-3" />
-                <h3 className="text-base font-bold text-slate-800 mb-1">No tasks in project plan</h3>
-                <p className="text-xs text-slate-500 mb-6">
-                  Start building your project schedule by adding tasks, importing Excel/XML, or importing existing work items.
+            <div className="flex-1 flex items-center justify-center bg-slate-50/50 p-6">
+              <div className="max-w-md text-center p-8 bg-white rounded-2xl shadow-xl border border-slate-200/80">
+                <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3.5 shadow-xs">
+                  <Calendar className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900 mb-1.5">No tasks in project plan</h3>
+                <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                  Start building your project schedule by adding tasks, importing Excel/XML files, or pulling existing work items.
                 </p>
                 <div className="flex items-center justify-center gap-2.5 flex-wrap">
                   <button
                     type="button"
                     onClick={handleAddTask}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold shadow-xs"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-all hover:shadow"
                   >
                     + Add First Task
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsImportOpen(true)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold shadow-xs"
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-all hover:shadow"
                   >
                     Import File (.xlsx / .xml)
                   </button>
                   <button
                     type="button"
                     onClick={handleImportWorkItems}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold shadow-xs"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-all hover:shadow"
                   >
                     Import Work Items
                   </button>
@@ -779,27 +806,34 @@ export const ProjectPlan: React.FC = () => {
                 />
               </div>
 
-              {/* Splitter Drag Handle */}
+              {/* Splitter Divider Handle */}
               <div
                 onMouseDown={startSplitterDrag}
                 className="split-pane-divider"
-                title="Drag to resize table and Gantt chart"
+                title="Drag to resize pane"
               />
 
               {/* Right Pane: Gantt Chart View */}
-              <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 flex flex-col overflow-hidden" style={{ minWidth: 300 }}>
                 <GanttChart
                   tasks={filteredTasks}
                   collapsedTaskIds={collapsedTaskIds}
                   zoomLevel={zoomLevel}
                   showCriticalPath={showCriticalPath}
-                  showBaseline={activeView === 'tracking' ? true : showBaseline}
+                  showBaseline={showBaseline}
                   showDependencies={showDependencies}
                   activeView={activeView}
                   onUpdateTaskDates={handleUpdateTaskDates}
                   onCreateDependency={(fromId, toId) => {
-                    setSelectedTaskIds([fromId, toId]);
-                    handleLinkTasks();
+                    // Create FS link
+                    const targetTask = tasks.find(t => t._id === toId);
+                    if (!targetTask) return;
+                    const existing = targetTask.predecessors || [];
+                    if (existing.some(p => (typeof p.taskId === 'string' ? p.taskId : p.taskId?._id) === fromId)) return;
+                    handleUpdateTask(toId, 'predecessors', [
+                      ...existing,
+                      { taskId: fromId, type: 'FS', lagDays: 0 },
+                    ]);
                   }}
                   onOpenDialog={taskId => setDialogTaskId(taskId)}
                   scrollRef={chartScrollRef}
@@ -812,21 +846,24 @@ export const ProjectPlan: React.FC = () => {
       </div>
 
       {/* MS Project Status Bar */}
-      <div className="project-plan-statusbar">
+      <div className="project-plan-statusbar bg-[#0d1b3e] text-slate-300 border-t border-slate-800">
         <div className="flex items-center gap-4">
           <span>
-            Tasks: <strong>{tasks.length}</strong>
+            Tasks: <strong className="text-white font-mono">{tasks.length}</strong>
           </span>
           {summary && (
             <>
               <span>
-                Duration: <strong>{summary.totalDurationDays} days</strong>
+                Duration: <strong className="text-white">{summary.totalDurationDays} days</strong>
+              </span>
+              <span className="flex items-center gap-1.5">
+                Progress: <strong className="text-white">{summary.overallPercentComplete}%</strong>
+                <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden inline-block align-middle">
+                  <div className="h-full bg-blue-400 rounded-full transition-all" style={{ width: `${summary.overallPercentComplete}%` }} />
+                </div>
               </span>
               <span>
-                Progress: <strong>{summary.overallPercentComplete}%</strong>
-              </span>
-              <span>
-                Critical Tasks: <strong className="text-rose-400">{summary.criticalTasksCount}</strong>
+                Critical Tasks: <strong className="text-rose-400 font-bold">{summary.criticalTasksCount}</strong>
               </span>
             </>
           )}
@@ -840,7 +877,7 @@ export const ProjectPlan: React.FC = () => {
             Zoom: <strong className="uppercase text-slate-200">{zoomLevel}</strong>
           </span>
           <span className="text-[10px] text-slate-400">
-            Baseline: <strong>{tasks.some(t => t.baselineStart) ? 'Saved' : 'None'}</strong>
+            Baseline: <strong className={tasks.some(t => t.baselineStart) ? 'text-emerald-400' : 'text-slate-400'}>{tasks.some(t => t.baselineStart) ? 'Saved' : 'None'}</strong>
           </span>
         </div>
       </div>
@@ -885,78 +922,91 @@ export const ProjectPlan: React.FC = () => {
         />
       )}
 
-      {/* Right-Click Context Menu */}
+      {/* Right-Click Context Menu with Backdrop */}
       {contextMenu && (
-        <div
-          className="fixed z-50 bg-white border border-slate-300 rounded shadow-xl py-1 text-xs text-slate-700 min-w-[160px]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              setDialogTaskId(contextMenu.taskId);
+        <>
+          <div
+            className="fixed inset-0 z-[199]"
+            onClick={() => setContextMenu(null)}
+            onContextMenu={e => {
+              e.preventDefault();
               setContextMenu(null);
             }}
-            className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700"
-          >
-            Task Information...
-          </button>
-          <div className="my-1 border-t border-slate-200" />
-          <button
-            type="button"
-            onClick={() => {
-              handleAddTask();
-              setContextMenu(null);
+          />
+          <div
+            className="fixed z-[200] bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-2xl py-1.5 text-xs text-slate-700 min-w-[170px] animate-dropdown-enter"
+            style={{
+              left: Math.min(window.innerWidth - 180, contextMenu.x),
+              top: Math.min(window.innerHeight - 240, contextMenu.y),
             }}
-            className="w-full text-left px-3 py-1.5 hover:bg-blue-50"
           >
-            Insert Task
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              handleAddMilestone();
-              setContextMenu(null);
-            }}
-            className="w-full text-left px-3 py-1.5 hover:bg-blue-50"
-          >
-            Insert Milestone
-          </button>
-          <div className="my-1 border-t border-slate-200" />
-          <button
-            type="button"
-            disabled={!canIndent}
-            onClick={() => {
-              handleIndent();
-              setContextMenu(null);
-            }}
-            className="w-full text-left px-3 py-1.5 hover:bg-blue-50 disabled:opacity-40"
-          >
-            Indent
-          </button>
-          <button
-            type="button"
-            disabled={!canOutdent}
-            onClick={() => {
-              handleOutdent();
-              setContextMenu(null);
-            }}
-            className="w-full text-left px-3 py-1.5 hover:bg-blue-50 disabled:opacity-40"
-          >
-            Outdent
-          </button>
-          <div className="my-1 border-t border-slate-200" />
-          <button
-            type="button"
-            onClick={() => {
-              handleDeleteSelected();
-              setContextMenu(null);
-            }}
-            className="w-full text-left px-3 py-1.5 text-rose-600 hover:bg-rose-50"
-          >
-            Delete Task
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                setDialogTaskId(contextMenu.taskId);
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-medium transition-colors"
+            >
+              Task Information...
+            </button>
+            <div className="my-1 border-t border-slate-100" />
+            <button
+              type="button"
+              onClick={() => {
+                handleAddTask();
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-1.5 hover:bg-blue-50 transition-colors"
+            >
+              Insert Task
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                handleAddMilestone();
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-1.5 hover:bg-blue-50 transition-colors"
+            >
+              Insert Milestone
+            </button>
+            <div className="my-1 border-t border-slate-100" />
+            <button
+              type="button"
+              disabled={!canIndent}
+              onClick={() => {
+                handleIndent();
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-1.5 hover:bg-blue-50 disabled:opacity-40 transition-colors"
+            >
+              Indent
+            </button>
+            <button
+              type="button"
+              disabled={!canOutdent}
+              onClick={() => {
+                handleOutdent();
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-1.5 hover:bg-blue-50 disabled:opacity-40 transition-colors"
+            >
+              Outdent
+            </button>
+            <div className="my-1 border-t border-slate-100" />
+            <button
+              type="button"
+              onClick={() => {
+                handleDeleteSelected();
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-1.5 text-rose-600 hover:bg-rose-50 transition-colors"
+            >
+              Delete Task
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

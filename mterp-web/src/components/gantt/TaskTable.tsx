@@ -51,26 +51,31 @@ export const TaskTable: React.FC<TaskTableProps> = ({
   // Resize column state
   const resizingColRef = useRef<{ id: string; startX: number; startWidth: number } | null>(null);
 
-  // Filter out hidden subtasks under collapsed summaries
+  // Filter out hidden subtasks under collapsed summaries (transitive check)
   const visibleTasks = useMemo(() => {
-    const list: ProjectTask[] = [];
-    const hiddenParents = new Set<string>();
+    const parentMap = new Map<string, string>();
 
-    for (const task of tasks) {
-      // Check if any ancestor is collapsed
-      if (task.parentTaskId && hiddenParents.has(task.parentTaskId.toString())) {
-        if (task.isSummary) hiddenParents.add(task._id.toString());
-        continue;
+    tasks.forEach(t => {
+      const id = String(t._id);
+      const rawParent = t.parentTaskId;
+      const pId = rawParent
+        ? typeof rawParent === 'object' && rawParent !== null
+          ? String((rawParent as { _id?: unknown; id?: unknown })._id || (rawParent as { id?: unknown }).id || rawParent)
+          : String(rawParent)
+        : null;
+      if (pId) parentMap.set(id, pId);
+    });
+
+    const isTaskHidden = (taskId: string): boolean => {
+      let currentParentId = parentMap.get(taskId);
+      while (currentParentId) {
+        if (collapsedTaskIds.has(currentParentId)) return true;
+        currentParentId = parentMap.get(currentParentId);
       }
+      return false;
+    };
 
-      list.push(task);
-
-      if (task.isSummary && collapsedTaskIds.has(task._id.toString())) {
-        hiddenParents.add(task._id.toString());
-      }
-    }
-
-    return list;
+    return tasks.filter(t => !isTaskHidden(String(t._id)));
   }, [tasks, collapsedTaskIds]);
 
   useEffect(() => {
@@ -172,18 +177,18 @@ export const TaskTable: React.FC<TaskTableProps> = ({
     >
       <div style={{ width: totalTableWidth, minWidth: '100%' }}>
         {/* Table Header */}
-        <div className="sticky top-0 z-20 flex bg-slate-100 border-b border-slate-300 text-xs font-semibold text-slate-700 h-[50px]">
+        <div className="sticky top-0 z-20 flex bg-gradient-to-b from-slate-50 to-slate-100 border-b border-slate-300 text-xs font-semibold text-slate-700 h-[50px] shadow-xs">
           {visibleColumns.map(col => (
             <div
               key={col.id}
-              className="relative flex items-center px-2 border-r border-slate-200 uppercase tracking-wider text-[11px] font-bold text-slate-600 truncate"
+              className="relative flex items-center px-2 border-r border-slate-200 uppercase tracking-wider text-[11px] font-bold text-slate-700 truncate"
               style={{ width: col.width, minWidth: col.width, justifyContent: col.align || 'left' }}
             >
               <span className="truncate">{col.label}</span>
               {/* Drag handle for resizing column */}
               <div
                 onMouseDown={e => startResize(col.id, col.width, e)}
-                className="absolute top-0 right-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500 transition-colors"
+                className="absolute top-0 right-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/60 transition-colors"
               />
             </div>
           ))}
@@ -201,13 +206,13 @@ export const TaskTable: React.FC<TaskTableProps> = ({
                 key={task._id}
                 onClick={e => onSelectTask(task._id, e.ctrlKey || e.metaKey)}
                 onContextMenu={e => onContextMenu(e, task._id)}
-                className={`flex h-9 text-xs transition-colors items-center border-b border-slate-200 cursor-pointer ${
+                className={`flex h-10 text-xs transition-colors items-center border-b border-slate-200 cursor-pointer ${
                   isSelected
-                    ? 'bg-blue-50 text-blue-900 font-medium'
+                    ? 'bg-blue-50/80 text-blue-950 font-medium border-l-2 border-l-blue-500'
                     : rowIdx % 2 === 1
                     ? 'bg-slate-50/60 hover:bg-blue-50/50'
                     : 'bg-white hover:bg-blue-50/50'
-                } ${task.isSummary ? 'font-semibold text-slate-900 bg-slate-50/30' : 'text-slate-700'}`}
+                } ${task.isSummary ? 'font-semibold text-slate-900 bg-slate-50/40' : 'text-slate-700'}`}
               >
                 {visibleColumns.map(col => {
                   const isEditing = editingCell?.taskId === task._id && editingCell?.field === col.id;
@@ -298,7 +303,11 @@ export const TaskTable: React.FC<TaskTableProps> = ({
                               );
 
                             case 'wbsCode':
-                              return <span className="font-mono text-[11px] text-slate-500">{task.wbsCode}</span>;
+                              return (
+                                <span className="font-mono text-[10px] bg-slate-100/90 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200/70 font-medium">
+                                  {task.wbsCode}
+                                </span>
+                              );
 
                             case 'name':
                               return (
@@ -343,11 +352,11 @@ export const TaskTable: React.FC<TaskTableProps> = ({
 
                             case 'percentComplete':
                               return (
-                                <div className="flex items-center gap-1.5 w-full justify-end font-mono">
-                                  <span>{task.percentComplete || 0}%</span>
-                                  <div className="w-8 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div className="flex items-center gap-2 w-full justify-end font-mono">
+                                  <span className="text-[11px]">{task.percentComplete || 0}%</span>
+                                  <div className="w-10 h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner">
                                     <div
-                                      className={`h-full ${task.percentComplete === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`}
+                                      className={`h-full rounded-full transition-all ${task.percentComplete === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`}
                                       style={{ width: `${task.percentComplete || 0}%` }}
                                     />
                                   </div>

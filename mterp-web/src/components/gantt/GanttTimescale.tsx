@@ -132,15 +132,15 @@ export const GanttTimescale: React.FC<GanttTimescaleProps> = ({
 
   return (
     <div
-      className="gantt-timescale-container select-none sticky top-0 z-20 bg-slate-100 border-b border-slate-300"
+      className="gantt-timescale-container select-none sticky top-0 z-20 bg-slate-100 border-b border-slate-300 shadow-xs"
       style={{ width: totalWidth, minWidth: '100%', height: 50 }}
     >
       {/* Major Tier (Month / Year) */}
-      <div className="relative h-6 border-b border-slate-300 text-xs font-semibold text-slate-700 overflow-hidden">
+      <div className="relative h-6 border-b border-slate-300 text-[11px] font-bold text-slate-700 overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100">
         {majorSegments.map((seg, idx) => (
           <div
             key={idx}
-            className="absolute top-0 bottom-0 flex items-center px-2 border-r border-slate-300 bg-slate-100 text-slate-700 whitespace-nowrap overflow-hidden text-ellipsis"
+            className="absolute top-0 bottom-0 flex items-center px-2.5 border-r border-slate-300 text-slate-700 tracking-wide uppercase whitespace-nowrap overflow-hidden text-ellipsis font-semibold"
             style={{ left: seg.left, width: seg.width }}
           >
             {seg.label}
@@ -149,21 +149,21 @@ export const GanttTimescale: React.FC<GanttTimescaleProps> = ({
       </div>
 
       {/* Minor Tier (Days / Weeks) */}
-      <div className="relative h-6 flex overflow-hidden text-[11px] text-slate-600 font-medium">
+      <div className="relative h-6 flex overflow-hidden text-[11px] text-slate-600 font-medium bg-white">
         {minorUnits.map(u => (
           <div
             key={u.key}
             className={`absolute top-0 bottom-0 flex flex-col items-center justify-center border-r border-slate-200 ${
               u.isToday
-                ? 'bg-blue-100 font-bold text-blue-800'
+                ? 'bg-blue-50/90 font-bold text-blue-700 border-b-2 border-b-blue-500'
                 : u.isWeekend
-                ? 'bg-slate-200/70 text-slate-400'
+                ? 'bg-slate-100/80 text-slate-400'
                 : 'bg-white text-slate-600'
             }`}
             style={{ left: u.left, width: u.width }}
           >
-            <span>{u.label}</span>
-            {u.subLabel && <span className="text-[9px] leading-none opacity-80">{u.subLabel}</span>}
+            <span className="leading-tight">{u.label}</span>
+            {u.subLabel && <span className="text-[9px] leading-none opacity-70 font-normal">{u.subLabel}</span>}
           </div>
         ))}
       </div>

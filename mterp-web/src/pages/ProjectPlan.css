@@ -14,19 +14,20 @@
 /* Custom Scrollbars */
 .task-table-wrapper::-webkit-scrollbar,
 .gantt-chart-wrapper::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 .task-table-wrapper::-webkit-scrollbar-track,
 .gantt-chart-wrapper::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #f8fafc;
 }
 
 .task-table-wrapper::-webkit-scrollbar-thumb,
 .gantt-chart-wrapper::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 4px;
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
 }
 
 .task-table-wrapper::-webkit-scrollbar-thumb:hover,
@@ -40,13 +41,14 @@
   background-color: #e2e8f0;
   cursor: col-resize;
   position: relative;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
   z-index: 25;
 }
 
 .split-pane-divider:hover,
 .split-pane-divider.dragging {
   background-color: #3b82f6;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
 }
 
 .split-pane-divider::after {
@@ -66,9 +68,27 @@
   background-color: #ffffff;
 }
 
+/* Today Indicator Line & Pulse Animation */
+@keyframes today-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0);
+  }
+}
+
+.today-pulse-badge {
+  animation: today-pulse 2.5s infinite ease-in-out;
+}
+
+.today-indicator-line {
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.35);
+}
+
 /* Ribbon Toolbar */
 .gantt-toolbar-ribbon {
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
 }
 
 /* Task Table Grid */
@@ -89,15 +109,12 @@
 
 /* Status Bar */
 .project-plan-statusbar {
-  height: 28px;
-  background-color: #1e293b;
-  color: #94a3b8;
+  height: 30px;
   font-size: 11px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
-  border-top: 1px solid #334155;
   user-select: none;
 }
 

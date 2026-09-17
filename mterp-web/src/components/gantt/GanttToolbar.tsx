@@ -136,18 +136,18 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
 
   return (
-    <div className="gantt-toolbar-ribbon bg-white border-b border-slate-300 select-none shadow-sm">
+    <div className="gantt-toolbar-ribbon bg-white border-b border-slate-200 select-none shadow-xs">
       {/* Ribbon Top Tab Header */}
-      <div className="flex items-center justify-between px-3 bg-slate-800 text-white text-xs">
+      <div className="flex items-center justify-between px-3 bg-[#0d1b3e] text-white text-xs border-b border-slate-800/80">
         <div className="flex items-center gap-1">
           {/* Quick Access Toolbar Icons */}
-          <div className="flex items-center gap-1 pr-3 border-r border-slate-700 py-1.5">
+          <div className="flex items-center gap-1 pr-3 border-r border-slate-700/80 py-1.5">
             <button
               type="button"
               disabled={!canUndo}
               onClick={onUndo}
               title="Undo (Ctrl+Z)"
-              className="p-1 hover:bg-slate-700 rounded disabled:opacity-30 transition-colors"
+              className="p-1.5 hover:bg-white/10 rounded disabled:opacity-30 transition-colors"
             >
               <Undo className="w-3.5 h-3.5" />
             </button>
@@ -156,7 +156,7 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
               disabled={!canRedo}
               onClick={onRedo}
               title="Redo (Ctrl+Y)"
-              className="p-1 hover:bg-slate-700 rounded disabled:opacity-30 transition-colors"
+              className="p-1.5 hover:bg-white/10 rounded disabled:opacity-30 transition-colors"
             >
               <Redo className="w-3.5 h-3.5" />
             </button>
@@ -164,14 +164,14 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
               type="button"
               onClick={onRecalculate}
               title="Recalculate Schedule (CPM)"
-              className="p-1 hover:bg-slate-700 rounded transition-colors"
+              className="p-1.5 hover:bg-white/10 rounded transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
 
           {/* Ribbon Tab Navigation */}
-          <div className="flex items-center gap-1 pl-2">
+          <div className="flex items-center gap-1 pl-2 self-end">
             {[
               { id: 'task', label: 'TASK' },
               { id: 'view', label: 'VIEW' },
@@ -181,10 +181,10 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id as RibbonTab)}
-                className={`px-3 py-1.5 font-bold tracking-wider text-[11px] transition-colors rounded-t ${
+                className={`px-3.5 py-1.5 font-bold tracking-wider text-[11px] transition-all rounded-t-md ${
                   activeTab === tab.id
-                    ? 'bg-slate-100 text-slate-900 shadow-sm'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                    ? 'bg-white text-slate-900 border-t-2 border-blue-500 shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
                 }`}
               >
                 {tab.label}
@@ -199,7 +199,7 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
             type="button"
             onClick={onToggleFullscreen}
             title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-            className="flex items-center gap-1 px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1 bg-white/10 hover:bg-white/20 border border-white/10 rounded-md text-xs transition-colors"
           >
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             <span className="text-[11px] font-medium">{isFullscreen ? 'Exit' : 'Full Screen'}</span>
@@ -208,7 +208,7 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
       </div>
 
       {/* Ribbon Command Bar Content */}
-      <div className="flex items-center gap-4 px-3 py-1.5 bg-slate-100 min-h-[52px] text-xs text-slate-700 overflow-x-auto">
+      <div className="flex items-center gap-4 px-3 py-1.5 bg-white min-h-[54px] text-xs text-slate-700 overflow-x-auto border-b border-slate-200">
         {/* TASK TAB COMMANDS */}
         {activeTab === 'task' && (
           <>
@@ -346,12 +346,12 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
         {activeTab === 'view' && (
           <>
             {/* Zoom Controls */}
-            <div className="flex items-center gap-1 pr-3 border-r border-slate-300">
+            <div className="flex items-center gap-1.5 pr-3 border-r border-slate-200">
               <button
                 type="button"
                 onClick={onZoomIn}
                 title="Zoom In"
-                className="p-1.5 hover:bg-white rounded text-slate-700 transition-colors"
+                className="p-1.5 hover:bg-slate-100 rounded-md text-slate-700 transition-colors"
               >
                 <ZoomIn className="w-4 h-4" />
               </button>
@@ -359,19 +359,22 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
                 type="button"
                 onClick={onZoomOut}
                 title="Zoom Out"
-                className="p-1.5 hover:bg-white rounded text-slate-700 transition-colors"
+                className="p-1.5 hover:bg-slate-100 rounded-md text-slate-700 transition-colors"
               >
                 <ZoomOut className="w-4 h-4" />
               </button>
 
-              <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden ml-1">
+              {/* Segmented Zoom Level Control */}
+              <div className="flex items-center bg-slate-100/90 p-0.5 border border-slate-200 rounded-lg ml-1">
                 {(['day', 'week', 'month', 'quarter'] as ZoomLevel[]).map(z => (
                   <button
                     key={z}
                     type="button"
                     onClick={() => onSetZoom(z)}
-                    className={`px-2 py-1 text-[11px] uppercase font-bold transition-colors ${
-                      zoomLevel === z ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    className={`px-2.5 py-1 text-[11px] uppercase font-bold rounded-md transition-all ${
+                      zoomLevel === z
+                        ? 'bg-white text-blue-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     {z}
@@ -381,14 +384,14 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
             </div>
 
             {/* Visual Layers Toggle */}
-            <div className="flex items-center gap-2 pr-3 border-r border-slate-300">
+            <div className="flex items-center gap-2 pr-3 border-r border-slate-200">
               <button
                 type="button"
                 onClick={onToggleCriticalPath}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md border text-[11px] font-semibold transition-all ${
                   showCriticalPath
-                    ? 'bg-rose-50 border-rose-400 text-rose-700'
-                    : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                    ? 'bg-rose-50 border-rose-400 text-rose-700 shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <Flame className={`w-3.5 h-3.5 ${showCriticalPath ? 'text-rose-600' : 'text-slate-400'}`} />
@@ -398,10 +401,10 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
               <button
                 type="button"
                 onClick={onToggleBaseline}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md border text-[11px] font-semibold transition-all ${
                   showBaseline
-                    ? 'bg-slate-200 border-slate-400 text-slate-800'
-                    : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                    ? 'bg-slate-100 border-slate-400 text-slate-800 shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <Layers className={`w-3.5 h-3.5 ${showBaseline ? 'text-slate-700' : 'text-slate-400'}`} />
@@ -411,10 +414,10 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
               <button
                 type="button"
                 onClick={onToggleDependencies}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md border text-[11px] font-semibold transition-all ${
                   showDependencies
-                    ? 'bg-blue-50 border-blue-400 text-blue-700'
-                    : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                    ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <Activity className={`w-3.5 h-3.5 ${showDependencies ? 'text-blue-600' : 'text-slate-400'}`} />
@@ -423,12 +426,12 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
             </div>
 
             {/* Filters */}
-            <div className="flex items-center gap-1 pr-3 border-r border-slate-300">
+            <div className="flex items-center gap-1.5 pr-3 border-r border-slate-200">
               <span className="text-[10px] text-slate-500 font-semibold mr-1">Filter:</span>
               <select
                 value={filterType}
                 onChange={e => onSetFilterType(e.target.value as any)}
-                className="px-2 py-1 bg-white border border-slate-300 rounded text-xs"
+                className="px-2.5 py-1 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-700 shadow-xs outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="all">All Tasks</option>
                 <option value="critical">Critical Tasks</option>
@@ -442,29 +445,29 @@ export const GanttToolbar: React.FC<GanttToolbarProps> = ({
               <button
                 type="button"
                 onClick={() => setShowColumnsMenu(prev => !prev)}
-                className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-50 rounded text-xs font-medium text-slate-700"
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 hover:bg-slate-50 rounded-md text-xs font-medium text-slate-700 shadow-xs"
               >
-                <Eye className="w-3.5 h-3.5" />
+                <Eye className="w-3.5 h-3.5 text-slate-500" />
                 Columns
               </button>
 
               {showColumnsMenu && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-300 rounded shadow-lg p-2 z-30 space-y-1">
-                  <div className="text-[10px] font-bold uppercase text-slate-400 px-1 mb-1">
+                <div className="absolute top-full left-0 mt-1.5 w-52 bg-white/95 backdrop-blur-xs border border-slate-200 rounded-xl shadow-xl p-2.5 z-40 space-y-1 animate-dropdown-enter">
+                  <div className="text-[10px] font-bold uppercase text-slate-400 px-1 mb-1 tracking-wider">
                     Toggle Table Columns
                   </div>
                   {columns.map(col => (
                     <label
                       key={col.id}
-                      className="flex items-center gap-2 px-1.5 py-1 hover:bg-slate-100 rounded text-xs cursor-pointer"
+                      className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 rounded-lg text-xs cursor-pointer text-slate-700 transition-colors"
                     >
                       <input
                         type="checkbox"
                         checked={col.visible}
                         onChange={() => onToggleColumn(col.id)}
-                        className="rounded text-blue-600"
+                        className="rounded text-blue-600 focus:ring-blue-500"
                       />
-                      <span className="text-slate-700">{col.label}</span>
+                      <span>{col.label}</span>
                     </label>
                   ))}
                 </div>

@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
 import { ProjectTask } from '../../types';
 
-interface TaskCoordinates {
+export interface TaskCoordinates {
   x: number; // bar left
   y: number; // bar vertical center
   width: number; // bar width
+  isMilestone?: boolean;
   isCritical?: boolean;
 }
 
@@ -14,6 +15,16 @@ interface DependencyArrowsProps {
   width: number;
   height: number;
 }
+
+const getNormalizedId = (id: unknown): string => {
+  if (!id) return '';
+  if (typeof id === 'string') return id;
+  if (typeof id === 'object' && id !== null) {
+    if ('_id' in id && (id as { _id: unknown })._id) return String((id as { _id: unknown })._id);
+    if ('id' in id && (id as { id: unknown }).id) return String((id as { id: unknown }).id);
+  }
+  return String(id);
+};
 
 export const DependencyArrows: React.FC<DependencyArrowsProps> = ({
   tasks,
@@ -30,17 +41,33 @@ export const DependencyArrows: React.FC<DependencyArrowsProps> = ({
       arrowY: number;
     }[] = [];
 
+    // Set of IDs of tasks that are currently visible
+    const visibleIdSet = new Set(tasks.map(t => getNormalizedId(t._id)));
+
     tasks.forEach(succTask => {
-      const succId = succTask._id;
+      const succId = getNormalizedId(succTask._id);
+      if (!succId || !visibleIdSet.has(succId)) return;
+
       const succCoord = taskCoordinates.get(succId);
-      if (!succCoord || !succTask.predecessors) return;
+      if (!succCoord || !succTask.predecessors || !Array.isArray(succTask.predecessors)) return;
 
       succTask.predecessors.forEach((pred, predIdx) => {
-        const predId = typeof pred.taskId === 'string' ? pred.taskId : pred.taskId?._id;
-        if (!predId) return;
+        const predId = getNormalizedId(pred.taskId);
+        // CRITICAL: Arrow must only render if BOTH predecessor and successor are visible tasks
+        if (!predId || !visibleIdSet.has(predId) || predId === succId) return;
 
         const predCoord = taskCoordinates.get(predId);
         if (!predCoord) return;
+
+        // Ensure valid finite numbers
+        if (
+          !Number.isFinite(predCoord.x) ||
+          !Number.isFinite(predCoord.y) ||
+          !Number.isFinite(succCoord.x) ||
+          !Number.isFinite(succCoord.y)
+        ) {
+          return;
+        }
 
         const isCritical = Boolean(succTask.isCritical && predCoord.isCritical);
         const type = pred.type || 'FS';
@@ -50,20 +77,26 @@ export const DependencyArrows: React.FC<DependencyArrowsProps> = ({
         let toX = 0;
         let toY = succCoord.y;
 
+        // Adjust anchor points for milestones (milestone diamond tip offset)
+        const predMilestoneOffset = predCoord.isMilestone ? 8 : 0;
+        const succMilestoneOffset = succCoord.isMilestone ? 8 : 0;
+
         // Determine anchor points based on relation type
         if (type === 'FS') {
-          fromX = predCoord.x + predCoord.width;
-          toX = succCoord.x;
+          fromX = predCoord.x + predCoord.width + (predCoord.isMilestone ? 0 : 0);
+          toX = succCoord.x - succMilestoneOffset;
         } else if (type === 'SS') {
-          fromX = predCoord.x;
-          toX = succCoord.x;
+          fromX = predCoord.x - predMilestoneOffset;
+          toX = succCoord.x - succMilestoneOffset;
         } else if (type === 'FF') {
           fromX = predCoord.x + predCoord.width;
-          toX = succCoord.x + succCoord.width;
+          toX = succCoord.x + succCoord.width + succMilestoneOffset;
         } else if (type === 'SF') {
-          fromX = predCoord.x;
-          toX = succCoord.x + succCoord.width;
+          fromX = predCoord.x - predMilestoneOffset;
+          toX = succCoord.x + succCoord.width + succMilestoneOffset;
         }
+
+        if (!Number.isFinite(fromX) || !Number.isFinite(toX)) return;
 
         // Generate orthogonal SVG path
         let d = '';
@@ -75,20 +108,22 @@ export const DependencyArrows: React.FC<DependencyArrowsProps> = ({
             const midX = fromX + stub;
             d = `M ${fromX} ${fromY} L ${midX} ${fromY} L ${midX} ${toY} L ${toX} ${toY}`;
           } else {
-            // Overlap loopback: Right -> Down/Up midway -> Left -> Down/Up to toY -> Right
-            const midY = fromY + (toY > fromY ? 14 : -14);
-            const loopX = toX - stub;
+            // Overlap loopback: Right -> Down/Up in row gutter -> Left past toX -> Down/Up to toY -> Right
+            const rowDeltaY = toY >= fromY ? 20 : -20;
+            const midY = fromY + rowDeltaY;
+            const loopX = Math.max(2, toX - stub);
             d = `M ${fromX} ${fromY} L ${fromX + stub} ${fromY} L ${fromX + stub} ${midY} L ${loopX} ${midY} L ${loopX} ${toY} L ${toX} ${toY}`;
           }
         } else if (type === 'SS') {
-          const minX = Math.min(fromX, toX) - stub;
+          const minX = Math.max(2, Math.min(fromX, toX) - stub);
           d = `M ${fromX} ${fromY} L ${minX} ${fromY} L ${minX} ${toY} L ${toX} ${toY}`;
         } else if (type === 'FF') {
           const maxX = Math.max(fromX, toX) + stub;
           d = `M ${fromX} ${fromY} L ${maxX} ${fromY} L ${maxX} ${toY} L ${toX} ${toY}`;
         } else {
           // SF
-          d = `M ${fromX} ${fromY} L ${fromX - stub} ${fromY} L ${fromX - stub} ${toY} L ${toX} ${toY}`;
+          const minX = Math.max(2, fromX - stub);
+          d = `M ${fromX} ${fromY} L ${minX} ${fromY} L ${minX} ${toY} L ${toX} ${toY}`;
         }
 
         list.push({
@@ -116,26 +151,26 @@ export const DependencyArrows: React.FC<DependencyArrowsProps> = ({
         <marker
           id="arrow-default"
           viewBox="0 0 10 10"
-          refX="6"
+          refX="8"
           refY="5"
           markerWidth="5"
           markerHeight="5"
-          orient="auto-start-reverse"
+          orient="auto"
         >
-          <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748b" />
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#64748b" />
         </marker>
 
         {/* Critical path arrowhead marker */}
         <marker
           id="arrow-critical"
           viewBox="0 0 10 10"
-          refX="6"
+          refX="8"
           refY="5"
           markerWidth="5"
           markerHeight="5"
-          orient="auto-start-reverse"
+          orient="auto"
         >
-          <path d="M 0 1 L 10 5 L 0 9 z" fill="#dc2626" />
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#ef4444" />
         </marker>
       </defs>
 
@@ -144,11 +179,12 @@ export const DependencyArrows: React.FC<DependencyArrowsProps> = ({
           key={item.id}
           d={item.d}
           fill="none"
-          stroke={item.isCritical ? '#dc2626' : '#64748b'}
+          stroke={item.isCritical ? '#ef4444' : '#64748b'}
           strokeWidth={item.isCritical ? 1.75 : 1.25}
-          strokeDasharray={item.isCritical ? undefined : undefined}
+          strokeLinejoin="round"
+          strokeLinecap="round"
           markerEnd={item.isCritical ? 'url(#arrow-critical)' : 'url(#arrow-default)'}
-          className="transition-colors duration-150"
+          className="opacity-75 transition-opacity hover:opacity-100"
         />
       ))}
     </svg>
