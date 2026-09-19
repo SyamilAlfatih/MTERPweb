@@ -28,7 +28,10 @@ import {
   FileText,
   ChevronUp,
   ExternalLink,
-  Code
+  Code,
+  ArrowUpDown,
+  ArrowDownAZ,
+  ArrowUpAZ
 } from 'lucide-react';
 import { 
   getUsers, 
@@ -102,6 +105,7 @@ export default function Users() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [employmentFilter, setEmploymentFilter] = useState('');
+  const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'newest' | 'oldest'>('name-asc');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
   // API Keys state
@@ -242,22 +246,38 @@ export default function Users() {
   }, []);
 
   const filteredUsers = useMemo(() => {
-    return users.filter(user => {
-      const searchLower = searchQuery.toLowerCase();
-      const matchesSearch = 
-        user.fullName.toLowerCase().includes(searchLower) || 
-        user.email?.toLowerCase().includes(searchLower) ||
-        user.username.toLowerCase().includes(searchLower) ||
-        user.phone?.toLowerCase().includes(searchLower) ||
-        user.position?.toLowerCase().includes(searchLower) ||
-        user.emergencyContact?.name?.toLowerCase().includes(searchLower);
-      
-      const matchesRole = roleFilter ? user.role === roleFilter : true;
-      const matchesEmployment = employmentFilter ? (user.employmentType || 'tetap') === employmentFilter : true;
-      
-      return matchesSearch && matchesRole && matchesEmployment;
-    });
-  }, [users, searchQuery, roleFilter, employmentFilter]);
+    return users
+      .filter(user => {
+        const searchLower = searchQuery.toLowerCase();
+        const matchesSearch = 
+          (user.fullName || '').toLowerCase().includes(searchLower) || 
+          user.email?.toLowerCase().includes(searchLower) ||
+          user.username.toLowerCase().includes(searchLower) ||
+          user.phone?.toLowerCase().includes(searchLower) ||
+          user.position?.toLowerCase().includes(searchLower) ||
+          user.emergencyContact?.name?.toLowerCase().includes(searchLower);
+        
+        const matchesRole = roleFilter ? user.role === roleFilter : true;
+        const matchesEmployment = employmentFilter ? (user.employmentType || 'tetap') === employmentFilter : true;
+        
+        return matchesSearch && matchesRole && matchesEmployment;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'name-asc') {
+          return (a.fullName || a.username || '').localeCompare(b.fullName || b.username || '', 'id', { sensitivity: 'base', numeric: true });
+        }
+        if (sortBy === 'name-desc') {
+          return (b.fullName || b.username || '').localeCompare(a.fullName || a.username || '', 'id', { sensitivity: 'base', numeric: true });
+        }
+        if (sortBy === 'newest') {
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        }
+        if (sortBy === 'oldest') {
+          return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+        }
+        return 0;
+      });
+  }, [users, searchQuery, roleFilter, employmentFilter, sortBy]);
 
   // Handle single user creation
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -724,6 +744,31 @@ export default function Users() {
             </div>
           </div>
 
+          {/* Sort By Order */}
+          <div className="w-full md:w-[190px]">
+            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5">Urutan (Sort)</label>
+            <div className="relative">
+              {sortBy === 'name-desc' ? (
+                <ArrowUpAZ size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              ) : sortBy === 'name-asc' ? (
+                <ArrowDownAZ size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              ) : (
+                <ArrowUpDown size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              )}
+              <select 
+                value={sortBy} 
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="w-full py-3 pr-9 pl-10 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-sm"
+              >
+                <option value="name-asc">Nama (A - Z)</option>
+                <option value="name-desc">Nama (Z - A)</option>
+                <option value="newest">Terbaru Ditambahkan</option>
+                <option value="oldest">Terlama Ditambahkan</option>
+              </select>
+              <ChevronDown size={17} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+            </div>
+          </div>
+
           {/* View Mode Switcher */}
           <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-xl border border-border-light shrink-0">
             <button
@@ -955,7 +1000,26 @@ export default function Users() {
               <thead>
                 <tr className="bg-slate-900 text-white font-black uppercase tracking-wider border-b border-slate-800">
                   <th className="py-3.5 px-4 text-center w-12">No</th>
-                  <th className="py-3.5 px-4 min-w-[220px]">Pekerja / Karyawan</th>
+                  <th 
+                    className="py-3.5 px-4 min-w-[220px] cursor-pointer select-none hover:text-primary transition-colors group"
+                    onClick={() => setSortBy(prev => prev === 'name-asc' ? 'name-desc' : 'name-asc')}
+                    title="Klik untuk mengubah urutan A-Z / Z-A"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Pekerja / Karyawan</span>
+                      {sortBy === 'name-asc' ? (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-primary font-black bg-primary/20 px-1.5 py-0.5 rounded">
+                          <ArrowDownAZ size={12} /> A-Z
+                        </span>
+                      ) : sortBy === 'name-desc' ? (
+                        <span className="inline-flex items-center gap-0.5 text-primary font-black text-[10px] bg-primary/20 px-1.5 py-0.5 rounded">
+                          <ArrowUpAZ size={12} /> Z-A
+                        </span>
+                      ) : (
+                        <ArrowUpDown size={12} className="text-white/40 group-hover:text-primary transition-colors" />
+                      )}
+                    </div>
+                  </th>
                   <th className="py-3.5 px-4 min-w-[140px]">Role & Jabatan</th>
                   <th className="py-3.5 px-4 min-w-[150px]">Status Kerja</th>
                   <th className="py-3.5 px-4 min-w-[200px]">Kontak Darurat (Emergency)</th>

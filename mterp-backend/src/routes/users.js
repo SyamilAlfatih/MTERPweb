@@ -103,7 +103,7 @@ const norm = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '
 router.get('/export-excel', async (req, res) => {
   try {
     const filter = buildUserFilter(req.query);
-    const users = await User.find(filter).sort({ createdAt: -1 }).lean();
+    const users = await User.find(filter).sort({ fullName: 1, createdAt: -1 }).lean();
 
     // Determine requested columns
     let selectedKeys = req.query.columns ? req.query.columns.split(',').map(c => c.trim()) : Object.keys(EXPORT_COLUMNS);
@@ -166,7 +166,7 @@ router.get('/export-excel', async (req, res) => {
 router.get('/export-csv', async (req, res) => {
   try {
     const filter = buildUserFilter(req.query);
-    const users = await User.find(filter).sort({ createdAt: -1 }).lean();
+    const users = await User.find(filter).sort({ fullName: 1, createdAt: -1 }).lean();
 
     let selectedKeys = req.query.columns ? req.query.columns.split(',').map(c => c.trim()) : Object.keys(EXPORT_COLUMNS);
     selectedKeys = selectedKeys.filter(key => EXPORT_COLUMNS[key]);
@@ -648,7 +648,7 @@ router.get('/', async (req, res) => {
     const filter = buildUserFilter(req.query);
     const users = await User.find(filter)
       .select('-password -otp')
-      .sort({ createdAt: -1 });
+      .sort({ fullName: 1, createdAt: -1 });
     res.json(users);
   } catch (error) {
     console.error('Fetch users error:', error);
