@@ -151,6 +151,37 @@ export const deleteUser = async (id: string) => {
   return response.data;
 };
 
+export const uploadEducationData = async (userId: string, formData: FormData): Promise<User> => {
+  const response = await api.post(`/users/${userId}/education`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const deleteEducationProof = async (userId: string): Promise<User> => {
+  const response = await api.delete(`/users/${userId}/education/proof`);
+  return response.data;
+};
+
+export const addCompetencyCertificate = async (userId: string, formData: FormData): Promise<User> => {
+  const response = await api.post(`/users/${userId}/competencies`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const updateCompetencyCertificate = async (userId: string, certId: string, formData: FormData): Promise<User> => {
+  const response = await api.put(`/users/${userId}/competencies/${certId}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const deleteCompetencyCertificate = async (userId: string, certId: string): Promise<User> => {
+  const response = await api.delete(`/users/${userId}/competencies/${certId}`);
+  return response.data;
+};
+
 export const exportUsersExcel = async (columns?: string[], headers = true) => {
   const params = new URLSearchParams();
   if (columns && columns.length > 0) params.append('columns', columns.join(','));

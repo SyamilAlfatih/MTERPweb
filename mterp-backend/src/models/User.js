@@ -75,6 +75,33 @@ const userSchema = new mongoose.Schema({
     phone: { type: String, trim: true, default: '' },
     relationship: { type: String, trim: true, default: '' },
   },
+  education: {
+    level: {
+      type: String,
+      enum: ['SD', 'SMP', 'SMA/SMK', 'D1', 'D2', 'D3', 'D4/S1', 'S2', 'S3', 'Lainnya', ''],
+      default: '',
+    },
+    institution: { type: String, trim: true, default: '' },
+    major: { type: String, trim: true, default: '' },
+    graduationYear: { type: String, trim: true, default: '' },
+    documentUrl: { type: String, default: '' },
+    documentName: { type: String, default: '' },
+    documentSize: { type: Number, default: 0 },
+    uploadedAt: { type: Date },
+  },
+  competencies: [
+    {
+      name: { type: String, required: true, trim: true },
+      issuer: { type: String, trim: true, default: '' },
+      certificateNumber: { type: String, trim: true, default: '' },
+      issueDate: { type: Date },
+      expiryDate: { type: Date },
+      documentUrl: { type: String, default: '' },
+      documentName: { type: String, default: '' },
+      documentSize: { type: Number, default: 0 },
+      uploadedAt: { type: Date, default: Date.now },
+    },
+  ],
   createdAt: {
     type: Date,
     default: Date.now,

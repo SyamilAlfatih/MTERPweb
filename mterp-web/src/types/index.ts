@@ -107,6 +107,30 @@ export interface UserPaymentInfo {
   accountName?: string;
 }
 
+export interface Education {
+  level: string; // 'SD' | 'SMP' | 'SMA/SMK' | 'D1' | 'D2' | 'D3' | 'D4/S1' | 'S2' | 'S3' | 'Lainnya' | ''
+  institution?: string;
+  major?: string;
+  graduationYear?: string;
+  documentUrl?: string;
+  documentName?: string;
+  documentSize?: number;
+  uploadedAt?: string;
+}
+
+export interface CompetencyCertificate {
+  _id?: string;
+  name: string;
+  issuer?: string;
+  certificateNumber?: string;
+  issueDate?: string;
+  expiryDate?: string;
+  documentUrl?: string;
+  documentName?: string;
+  documentSize?: number;
+  uploadedAt?: string;
+}
+
 export interface User {
   _id?: string;
   username: string;
@@ -119,6 +143,8 @@ export interface User {
   contractEndDate?: string;
   emergencyContact?: EmergencyContact;
   paymentInfo?: UserPaymentInfo;
+  education?: Education;
+  competencies?: CompetencyCertificate[];
   token?: string;
   phone?: string;
   address?: string;

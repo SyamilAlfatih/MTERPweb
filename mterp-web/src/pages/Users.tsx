@@ -27,16 +27,19 @@ import {
   FileSpreadsheet,
   FileText,
   ChevronUp,
-  ExternalLink,
   Code,
   ArrowUpDown,
   ArrowDownAZ,
-  ArrowUpAZ
+  ArrowUpAZ,
+  GraduationCap,
+  Award,
+  Eye,
+  RotateCcw
 } from 'lucide-react';
 import { 
   getUsers, 
   createUser, 
-  updateUser,
+  updateUser, 
   updateUserRole, 
   verifyUserManually, 
   deleteUser,
@@ -54,6 +57,8 @@ import { User, ApiKey, EmploymentType } from '../types';
 import { Card } from '../components/shared';
 import { PhotoView } from 'react-photo-view';
 import { getImageUrl } from '../utils/image';
+import { LiveDocumentViewer, ViewerDocument } from '../components/users/LiveDocumentViewer';
+import { UserPortfolioModal } from '../components/users/UserPortfolioModal';
 
 const ROLE_OPTIONS = [
   { value: 'worker', label: 'Worker' },
@@ -68,6 +73,19 @@ const ROLE_OPTIONS = [
   { value: 'president_director', label: 'President Director' },
   { value: 'operational_director', label: 'Operational Director' },
   { value: 'owner', label: 'Owner' },
+];
+
+const EDUCATION_LEVEL_OPTIONS = [
+  { value: 'SD', label: 'SD' },
+  { value: 'SMP', label: 'SMP' },
+  { value: 'SMA/SMK', label: 'SMA / SMK' },
+  { value: 'D1', label: 'D1' },
+  { value: 'D2', label: 'D2' },
+  { value: 'D3', label: 'D3' },
+  { value: 'D4/S1', label: 'D4 / S1 (Sarjana)' },
+  { value: 'S2', label: 'S2 (Magister)' },
+  { value: 'S3', label: 'S3 (Doktor)' },
+  { value: 'Lainnya', label: 'Lainnya' },
 ];
 
 const EMPLOYMENT_TYPE_OPTIONS: { value: EmploymentType; label: string; bg: string; text: string; border: string }[] = [
@@ -85,6 +103,8 @@ const EXPORTABLE_COLUMNS = [
   { key: 'role', label: 'Role / Peran' },
   { key: 'position', label: 'Jabatan (Position)' },
   { key: 'employmentType', label: 'Status Kerja (Employment Type)' },
+  { key: 'latestEducation', label: 'Pendidikan Terakhir (Education)' },
+  { key: 'competencies', label: 'Sertifikasi / Kompetensi (Certificates)' },
   { key: 'contractStartDate', label: 'Mulai Kontrak (Contract Start)' },
   { key: 'contractEndDate', label: 'Akhir Kontrak (Contract End)' },
   { key: 'phone', label: 'Nomor Telepon (Phone)' },
@@ -105,8 +125,18 @@ export default function Users() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [employmentFilter, setEmploymentFilter] = useState('');
+  const [educationFilter, setEducationFilter] = useState('');
+  const [competencyFilter, setCompetencyFilter] = useState('');
   const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'newest' | 'oldest'>('name-asc');
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
+
+  // Portfolio & Live Document Viewer state
+  const [portfolioModalUser, setPortfolioModalUser] = useState<User | null>(null);
+  const [portfolioModalTab, setPortfolioModalTab] = useState<'education' | 'competencies'>('education');
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [viewerDocs, setViewerDocs] = useState<ViewerDocument[]>([]);
+  const [viewerInitialIdx, setViewerInitialIdx] = useState(0);
+  const [viewerUserName, setViewerUserName] = useState('');
 
   // API Keys state
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
@@ -144,6 +174,12 @@ export default function Users() {
       phone: '',
       relationship: '',
     },
+    education: {
+      level: '',
+      institution: '',
+      major: '',
+      graduationYear: '',
+    },
   });
 
   // Edit User Form State
@@ -159,6 +195,12 @@ export default function Users() {
       name: '',
       phone: '',
       relationship: '',
+    },
+    education: {
+      level: '',
+      institution: '',
+      major: '',
+      graduationYear: '',
     },
   });
 
@@ -245,22 +287,59 @@ export default function Users() {
     fetchApiKeys();
   }, []);
 
+  // KPI Summary Statistics
+  const stats = useMemo(() => {
+    const total = users.length;
+    const verified = users.filter(u => u.isVerified).length;
+    const certified = users.filter(u => (u.competencies?.length || 0) > 0).length;
+    const withProof = users.filter(u => Boolean(u.education?.documentUrl)).length;
+    const expiringCerts = users.reduce((acc, u) => {
+      const count = (u.competencies || []).filter(c => {
+        if (!c.expiryDate) return false;
+        const diffDays = Math.ceil((new Date(c.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        return diffDays >= 0 && diffDays <= 60;
+      }).length;
+      return acc + count;
+    }, 0);
+
+    return { total, verified, certified, withProof, expiringCerts };
+  }, [users]);
+
   const filteredUsers = useMemo(() => {
     return users
       .filter(user => {
-        const searchLower = searchQuery.toLowerCase();
-        const matchesSearch = 
+        const searchLower = searchQuery.toLowerCase().trim();
+        const matchesSearch = !searchLower || (
           (user.fullName || '').toLowerCase().includes(searchLower) || 
           user.email?.toLowerCase().includes(searchLower) ||
           user.username.toLowerCase().includes(searchLower) ||
           user.phone?.toLowerCase().includes(searchLower) ||
           user.position?.toLowerCase().includes(searchLower) ||
-          user.emergencyContact?.name?.toLowerCase().includes(searchLower);
+          user.emergencyContact?.name?.toLowerCase().includes(searchLower) ||
+          user.education?.institution?.toLowerCase().includes(searchLower) ||
+          user.education?.major?.toLowerCase().includes(searchLower) ||
+          (user.competencies || []).some(c => 
+            c.name.toLowerCase().includes(searchLower) || 
+            (c.issuer && c.issuer.toLowerCase().includes(searchLower))
+          )
+        );
         
         const matchesRole = roleFilter ? user.role === roleFilter : true;
         const matchesEmployment = employmentFilter ? (user.employmentType || 'tetap') === employmentFilter : true;
+        const matchesEducation = educationFilter ? user.education?.level === educationFilter : true;
+
+        let matchesCompetency = true;
+        if (competencyFilter === 'has_cert') {
+          matchesCompetency = (user.competencies?.length || 0) > 0;
+        } else if (competencyFilter === 'no_cert') {
+          matchesCompetency = !user.competencies || user.competencies.length === 0;
+        } else if (competencyFilter === 'expired_cert') {
+          matchesCompetency = (user.competencies || []).some(
+            c => c.expiryDate && new Date(c.expiryDate) < new Date()
+          );
+        }
         
-        return matchesSearch && matchesRole && matchesEmployment;
+        return matchesSearch && matchesRole && matchesEmployment && matchesEducation && matchesCompetency;
       })
       .sort((a, b) => {
         if (sortBy === 'name-asc') {
@@ -277,7 +356,109 @@ export default function Users() {
         }
         return 0;
       });
-  }, [users, searchQuery, roleFilter, employmentFilter, sortBy]);
+  }, [users, searchQuery, roleFilter, employmentFilter, educationFilter, competencyFilter, sortBy]);
+
+  // Handle Portfolio & Live Viewer Openers
+  const handleOpenPortfolio = (user: User, tab: 'education' | 'competencies' = 'education') => {
+    setPortfolioModalUser(user);
+    setPortfolioModalTab(tab);
+  };
+
+  const handleOpenViewerForEducation = (user: User) => {
+    const docs: ViewerDocument[] = [];
+    if (user.education?.documentUrl) {
+      docs.push({
+        id: 'edu-proof',
+        title: `Ijazah ${user.education.level || ''} ${user.education.major ? '- ' + user.education.major : ''}`,
+        type: 'education',
+        documentUrl: user.education.documentUrl,
+        documentName: user.education.documentName,
+        documentSize: user.education.documentSize,
+        uploadedAt: user.education.uploadedAt,
+        level: user.education.level,
+        major: user.education.major,
+        issuer: user.education.institution,
+        graduationYear: user.education.graduationYear,
+      });
+    }
+
+    (user.competencies || []).forEach(c => {
+      if (c.documentUrl) {
+        docs.push({
+          id: c._id || c.name,
+          title: c.name,
+          type: 'competency',
+          documentUrl: c.documentUrl,
+          documentName: c.documentName,
+          documentSize: c.documentSize,
+          uploadedAt: c.uploadedAt,
+          issuer: c.issuer,
+          certificateNumber: c.certificateNumber,
+          issueDate: c.issueDate,
+          expiryDate: c.expiryDate,
+        });
+      }
+    });
+
+    if (docs.length > 0) {
+      setViewerDocs(docs);
+      setViewerInitialIdx(0);
+      setViewerUserName(user.fullName);
+      setIsViewerOpen(true);
+    } else {
+      handleOpenPortfolio(user, 'education');
+    }
+  };
+
+  const handleOpenViewerForCertificate = (user: User, certId?: string) => {
+    const docs: ViewerDocument[] = [];
+    if (user.education?.documentUrl) {
+      docs.push({
+        id: 'edu-proof',
+        title: `Ijazah ${user.education.level || ''} ${user.education.major ? '- ' + user.education.major : ''}`,
+        type: 'education',
+        documentUrl: user.education.documentUrl,
+        documentName: user.education.documentName,
+        documentSize: user.education.documentSize,
+        uploadedAt: user.education.uploadedAt,
+        level: user.education.level,
+        major: user.education.major,
+        issuer: user.education.institution,
+        graduationYear: user.education.graduationYear,
+      });
+    }
+
+    let targetIdx = 0;
+    (user.competencies || []).forEach(c => {
+      if (c.documentUrl) {
+        if (c._id === certId) {
+          targetIdx = docs.length;
+        }
+        docs.push({
+          id: c._id || c.name,
+          title: c.name,
+          type: 'competency',
+          documentUrl: c.documentUrl,
+          documentName: c.documentName,
+          documentSize: c.documentSize,
+          uploadedAt: c.uploadedAt,
+          issuer: c.issuer,
+          certificateNumber: c.certificateNumber,
+          issueDate: c.issueDate,
+          expiryDate: c.expiryDate,
+        });
+      }
+    });
+
+    if (docs.length > 0) {
+      setViewerDocs(docs);
+      setViewerInitialIdx(targetIdx);
+      setViewerUserName(user.fullName);
+      setIsViewerOpen(true);
+    } else {
+      handleOpenPortfolio(user, 'competencies');
+    }
+  };
 
   // Handle single user creation
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -298,6 +479,7 @@ export default function Users() {
         phone: '',
         address: '',
         emergencyContact: { name: '', phone: '', relationship: '' },
+        education: { level: '', institution: '', major: '', graduationYear: '' },
       });
       fetchUsers();
     } catch (error: unknown) {
@@ -324,6 +506,12 @@ export default function Users() {
         name: user.emergencyContact?.name || '',
         phone: user.emergencyContact?.phone || '',
         relationship: user.emergencyContact?.relationship || '',
+      },
+      education: {
+        level: user.education?.level || '',
+        institution: user.education?.institution || '',
+        major: user.education?.major || '',
+        graduationYear: user.education?.graduationYear || '',
       },
     });
     setIsEditModalOpen(true);
@@ -686,113 +874,239 @@ export default function Users() {
         </div>
       </div>
 
-      {/* Filters, Search & View Controls */}
-      <Card className="!p-5 border-2 border-border-light">
-        <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-end">
-          {/* Search Input */}
-          <div className="flex-1">
-            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5">
-              Cari Pekerja (Nama, Username, Posisi, No HP, Kontak Darurat)
-            </label>
-            <div className="relative">
-              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-              <input 
-                type="text" 
-                placeholder="Ketik nama, telepon, kontak darurat, atau username..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full py-3 pr-4 pl-11 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-sm font-bold transition-all outline-none focus:border-primary shadow-sm"
-              />
+      {/* Modern KPI Summary Metric Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="!p-4 border-2 border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-primary/30 transition-all">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-text-muted">Total Tenaga Kerja</div>
+            <div className="text-2xl font-black text-text-primary mt-1 tracking-tight">{stats.total}</div>
+            <div className="text-[11px] font-bold text-text-secondary mt-0.5 flex items-center gap-1.5">
+              <span className="text-emerald-600">{users.filter(u => (u.employmentType || 'tetap') === 'tetap').length} Tetap</span>
+              <span>•</span>
+              <span className="text-blue-600">{users.filter(u => u.employmentType === 'kontrak').length} Kontrak</span>
             </div>
           </div>
+          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center border border-blue-500/20 shrink-0">
+            <UsersIcon size={24} />
+          </div>
+        </Card>
 
+        <Card className="!p-4 border-2 border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-success/30 transition-all">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-text-muted">Status Terverifikasi</div>
+            <div className="text-2xl font-black text-emerald-600 mt-1 tracking-tight">{stats.verified}</div>
+            <div className="text-[11px] font-bold text-text-muted mt-0.5">
+              {stats.total > 0 ? Math.round((stats.verified / stats.total) * 100) : 0}% Akun Terverifikasi
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center border border-emerald-500/20 shrink-0">
+            <CheckCircle size={24} />
+          </div>
+        </Card>
+
+        <Card className="!p-4 border-2 border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-primary/30 transition-all">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-text-muted">Tersertifikasi (Kompetensi)</div>
+            <div className="text-2xl font-black text-primary mt-1 tracking-tight">{stats.certified}</div>
+            <div className="text-[11px] font-bold text-primary mt-0.5 flex items-center gap-1">
+              <Award size={13} />
+              <span>{stats.total > 0 ? Math.round((stats.certified / stats.total) * 100) : 0}% Memiliki Lisensi</span>
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
+            <Award size={24} />
+          </div>
+        </Card>
+
+        <Card className="!p-4 border-2 border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-indigo-500/30 transition-all">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-text-muted">Bukti Ijazah Terunggah</div>
+            <div className="text-2xl font-black text-indigo-600 mt-1 tracking-tight">{stats.withProof}</div>
+            <div className="text-[11px] font-bold text-text-muted mt-0.5 flex items-center gap-1">
+              <GraduationCap size={13} className="text-indigo-600" />
+              <span>{stats.total > 0 ? Math.round((stats.withProof / stats.total) * 100) : 0}% Dokumen Lengkap</span>
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center border border-indigo-500/20 shrink-0">
+            <GraduationCap size={24} />
+          </div>
+        </Card>
+      </div>
+
+      {/* Filters, Search & View Controls */}
+      <Card className="!p-5 border-2 border-border-light space-y-4">
+        {/* Top Search Bar */}
+        <div>
+          <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5">
+            Cari Pekerja (Nama, Username, Posisi, No HP, Jurusan, atau Sertifikasi)
+          </label>
+          <div className="relative">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+            <input 
+              type="text" 
+              placeholder="Ketik nama, telepon, jurusan pendidikan, atau nama sertifikat..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full py-3 pr-4 pl-11 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-sm font-bold transition-all outline-none focus:border-primary shadow-xs"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Dropdown Filters & View Mode */}
+        <div className="flex flex-wrap gap-3 items-end">
           {/* Filter by Employment Type */}
-          <div className="w-full md:w-[220px]">
+          <div className="w-full sm:w-[170px]">
             <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5">Status Kerja</label>
             <div className="relative">
-              <Briefcase size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <Briefcase size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
               <select 
                 value={employmentFilter} 
                 onChange={(e) => setEmploymentFilter(e.target.value)}
-                className="w-full py-3 pr-9 pl-10 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-sm"
+                className="w-full py-2.5 pr-8 pl-9 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-xs"
               >
-                <option value="">Semua Status Kerja</option>
+                <option value="">Semua Status</option>
                 {EMPLOYMENT_TYPE_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  <option key={opt.value} value={opt.value}>{opt.label.split(' ')[0]}</option>
                 ))}
               </select>
-              <ChevronDown size={17} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
             </div>
           </div>
 
           {/* Filter by Role */}
-          <div className="w-full md:w-[210px]">
-            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5">Peran / Role</label>
+          <div className="w-full sm:w-[170px]">
+            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5">Role / Peran</label>
             <div className="relative">
-              <Filter size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <Filter size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
               <select 
                 value={roleFilter} 
                 onChange={(e) => setRoleFilter(e.target.value)}
-                className="w-full py-3 pr-9 pl-10 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-sm"
+                className="w-full py-2.5 pr-8 pl-9 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-xs"
               >
                 <option value="">Semua Role</option>
                 {ROLE_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
-              <ChevronDown size={17} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
             </div>
           </div>
 
-          {/* Sort By Order */}
-          <div className="w-full md:w-[190px]">
+          {/* Filter by Education */}
+          <div className="w-full sm:w-[170px]">
+            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5">Pendidikan</label>
+            <div className="relative">
+              <GraduationCap size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <select 
+                value={educationFilter} 
+                onChange={(e) => setEducationFilter(e.target.value)}
+                className="w-full py-2.5 pr-8 pl-9 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-xs"
+              >
+                <option value="">Semua Pendidikan</option>
+                {EDUCATION_LEVEL_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Filter by Competency */}
+          <div className="w-full sm:w-[180px]">
+            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5">Sertifikasi</label>
+            <div className="relative">
+              <Award size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <select 
+                value={competencyFilter} 
+                onChange={(e) => setCompetencyFilter(e.target.value)}
+                className="w-full py-2.5 pr-8 pl-9 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-xs"
+              >
+                <option value="">Semua Status Sertifikasi</option>
+                <option value="has_cert">Memiliki Sertifikat</option>
+                <option value="no_cert">Belum Bersertifikat</option>
+                <option value="expired_cert">Ada Yang Kedaluwarsa</option>
+              </select>
+              <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Sort By */}
+          <div className="w-full sm:w-[160px]">
             <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5">Urutan (Sort)</label>
             <div className="relative">
               {sortBy === 'name-desc' ? (
-                <ArrowUpAZ size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                <ArrowUpAZ size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
               ) : sortBy === 'name-asc' ? (
-                <ArrowDownAZ size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                <ArrowDownAZ size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
               ) : (
-                <ArrowUpDown size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                <ArrowUpDown size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
               )}
               <select 
                 value={sortBy} 
-                onChange={(e) => setSortBy(e.target.value as any)}
-                className="w-full py-3 pr-9 pl-10 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-sm"
+                onChange={(e) => setSortBy(e.target.value as 'name-asc' | 'name-desc' | 'newest' | 'oldest')}
+                className="w-full py-2.5 pr-8 pl-9 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-xs"
               >
                 <option value="name-asc">Nama (A - Z)</option>
                 <option value="name-desc">Nama (Z - A)</option>
-                <option value="newest">Terbaru Ditambahkan</option>
-                <option value="oldest">Terlama Ditambahkan</option>
+                <option value="newest">Terbaru</option>
+                <option value="oldest">Terlama</option>
               </select>
-              <ChevronDown size={17} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
             </div>
           </div>
+
+          {/* Reset Filters Button (if active) */}
+          {(searchQuery || roleFilter || employmentFilter || educationFilter || competencyFilter) && (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setRoleFilter('');
+                setEmploymentFilter('');
+                setEducationFilter('');
+                setCompetencyFilter('');
+              }}
+              className="flex items-center gap-1.5 py-2.5 px-3 rounded-xl bg-bg-secondary hover:bg-border-light text-text-muted hover:text-text-primary text-xs font-bold transition-all border border-border-light cursor-pointer"
+              title="Reset Semua Filter"
+            >
+              <RotateCcw size={14} />
+              <span>Reset</span>
+            </button>
+          )}
+
+          <div className="flex-1" />
 
           {/* View Mode Switcher */}
           <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-xl border border-border-light shrink-0">
             <button
               onClick={() => setViewMode('grid')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
                 viewMode === 'grid' 
-                  ? 'bg-bg-white text-primary shadow-sm' 
+                  ? 'bg-bg-white text-primary shadow-xs' 
                   : 'text-text-muted hover:text-text-primary'
               }`}
               title="Tampilan Kartu"
             >
-              <LayoutGrid size={16} />
+              <LayoutGrid size={15} />
               <span className="hidden sm:inline">Kartu</span>
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
                 viewMode === 'table' 
-                  ? 'bg-bg-white text-primary shadow-sm' 
+                  ? 'bg-bg-white text-primary shadow-xs' 
                   : 'text-text-muted hover:text-text-primary'
               }`}
               title="Tampilan Tabel Lengkap"
             >
-              <TableIcon size={16} />
+              <TableIcon size={15} />
               <span className="hidden sm:inline">Tabel</span>
             </button>
           </div>
@@ -936,6 +1250,66 @@ export default function Users() {
                     </div>
                   )}
 
+                  {/* Kualifikasi: Pendidikan & Sertifikasi */}
+                  <div className="bg-bg-secondary/40 p-3 rounded-xl border border-border-light/80 mb-3 text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-text-muted flex items-center gap-1">
+                        <GraduationCap size={13} className="text-indigo-600" />
+                        Pendidikan
+                      </span>
+                      {user.education?.level ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-[11px] text-text-primary uppercase bg-indigo-500/10 text-indigo-700 px-1.5 py-0.2 rounded border border-indigo-500/20">
+                            {user.education.level}
+                          </span>
+                          {user.education.documentUrl && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenViewerForEducation(user)}
+                              className="text-primary hover:text-primary-dark p-0.5 cursor-pointer"
+                              title="Lihat Bukti Ijazah di Live Viewer"
+                            >
+                              <Eye size={13} />
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPortfolio(user, 'education')}
+                          className="text-[10px] text-text-muted hover:text-primary italic cursor-pointer"
+                        >
+                          + Catat
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1.5 border-t border-border-light/60">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-text-muted flex items-center gap-1">
+                        <Award size={13} className="text-primary" />
+                        Sertifikasi
+                      </span>
+                      {user.competencies && user.competencies.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPortfolio(user, 'competencies')}
+                          className="text-[11px] font-black text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>{user.competencies.length} Sertifikat</span>
+                          <Eye size={12} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPortfolio(user, 'competencies')}
+                          className="text-[10px] text-text-muted hover:text-primary italic cursor-pointer"
+                        >
+                          + Tambah
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="flex-1" />
 
                   {/* Action Footer */}
@@ -964,6 +1338,13 @@ export default function Users() {
                           <CheckCircle size={16} />
                         </button>
                       )}
+                      <button 
+                        className="w-8 h-8 rounded-lg flex items-center justify-center bg-bg-white border-2 border-primary/30 text-primary cursor-pointer transition-all hover:bg-primary hover:text-white active:scale-95" 
+                        onClick={() => handleOpenPortfolio(user, 'education')}
+                        title="Kelola Pendidikan & Sertifikat"
+                      >
+                        <Award size={16} />
+                      </button>
                       <button 
                         className="w-8 h-8 rounded-lg flex items-center justify-center bg-bg-white border-2 border-primary/30 text-primary cursor-pointer transition-all hover:bg-primary hover:text-white active:scale-95" 
                         onClick={() => handleOpenEditUser(user)}
@@ -1022,10 +1403,12 @@ export default function Users() {
                   </th>
                   <th className="py-3.5 px-4 min-w-[140px]">Role & Jabatan</th>
                   <th className="py-3.5 px-4 min-w-[150px]">Status Kerja</th>
-                  <th className="py-3.5 px-4 min-w-[200px]">Kontak Darurat (Emergency)</th>
-                  <th className="py-3.5 px-4 min-w-[180px]">Telepon / Email</th>
+                  <th className="py-3.5 px-4 min-w-[190px]">Pendidikan Terakhir</th>
+                  <th className="py-3.5 px-4 min-w-[240px]">Kompetensi & Sertifikasi</th>
+                  <th className="py-3.5 px-4 min-w-[190px]">Kontak Darurat</th>
+                  <th className="py-3.5 px-4 min-w-[170px]">Telepon / Email</th>
                   <th className="py-3.5 px-4 min-w-[110px] text-center">Verifikasi</th>
-                  <th className="py-3.5 px-4 text-right min-w-[120px]">Aksi</th>
+                  <th className="py-3.5 px-4 text-right min-w-[130px]">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-light">
@@ -1070,6 +1453,138 @@ export default function Users() {
                           </div>
                         )}
                       </td>
+
+                      {/* DATA COLUMN 1: PENDIDIKAN TERAKHIR */}
+                      <td className="py-3 px-4">
+                        {user.education?.level ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-700 border border-indigo-500/20">
+                                {user.education.level}
+                              </span>
+                              {user.education.graduationYear && (
+                                <span className="text-[10px] font-bold text-text-muted">
+                                  '{user.education.graduationYear.slice(-2)}
+                                </span>
+                              )}
+                            </div>
+
+                            {(user.education.major || user.education.institution) && (
+                              <div className="text-[11px] font-bold text-text-primary truncate max-w-[180px]" title={`${user.education.major || ''} ${user.education.institution ? '• ' + user.education.institution : ''}`}>
+                                {user.education.major || user.education.institution}
+                              </div>
+                            )}
+
+                            {user.education.documentUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenViewerForEducation(user)}
+                                className="inline-flex items-center gap-1 text-[10px] font-black text-primary hover:text-primary-dark hover:underline bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20 transition-all cursor-pointer"
+                                title="Buka bukti ijazah di Live Viewer"
+                              >
+                                <Eye size={11} />
+                                <span>Lihat Ijazah</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPortfolio(user, 'education')}
+                                className="inline-flex items-center gap-1 text-[10px] font-bold text-text-muted hover:text-primary hover:underline cursor-pointer"
+                                title="Unggah bukti kelulusan / ijazah"
+                              >
+                                <Plus size={11} />
+                                <span>Unggah Bukti</span>
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-text-muted/60 italic text-[11px]">Belum dicatat</span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPortfolio(user, 'education')}
+                              className="w-5 h-5 rounded bg-bg-secondary hover:bg-border-light text-text-muted hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
+                              title="Catat Pendidikan & Bukti"
+                            >
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* DATA COLUMN 2: KOMPETENSI & SERTIFIKASI */}
+                      <td className="py-3 px-4">
+                        {user.competencies && user.competencies.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
+                                <Award size={11} />
+                                <span>{user.competencies.length} Sertifikat</span>
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPortfolio(user, 'competencies')}
+                                className="text-[10px] font-bold text-text-muted hover:text-primary cursor-pointer hover:underline"
+                                title="Kelola sertifikat pekerja"
+                              >
+                                Kelola
+                              </button>
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                              {user.competencies.slice(0, 2).map((cert) => {
+                                const isExpired = cert.expiryDate && new Date(cert.expiryDate) < new Date();
+                                return (
+                                  <div 
+                                    key={cert._id || cert.name}
+                                    className={`flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${
+                                      isExpired
+                                        ? 'bg-red-500/5 text-red-700 border-red-500/20'
+                                        : 'bg-bg-secondary/60 text-text-primary border-border-light'
+                                    }`}
+                                  >
+                                    <span className="truncate max-w-[130px]" title={cert.name}>{cert.name}</span>
+                                    {cert.documentUrl ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenViewerForCertificate(user, cert._id)}
+                                        className="text-primary hover:text-primary-dark p-0.5 cursor-pointer shrink-0"
+                                        title="Buka sertifikat ini di Live Viewer"
+                                      >
+                                        <Eye size={12} />
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                              {user.competencies.length > 2 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPortfolio(user, 'competencies')}
+                                  className="text-[10px] font-bold text-text-muted hover:text-primary text-left pl-1 cursor-pointer"
+                                >
+                                  +{user.competencies.length - 2} sertifikat lainnya...
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-text-muted/60 italic text-[11px]">Belum ada</span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPortfolio(user, 'competencies')}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-bg-secondary hover:bg-border-light text-text-muted hover:text-primary transition-colors cursor-pointer"
+                              title="Tambah Sertifikat Baru"
+                            >
+                              <Plus size={11} />
+                              <span>Sertifikat</span>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+
                       <td className="py-3 px-4">
                         {user.emergencyContact?.name || user.emergencyContact?.phone ? (
                           <div>
@@ -1110,7 +1625,7 @@ export default function Users() {
                         <div className="flex items-center justify-end gap-1.5">
                           {!user.isVerified && (
                             <button 
-                              className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-success/30 text-success hover:bg-success hover:text-white"
+                              className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-success/30 text-success hover:bg-success hover:text-white cursor-pointer"
                               onClick={() => handleVerifyUser(user._id!)}
                               title="Verifikasi Manual"
                             >
@@ -1118,14 +1633,21 @@ export default function Users() {
                             </button>
                           )}
                           <button 
-                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-primary/30 text-primary hover:bg-primary hover:text-white"
+                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-primary/30 text-primary hover:bg-primary hover:text-white cursor-pointer"
+                            onClick={() => handleOpenPortfolio(user, 'education')}
+                            title="Kelola Pendidikan & Sertifikat"
+                          >
+                            <Award size={14} />
+                          </button>
+                          <button 
+                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-primary/30 text-primary hover:bg-primary hover:text-white cursor-pointer"
                             onClick={() => handleOpenEditUser(user)}
                             title="Edit Data"
                           >
                             <Edit size={14} />
                           </button>
                           <button 
-                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-danger/30 text-danger hover:bg-danger hover:text-white"
+                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-danger/30 text-danger hover:bg-danger hover:text-white cursor-pointer"
                             onClick={() => handleDeleteUser(user._id!)}
                             title="Hapus"
                           >
@@ -2278,6 +2800,39 @@ export default function Users() {
           </div>
         </div>
       )}
+
+      {/* ========================================== */}
+      {/* MODAL: USER PORTFOLIO & QUALIFICATIONS     */}
+      {/* ========================================== */}
+      {portfolioModalUser && (
+        <UserPortfolioModal
+          isOpen={Boolean(portfolioModalUser)}
+          onClose={() => setPortfolioModalUser(null)}
+          user={portfolioModalUser}
+          initialTab={portfolioModalTab}
+          onUserUpdated={(updatedUser) => {
+            setUsers(prev => prev.map(u => u._id === updatedUser._id ? updatedUser : u));
+            setPortfolioModalUser(updatedUser);
+          }}
+          onOpenViewer={(docs, initialIdx) => {
+            setViewerDocs(docs);
+            setViewerInitialIdx(initialIdx);
+            setViewerUserName(portfolioModalUser.fullName);
+            setIsViewerOpen(true);
+          }}
+        />
+      )}
+
+      {/* ========================================== */}
+      {/* MODAL: LIVE DOCUMENT VIEWER (PDF & IMAGES) */}
+      {/* ========================================== */}
+      <LiveDocumentViewer
+        isOpen={isViewerOpen}
+        onClose={() => setIsViewerOpen(false)}
+        documents={viewerDocs}
+        initialIndex={viewerInitialIdx}
+        userName={viewerUserName}
+      />
     </div>
   );
 }

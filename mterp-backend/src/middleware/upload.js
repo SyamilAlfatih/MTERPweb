@@ -17,7 +17,15 @@ const storage = multer.diskStorage({
       subDir = 'attendance-sessions';
     } else if (file.fieldname.includes('photo') || file.fieldname === 'photo') {
       subDir = 'photos';
-    } else if (file.fieldname.includes('Document') || file.fieldname.includes('Drawing')) {
+    } else if (
+      file.fieldname.includes('Document') || 
+      file.fieldname.includes('Drawing') ||
+      file.fieldname === 'certificate' ||
+      file.fieldname === 'educationProof' ||
+      file.fieldname === 'evidence' ||
+      file.fieldname === 'document' ||
+      file.fieldname === 'file'
+    ) {
       subDir = 'documents';
     }
     

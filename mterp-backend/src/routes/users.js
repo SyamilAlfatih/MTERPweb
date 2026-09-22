@@ -1,11 +1,30 @@
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
 const ExcelJS = require('exceljs');
 const { User } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 const router = express.Router();
+
+// Helper to safely delete file from disk
+const deleteLocalFile = (fileUrl) => {
+  if (!fileUrl) return;
+  try {
+    const cleanPath = fileUrl.replace(/\\/g, '/');
+    const uploadIndex = cleanPath.indexOf('uploads/');
+    if (uploadIndex !== -1) {
+      const relativePath = cleanPath.substring(uploadIndex);
+      const fullPath = path.join(__dirname, '../../', relativePath);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+      }
+    }
+  } catch (err) {
+    console.error('Error deleting local file:', err.message);
+  }
+};
 
 // All routes in this file require auth and owner role
 router.use(auth);
@@ -44,6 +63,22 @@ const EXPORT_COLUMNS = {
   },
   phone: { header: 'Phone', width: 16, get: (u) => u.phone || '' },
   address: { header: 'Address', width: 30, get: (u) => u.address || '' },
+  latestEducation: {
+    header: 'Pendidikan Terakhir',
+    width: 25,
+    get: (u) => {
+      if (!u.education?.level) return '';
+      const parts = [u.education.level];
+      if (u.education.major) parts.push(u.education.major);
+      if (u.education.institution) parts.push(u.education.institution);
+      return parts.join(' - ');
+    }
+  },
+  competencies: {
+    header: 'Sertifikasi / Kompetensi',
+    width: 32,
+    get: (u) => (u.competencies || []).map(c => c.name + (c.issuer ? ` (${c.issuer})` : '')).join(', ')
+  },
   emergencyContactName: {
     header: 'Kontak Darurat (Name)',
     width: 25,
@@ -748,6 +783,14 @@ router.put('/:id', async (req, res) => {
         accountName: paymentInfo.accountName ? paymentInfo.accountName.trim() : '',
       };
     }
+    if (req.body.education !== undefined) {
+      updateData.education = {
+        level: req.body.education.level || '',
+        institution: (req.body.education.institution || '').trim(),
+        major: (req.body.education.major || '').trim(),
+        graduationYear: (req.body.education.graduationYear || '').trim(),
+      };
+    }
 
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
@@ -762,6 +805,180 @@ router.put('/:id', async (req, res) => {
     res.json(updatedUser);
   } catch (error) {
     console.error('Update user error:', error);
+    res.status(500).json({ msg: 'Server error: ' + error.message });
+  }
+});
+
+// POST /api/users/:id/education - Update education info and optional proof document
+router.post('/:id/education', upload.single('file'), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      if (req.file) deleteLocalFile(req.file.path);
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    const { level, institution, major, graduationYear } = req.body;
+
+    if (!user.education) {
+      user.education = {};
+    }
+
+    if (level !== undefined) user.education.level = level;
+    if (institution !== undefined) user.education.institution = (institution || '').trim();
+    if (major !== undefined) user.education.major = (major || '').trim();
+    if (graduationYear !== undefined) user.education.graduationYear = (graduationYear || '').trim();
+
+    if (req.file) {
+      if (user.education.documentUrl) {
+        deleteLocalFile(user.education.documentUrl);
+      }
+      user.education.documentUrl = `/uploads/documents/${req.file.filename}`;
+      user.education.documentName = req.file.originalname;
+      user.education.documentSize = req.file.size;
+      user.education.uploadedAt = new Date();
+    }
+
+    await user.save();
+    res.json(user.toJSON());
+  } catch (error) {
+    if (req.file) deleteLocalFile(req.file.path);
+    console.error('Update education error:', error);
+    res.status(500).json({ msg: 'Server error: ' + error.message });
+  }
+});
+
+// DELETE /api/users/:id/education/proof - Remove education proof file
+router.delete('/:id/education/proof', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    if (user.education?.documentUrl) {
+      deleteLocalFile(user.education.documentUrl);
+      user.education.documentUrl = '';
+      user.education.documentName = '';
+      user.education.documentSize = 0;
+      user.education.uploadedAt = null;
+      await user.save();
+    }
+
+    res.json(user.toJSON());
+  } catch (error) {
+    console.error('Delete education proof error:', error);
+    res.status(500).json({ msg: 'Server error: ' + error.message });
+  }
+});
+
+// POST /api/users/:id/competencies - Add a competency certificate
+router.post('/:id/competencies', upload.single('file'), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      if (req.file) deleteLocalFile(req.file.path);
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    const { name, issuer, certificateNumber, issueDate, expiryDate } = req.body;
+
+    if (!name || !name.trim()) {
+      if (req.file) deleteLocalFile(req.file.path);
+      return res.status(400).json({ msg: 'Nama sertifikat / kompetensi wajib diisi' });
+    }
+
+    const newCert = {
+      name: name.trim(),
+      issuer: (issuer || '').trim(),
+      certificateNumber: (certificateNumber || '').trim(),
+      issueDate: issueDate ? new Date(issueDate) : null,
+      expiryDate: expiryDate ? new Date(expiryDate) : null,
+      documentUrl: req.file ? `/uploads/documents/${req.file.filename}` : '',
+      documentName: req.file ? req.file.originalname : '',
+      documentSize: req.file ? req.file.size : 0,
+      uploadedAt: req.file ? new Date() : null,
+    };
+
+    if (!user.competencies) {
+      user.competencies = [];
+    }
+    user.competencies.push(newCert);
+
+    await user.save();
+    res.status(201).json(user.toJSON());
+  } catch (error) {
+    if (req.file) deleteLocalFile(req.file.path);
+    console.error('Add competency certificate error:', error);
+    res.status(500).json({ msg: 'Server error: ' + error.message });
+  }
+});
+
+// PUT /api/users/:id/competencies/:certId - Update a competency certificate
+router.put('/:id/competencies/:certId', upload.single('file'), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      if (req.file) deleteLocalFile(req.file.path);
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    const cert = user.competencies.id(req.params.certId);
+    if (!cert) {
+      if (req.file) deleteLocalFile(req.file.path);
+      return res.status(404).json({ msg: 'Certificate not found' });
+    }
+
+    const { name, issuer, certificateNumber, issueDate, expiryDate } = req.body;
+
+    if (name !== undefined) cert.name = name.trim();
+    if (issuer !== undefined) cert.issuer = (issuer || '').trim();
+    if (certificateNumber !== undefined) cert.certificateNumber = (certificateNumber || '').trim();
+    if (issueDate !== undefined) cert.issueDate = issueDate ? new Date(issueDate) : null;
+    if (expiryDate !== undefined) cert.expiryDate = expiryDate ? new Date(expiryDate) : null;
+
+    if (req.file) {
+      if (cert.documentUrl) {
+        deleteLocalFile(cert.documentUrl);
+      }
+      cert.documentUrl = `/uploads/documents/${req.file.filename}`;
+      cert.documentName = req.file.originalname;
+      cert.documentSize = req.file.size;
+      cert.uploadedAt = new Date();
+    }
+
+    await user.save();
+    res.json(user.toJSON());
+  } catch (error) {
+    if (req.file) deleteLocalFile(req.file.path);
+    console.error('Update competency certificate error:', error);
+    res.status(500).json({ msg: 'Server error: ' + error.message });
+  }
+});
+
+// DELETE /api/users/:id/competencies/:certId - Delete a competency certificate
+router.delete('/:id/competencies/:certId', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    const cert = user.competencies.id(req.params.certId);
+    if (!cert) {
+      return res.status(404).json({ msg: 'Certificate not found' });
+    }
+
+    if (cert.documentUrl) {
+      deleteLocalFile(cert.documentUrl);
+    }
+
+    cert.deleteOne();
+    await user.save();
+
+    res.json(user.toJSON());
+  } catch (error) {
+    console.error('Delete competency certificate error:', error);
     res.status(500).json({ msg: 'Server error: ' + error.message });
   }
 });

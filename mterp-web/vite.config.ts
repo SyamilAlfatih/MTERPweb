@@ -81,7 +81,7 @@ export default defineConfig({
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-charts': ['chart.js', 'react-chartjs-2', 'recharts'],
-          'vendor-pdf': ['jspdf', 'jspdf-autotable'],
+          'vendor-pdf': ['jspdf', 'jspdf-autotable', 'pdfjs-dist'],
           'vendor-ui': ['lucide-react', 'react-photo-view', 'qrcode'],
           'vendor-anim': ['gsap'],
           'vendor-i18n': ['i18next', 'react-i18next', 'i18next-browser-languagedetector', 'i18next-http-backend'],
