@@ -86,6 +86,12 @@ export default defineConfig({
           'vendor-anim': ['gsap'],
           'vendor-i18n': ['i18next', 'react-i18next', 'i18next-browser-languagedetector', 'i18next-http-backend'],
         },
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name && assetInfo.name.endsWith('.mjs')) {
+            return 'assets/[name]-[hash].js';
+          }
+          return 'assets/[name]-[hash][extname]';
+        },
       },
     },
     chunkSizeWarningLimit: 1500,
