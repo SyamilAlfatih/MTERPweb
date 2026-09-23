@@ -2,6 +2,18 @@ const express = require('express');
 const { Project, Supply, DailyReport, MaterialLog, ProjectReport } = require('../models');
 const bcrypt = require('bcryptjs');
 const { auth, authorize } = require('../middleware/auth');
+const apiKeyAuth = require('../middleware/apiKeyAuth');
+
+// Middleware toleran: terima JWT Bearer ATAU X-API-Key
+const authOrApiKey = (req, res, next) => {
+  if (req.header('X-API-Key') || req.header('x-api-key')) {
+    return apiKeyAuth(req, res, () => {
+      req.user = { role: 'admin', isApiKey: true };
+      next();
+    });
+  }
+  return auth(req, res, next);
+};
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const ExcelJS = require('exceljs');
@@ -41,7 +53,8 @@ async function convertToWebP(filePath) {
 const router = express.Router();
 
 // GET /api/projects - Get all projects
-router.get('/', auth, async (req, res) => {
+// Accepts JWT Bearer token OR X-API-Key header (for external integrations like EnercoSafe)
+router.get('/', authOrApiKey, async (req, res) => {
   try {
     let query = {};
     
