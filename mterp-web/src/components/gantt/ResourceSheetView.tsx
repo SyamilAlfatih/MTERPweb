@@ -120,9 +120,9 @@ export const ResourceSheetView: React.FC<ResourceSheetViewProps> = ({
   // ── Inline cell renderers ──────────────────────────────────────────────────
 
   /** Text cell – double-click to edit */
-  const TextCell = ({
-    res, field, className = '', placeholder = '—',
-  }: { res: ProjectResource; field: string; className?: string; placeholder?: string }) => {
+  const renderTextCell = (
+    res: ProjectResource, field: string, className = '', placeholder = '—'
+  ) => {
     const isEditing = editingCell?.id === res._id && editingCell?.field === field;
     const val = (res as any)[field];
     if (isEditing) {
@@ -150,9 +150,9 @@ export const ResourceSheetView: React.FC<ResourceSheetViewProps> = ({
   };
 
   /** Number cell – double-click to edit */
-  const NumberCell = ({
-    res, field, suffix = '', prefix = '',
-  }: { res: ProjectResource; field: string; suffix?: string; prefix?: string }) => {
+  const renderNumberCell = (
+    res: ProjectResource, field: string, suffix = '', prefix = ''
+  ) => {
     const isEditing = editingCell?.id === res._id && editingCell?.field === field;
     const raw = (res as any)[field] as number | undefined;
     if (isEditing) {
@@ -183,9 +183,9 @@ export const ResourceSheetView: React.FC<ResourceSheetViewProps> = ({
   };
 
   /** Select/dropdown cell */
-  const SelectCell = ({
-    res, field, options, className = '',
-  }: { res: ProjectResource; field: string; options: readonly string[]; className?: string }) => {
+  const renderSelectCell = (
+    res: ProjectResource, field: string, options: readonly string[], className = ''
+  ) => {
     const isEditing = editingCell?.id === res._id && editingCell?.field === field;
     const val = (res as any)[field] as string;
     if (isEditing) {
@@ -408,7 +408,7 @@ export const ResourceSheetView: React.FC<ResourceSheetViewProps> = ({
                             ⚠ Over
                           </span>
                         )}
-                        <TextCell res={res} field="name" />
+                        {renderTextCell(res, "name")}
                       </div>
                     </td>
 
@@ -447,42 +447,42 @@ export const ResourceSheetView: React.FC<ResourceSheetViewProps> = ({
 
                     {/* Initials */}
                     <td className="p-2 text-center border-r border-slate-200">
-                      <TextCell res={res} field="initials" placeholder={res.name.slice(0, 2).toUpperCase()} className="text-center font-mono" />
+                      {renderTextCell(res, "initials", "text-center font-mono", res.name.slice(0, 2).toUpperCase())}
                     </td>
 
                     {/* Material Label */}
                     <td className="p-2 border-r border-slate-200">
-                      <TextCell res={res} field="materialLabel" placeholder="—" className="font-mono" />
+                      {renderTextCell(res, "materialLabel", "font-mono", "—")}
                     </td>
 
                     {/* Group */}
                     <td className="p-2 text-slate-600 border-r border-slate-200">
-                      <TextCell res={res} field="group" placeholder="—" />
+                      {renderTextCell(res, "group", "", "—")}
                     </td>
 
                     {/* Max Units */}
                     <td className="p-2 text-right border-r border-slate-200">
-                      <NumberCell res={res} field="maxUnits" suffix="%" />
+                      {renderNumberCell(res, "maxUnits", "%")}
                     </td>
 
                     {/* Standard Rate */}
                     <td className="p-2 text-right border-r border-slate-200 text-slate-700">
-                      <NumberCell res={res} field="standardRate" prefix="Rp " />
+                      {renderNumberCell(res, "standardRate", "", "Rp ")}
                     </td>
 
                     {/* Overtime Rate */}
                     <td className="p-2 text-right border-r border-slate-200 text-slate-500">
-                      <NumberCell res={res} field="overtimeRate" prefix="Rp " />
+                      {renderNumberCell(res, "overtimeRate", "", "Rp ")}
                     </td>
 
                     {/* Accrue At */}
                     <td className="p-2 text-center border-r border-slate-200">
-                      <SelectCell res={res} field="accrueAt" options={ACCRUE_OPTIONS} className="text-center text-slate-600" />
+                      {renderSelectCell(res, "accrueAt", ACCRUE_OPTIONS, "text-center text-slate-600")}
                     </td>
 
                     {/* Base Calendar */}
                     <td className="p-2 border-r border-slate-200">
-                      <TextCell res={res} field="baseCalendar" placeholder="Standard" />
+                      {renderTextCell(res, "baseCalendar", "", "Standard")}
                     </td>
 
                     {/* Actions */}

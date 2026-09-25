@@ -1,8 +1,10 @@
 MTERP.md
 APIv1.md
-.agents
+/.agents
 skills-lock.json
 graphify-out
 mterp-backend/src/seed.js
 mterp-web/package-lock.json
 mterp-web/package.json
+ERP_SYSTEM_UI_UX_AUDIT_REPORT.md
+ERP_UI_UX_REMEDIATION_PLAN.md

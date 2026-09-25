@@ -733,6 +733,71 @@ router.put('/:id/invalidate', auth, authorize('owner', 'president_director', 'op
   }
 });
 
+// PUT /api/attendance/recap-table/adjust - Fast inline attendance adjustment for recap matrix
+router.put('/recap-table/adjust', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+  try {
+    const { userId, date, status, overtimeHours } = req.body;
+
+    if (!userId || !date) {
+      return res.status(400).json({ msg: 'userId and date are required' });
+    }
+
+    const validStatuses = ['Present', 'Late', 'Half-day', 'Absent', 'Permit'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ msg: `Status must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    const startOfTargetDay = parseDateParam(date, false);
+    const endOfTargetDay = parseDateParam(date, true);
+
+    if (!startOfTargetDay || !endOfTargetDay) {
+      return res.status(400).json({ msg: 'Invalid date format (YYYY-MM-DD expected)' });
+    }
+
+    let record = await Attendance.findOne({
+      userId,
+      date: { $gte: startOfTargetDay, $lte: endOfTargetDay },
+    });
+
+    const targetUser = await User.findById(userId).select('dailyRate');
+    const userDailyRate = targetUser?.dailyRate || 0;
+    const userHourlyRate = userDailyRate > 0 ? userDailyRate / 8 : 0;
+
+    if (record) {
+      if (status) record.status = status;
+      if (overtimeHours !== undefined) {
+        const otHours = Math.max(0, Number(overtimeHours) || 0);
+        const hourlyRate = record.hourlyRate || userHourlyRate;
+        record.overtimePay = Math.round(otHours * hourlyRate * (record.wageMultiplier || 1.5));
+      }
+      record.invalidatedBy = undefined;
+      record.invalidatedAt = undefined;
+      await record.save();
+    } else {
+      const otHours = Math.max(0, Number(overtimeHours) || 0);
+      record = new Attendance({
+        userId,
+        date: startOfTargetDay,
+        status: status || 'Present',
+        dailyRate: userDailyRate,
+        hourlyRate: userHourlyRate,
+        wageMultiplier: 1.5,
+        overtimePay: Math.round(otHours * userHourlyRate * 1.5),
+        paymentStatus: 'Unpaid',
+      });
+      await record.save();
+    }
+
+    res.json({
+      msg: 'Attendance adjusted successfully',
+      record,
+    });
+  } catch (error) {
+    console.error('Adjust attendance error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 // Legacy POST /api/attendance - for backwards compatibility
 
 router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) => {

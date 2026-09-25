@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Package, Plus, Search, CheckCircle2,
   Clock, XCircle, Trash2, Calendar, DollarSign,
-  User, Folder, AlertCircle
+  User, Folder, AlertCircle, LayoutGrid, List
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { createMaterialRequest, updateMaterialRequestStatus, deleteMaterialRequest } from '../api/api';
@@ -10,6 +10,7 @@ import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Input, EmptyState, LoadingOverlay } from '../components/shared';
 import { MaterialRequest, ProjectData } from '../types';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 const EMPTY_FORM = {
   item: '',
@@ -24,6 +25,21 @@ const EMPTY_FORM = {
 
 type FilterType = 'All' | 'Pending' | 'Approved' | 'Rejected';
 
+const DENSITY_CONFIG = {
+  compact: {
+    th: 'py-2 px-3 text-xs',
+    td: 'py-2 px-3 text-xs',
+  },
+  normal: {
+    th: 'py-3 px-3.5 text-xs',
+    td: 'py-2.5 px-3.5 text-xs',
+  },
+  comfortable: {
+    th: 'py-3.5 px-4 text-xs',
+    td: 'py-3.5 px-4 text-sm',
+  },
+};
+
 export default function Materials() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -34,6 +50,10 @@ export default function Materials() {
   // Filters & Search
   const [search, setSearch] = useState('');
   const [currentFilter, setCurrentFilter] = useState<FilterType>('All');
+  const [viewMode, setViewMode] = useState<'card' | 'table'>(() => {
+    return (localStorage.getItem('materials_view_mode') as 'card' | 'table') || 'table';
+  });
+  const [tableDensity, setTableDensity] = useState<'compact' | 'normal' | 'comfortable'>('normal');
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -45,6 +65,15 @@ export default function Materials() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [passphrase, setPassphrase] = useState('');
+
+  // Accessible Modal Refs
+  const addModalRef = useRef<HTMLDivElement>(null);
+  const rejectModalRef = useRef<HTMLDivElement>(null);
+  const approveModalRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(addModalRef, { isActive: showAddModal, onEscape: () => setShowAddModal(false) });
+  useFocusTrap(rejectModalRef, { isActive: !!rejectingId, onEscape: () => setRejectingId(null) });
+  useFocusTrap(approveModalRef, { isActive: !!approvingId, onEscape: () => setApprovingId(null) });
 
   const isAdmin = user?.role && ['owner', 'director', 'asset_admin'].includes(user.role.toLowerCase());
 
@@ -244,41 +273,259 @@ export default function Materials() {
             icon={Search}
           />
         </div>
-        <div className="flex gap-2 bg-bg-white p-1 rounded-lg border border-border-light overflow-x-auto max-w-full pb-1 max-sm:flex-nowrap">
-          {(['All', 'Pending', 'Approved', 'Rejected'] as FilterType[]).map(f => {
-            const labelMapping: Record<string, string> = {
-              'All': t('tools.filter.all'), // Reusing tools 'All'
-              'Pending': t('materials.stats.pending'),
-              'Approved': t('materials.stats.approved'),
-              'Rejected': t('materials.stats.rejected')
-            };
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Filter tabs */}
+          <div className="flex gap-1.5 bg-bg-white p-1 rounded-lg border border-border-light overflow-x-auto max-w-full pb-1 max-sm:flex-nowrap">
+            {(['All', 'Pending', 'Approved', 'Rejected'] as FilterType[]).map(f => {
+              const labelMapping: Record<string, string> = {
+                'All': t('tools.filter.all'), // Reusing tools 'All'
+                'Pending': t('materials.stats.pending'),
+                'Approved': t('materials.stats.approved'),
+                'Rejected': t('materials.stats.rejected')
+              };
 
-            return (
+              return (
+                <button
+                  key={f}
+                  className={`px-3 py-1.5 border-none bg-transparent rounded-md text-xs font-semibold text-text-secondary cursor-pointer transition-all duration-150 flex items-center gap-1.5 whitespace-nowrap hover:bg-bg-secondary hover:text-text-primary ${currentFilter === f ? '!bg-primary !text-white shadow-[0_2px_6px_rgba(37,99,235,0.2)]' : ''}`}
+                  onClick={() => setCurrentFilter(f)}
+                >
+                  {labelMapping[f]}
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-bg-tertiary text-text-muted ${currentFilter === f ? '!bg-white/20 !text-white' : ''}`}>
+                    {f === 'All' ? stats.Total : stats[f]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Density Control (only in table mode) */}
+          {viewMode === 'table' && (
+            <div className="flex items-center bg-bg-white border border-border-light rounded-lg p-0.5 shadow-2xs">
               <button
-                key={f}
-                className={`px-4 py-2 border-none bg-transparent rounded-md text-sm font-semibold text-text-secondary cursor-pointer transition-all duration-150 flex items-center gap-2 whitespace-nowrap hover:bg-bg-secondary hover:text-text-primary ${currentFilter === f ? '!bg-primary !text-white shadow-[0_2px_6px_rgba(37,99,235,0.2)]' : ''}`}
-                onClick={() => setCurrentFilter(f)}
+                type="button"
+                onClick={() => setTableDensity('compact')}
+                className={`px-2 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                  tableDensity === 'compact' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
+                }`}
+                title="Rapat (Compact)"
               >
-                {labelMapping[f]}
-                <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-bg-tertiary text-text-muted ${currentFilter === f ? '!bg-white/20 !text-white' : ''}`}>
-                  {f === 'All' ? stats.Total : stats[f]}
-                </span>
+                Rapat
               </button>
-            );
-          })}
+              <button
+                type="button"
+                onClick={() => setTableDensity('normal')}
+                className={`px-2 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                  tableDensity === 'normal' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
+                }`}
+                title="Standar (Normal)"
+              >
+                Standar
+              </button>
+              <button
+                type="button"
+                onClick={() => setTableDensity('comfortable')}
+                className={`px-2 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                  tableDensity === 'comfortable' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
+                }`}
+                title="Lapang (Comfortable)"
+              >
+                Lapang
+              </button>
+            </div>
+          )}
+
+          {/* View Mode Switcher */}
+          <div className="flex items-center bg-bg-white border border-border-light rounded-lg p-0.5 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => { setViewMode('table'); localStorage.setItem('materials_view_mode', 'table'); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-all cursor-pointer ${
+                viewMode === 'table' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
+              }`}
+              title="Tampilan Tabel Fiori"
+            >
+              <List size={14} />
+              <span className="hidden sm:inline">Tabel</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setViewMode('card'); localStorage.setItem('materials_view_mode', 'card'); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-all cursor-pointer ${
+                viewMode === 'card' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
+              }`}
+              title="Tampilan Kartu"
+            >
+              <LayoutGrid size={14} />
+              <span className="hidden sm:inline">Kartu</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* List */}
-      <div className="flex flex-col gap-4">
-        {filteredRequests.length === 0 ? (
-          <EmptyState
-            icon={Package}
-            title={t('materials.empty.title')}
-            description={search ? t('materials.empty.filtered', { search }) : t('materials.empty.default')}
-          />
-        ) : (
-          filteredRequests.map((req: MaterialRequest, index: number) => {
+      {/* Main Content: Table or Cards */}
+      {filteredRequests.length === 0 ? (
+        <EmptyState
+          icon={Package}
+          title={t('materials.empty.title')}
+          description={search ? t('materials.empty.filtered', { search }) : t('materials.empty.default')}
+        />
+      ) : viewMode === 'table' ? (
+        <div className="overflow-x-auto relative w-full rounded-xl border border-border-light bg-bg-white shadow-sm">
+          <table role="grid" aria-rowcount={filteredRequests.length} className="w-full text-left border-collapse min-w-[950px]">
+            <thead>
+              <tr role="row" className="bg-slate-900 text-white font-bold text-xs uppercase tracking-wider border-b border-slate-800">
+                <th role="columnheader" className={`sticky left-0 z-30 bg-slate-900 text-white font-mono tabular-nums text-left w-12 min-w-[48px] max-w-[48px] ${DENSITY_CONFIG[tableDensity].th}`}>
+                  #
+                </th>
+                <th role="columnheader" className={`sticky left-12 z-30 bg-slate-900 text-white text-left min-w-[220px] border-r border-slate-800 shadow-[4px_0_8px_-3px_rgba(0,0,0,0.3)] ${DENSITY_CONFIG[tableDensity].th}`}>
+                  Nama Barang & Keperluan
+                </th>
+                <th role="columnheader" className={`text-left min-w-[140px] ${DENSITY_CONFIG[tableDensity].th}`}>Proyek</th>
+                <th role="columnheader" className={`text-left min-w-[140px] ${DENSITY_CONFIG[tableDensity].th}`}>Pemohon</th>
+                <th role="columnheader" className={`text-right min-w-[100px] ${DENSITY_CONFIG[tableDensity].th}`}>Jumlah</th>
+                <th role="columnheader" className={`text-right min-w-[130px] ${DENSITY_CONFIG[tableDensity].th}`}>Estimasi Biaya</th>
+                <th role="columnheader" className={`text-center min-w-[100px] ${DENSITY_CONFIG[tableDensity].th}`}>Urgensi</th>
+                <th role="columnheader" className={`text-left min-w-[120px] ${DENSITY_CONFIG[tableDensity].th}`}>Tgl Butuh</th>
+                <th role="columnheader" className={`text-center min-w-[120px] ${DENSITY_CONFIG[tableDensity].th}`}>Status</th>
+                <th role="columnheader" className={`sticky right-0 z-30 bg-slate-900 text-white text-right min-w-[120px] border-l border-slate-800 shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.3)] ${DENSITY_CONFIG[tableDensity].th}`}>
+                  Aksi
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-light">
+              {filteredRequests.map((req: MaterialRequest, index: number) => {
+                const IconComponent = StatusIcon[req.status as keyof typeof StatusIcon] || Package;
+                const isRequester = typeof req.requestedBy === 'object' && req.requestedBy._id === (user as any)?._id;
+                
+                let statusPillClass = '';
+                if (req.status === 'Pending') {
+                  statusPillClass = 'bg-amber-100 text-amber-800 border-amber-200';
+                } else if (req.status === 'Approved') {
+                  statusPillClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                } else if (req.status === 'Rejected') {
+                  statusPillClass = 'bg-rose-100 text-rose-800 border-rose-200';
+                }
+
+                return (
+                  <tr role="row" aria-rowindex={index + 1} key={req._id} className="group hover:bg-slate-50/80 transition-colors">
+                    {/* Sticky 1: # */}
+                    <td className={`sticky left-0 z-10 bg-white group-hover:bg-slate-50 font-mono tabular-nums text-left font-bold text-text-muted w-12 min-w-[48px] max-w-[48px] border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                      {index + 1}
+                    </td>
+
+                    {/* Sticky 2: Nama Barang */}
+                    <td className={`sticky left-12 z-10 bg-white group-hover:bg-slate-50 text-left min-w-[220px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] border-b ${DENSITY_CONFIG[tableDensity].td}`}>
+                      <div className="font-bold text-text-primary flex items-center gap-1.5">
+                        <span className="truncate max-w-[180px]" title={req.item}>{req.item}</span>
+                        {req.urgency === 'High' && (
+                          <span className="inline-flex text-red-600 shrink-0" title="Urgensi Tinggi">
+                            <AlertCircle size={13} />
+                          </span>
+                        )}
+                      </div>
+                      {req.purpose && (
+                        <div className="text-[11px] text-text-muted truncate max-w-[180px]" title={req.purpose}>
+                          {req.purpose}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Proyek */}
+                    <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                      <span className="text-text-secondary font-medium truncate block max-w-[140px]" title={getPopulatedName(req.projectId, 'nama')}>
+                        {getPopulatedName(req.projectId, 'nama')}
+                      </span>
+                    </td>
+
+                    {/* Pemohon */}
+                    <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                      <span className="text-text-secondary font-medium truncate block max-w-[140px]" title={getPopulatedName(req.requestedBy, 'fullName')}>
+                        {getPopulatedName(req.requestedBy, 'fullName')}
+                      </span>
+                    </td>
+
+                    {/* Jumlah */}
+                    <td className={`text-right border-b border-border-light font-mono tabular-nums font-bold text-text-primary ${DENSITY_CONFIG[tableDensity].td}`}>
+                      {req.qty} <span className="text-xs font-normal text-text-muted">{req.unit || ''}</span>
+                    </td>
+
+                    {/* Estimasi Biaya */}
+                    <td className={`text-right border-b border-border-light font-mono tabular-nums font-bold text-text-primary ${DENSITY_CONFIG[tableDensity].td}`}>
+                      {req.costEstimate && typeof req.costEstimate === 'number' && req.costEstimate > 0 ? (
+                        formatRupiah(req.costEstimate)
+                      ) : (
+                        <span className="text-text-muted font-normal">—</span>
+                      )}
+                    </td>
+
+                    {/* Urgensi */}
+                    <td className={`text-center border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        req.urgency === 'High' ? 'bg-red-100 text-red-700' : req.urgency === 'Low' ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {req.urgency || 'Normal'}
+                      </span>
+                    </td>
+
+                    {/* Tgl Butuh */}
+                    <td className={`text-left border-b border-border-light text-text-secondary font-mono text-xs ${DENSITY_CONFIG[tableDensity].td}`}>
+                      {req.dateNeeded || '—'}
+                    </td>
+
+                    {/* Status */}
+                    <td className={`text-center border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${statusPillClass}`}>
+                        <IconComponent size={12} />
+                        {t(`materials.stats.${req.status.toLowerCase()}`)}
+                      </span>
+                    </td>
+
+                    {/* Sticky 3: Aksi */}
+                    <td className={`sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right min-w-[120px] border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] border-b ${DENSITY_CONFIG[tableDensity].td}`}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        {isAdmin && req.status === 'Pending' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateStatus(req._id!, 'Approved')}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors cursor-pointer"
+                              title={t('materials.actions.approve')}
+                            >
+                              <CheckCircle2 size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateStatus(req._id!, 'Rejected')}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200 transition-colors cursor-pointer"
+                              title={t('materials.actions.reject')}
+                            >
+                              <XCircle size={15} />
+                            </button>
+                          </>
+                        )}
+                        {isRequester && (req.status === 'Pending' || req.status === 'Rejected') && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRequest(req._id!, req.item)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-rose-100 hover:text-rose-600 transition-colors cursor-pointer"
+                            title={t('materials.actions.delete')}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        /* Card Grid View (existing) */
+        <div className="flex flex-col gap-4">
+          {filteredRequests.map((req: MaterialRequest, index: number) => {
             const IconComponent = StatusIcon[req.status as keyof typeof StatusIcon] || Package;
             const isRequester = typeof req.requestedBy === 'object' && req.requestedBy._id === (user as any)?._id;
             
@@ -411,16 +658,16 @@ export default function Materials() {
                 </div>
               </Card>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
 
       {/* Add Request Modal Form */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => setShowAddModal(false)}>
-          <div className="bg-bg-white rounded-xl w-full max-w-[500px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+          <div ref={addModalRef} role="dialog" aria-modal="true" aria-labelledby="modal-add-request-title" className="bg-bg-white rounded-xl w-full max-w-[500px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-border-light">
-              <h2 className="m-0 font-bold text-lg text-text-primary">{t('materials.modal.addTitle')}</h2>
+              <h2 id="modal-add-request-title" className="m-0 font-bold text-lg text-text-primary">{t('materials.modal.addTitle')}</h2>
               <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted flex hover:bg-bg-secondary hover:text-text-primary rounded-md" onClick={() => setShowAddModal(false)}>
                 <XCircle size={24} />
               </button>
@@ -544,9 +791,9 @@ export default function Materials() {
       {/* Rejection Modal */}
       {rejectingId && (
         <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => setRejectingId(null)}>
-          <div className="bg-bg-white rounded-xl w-full max-w-[500px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+          <div ref={rejectModalRef} role="dialog" aria-modal="true" aria-labelledby="modal-reject-request-title" className="bg-bg-white rounded-xl w-full max-w-[500px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-border-light">
-              <h2 className="m-0 font-bold text-lg text-text-primary">{t('materials.modal.rejectTitle')}</h2>
+              <h2 id="modal-reject-request-title" className="m-0 font-bold text-lg text-text-primary">{t('materials.modal.rejectTitle')}</h2>
               <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted flex hover:bg-bg-secondary hover:text-text-primary rounded-md" onClick={() => setRejectingId(null)}>
                 <XCircle size={24} />
               </button>
@@ -584,9 +831,9 @@ export default function Materials() {
       {/* Approval Modal */}
       {approvingId && (
         <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => setApprovingId(null)}>
-          <div className="bg-bg-white rounded-xl w-full max-w-[500px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+          <div ref={approveModalRef} role="dialog" aria-modal="true" aria-labelledby="modal-approve-request-title" className="bg-bg-white rounded-xl w-full max-w-[500px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-border-light">
-              <h2 className="m-0 font-bold text-lg text-emerald-700">{t('materials.modal.approveTitle', 'Approve Material Request')}</h2>
+              <h2 id="modal-approve-request-title" className="m-0 font-bold text-lg text-emerald-700">{t('materials.modal.approveTitle', 'Approve Material Request')}</h2>
               <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted flex hover:bg-bg-secondary hover:text-text-primary rounded-md" onClick={() => setApprovingId(null)}>
                 <XCircle size={24} />
               </button>

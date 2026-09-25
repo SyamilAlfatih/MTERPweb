@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
+import { useDataGridKeyboard } from '../hooks/useDataGridKeyboard';
 
 interface WorkerRecap {
   userId: string;
@@ -124,6 +125,75 @@ export default function AttendanceRecap() {
   useEffect(() => {
     api.get('/projects').then(res => setProjects(res.data)).catch(err => console.error(err));
   }, []);
+
+  const canEdit = !!user?.role && ['owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'].includes(user.role);
+
+  const STATUS_CYCLE = ['Present', 'Late', 'Half-day', 'Permit', 'Absent'] as const;
+
+  const handleCycleStatus = async (userId: string, date: string) => {
+    const targetWorker = workers.find((w) => w.userId === userId);
+    if (!targetWorker) return;
+    const currentStatus = targetWorker.days[date]?.status || 'Absent';
+    const nextIdx = (STATUS_CYCLE.indexOf(currentStatus as any) + 1) % STATUS_CYCLE.length;
+    const nextStatus = STATUS_CYCLE[nextIdx];
+
+    // Optimistic UI update
+    setWorkers((prevWorkers) =>
+      prevWorkers.map((w) => {
+        if (w.userId !== userId) return w;
+        const oldDay = w.days[date];
+        const newScore =
+          nextStatus === 'Present' ? 1 : nextStatus === 'Late' || nextStatus === 'Half-day' ? 0.5 : 0;
+        const oldScore = oldDay?.score || 0;
+        const scoreDiff = newScore - oldScore;
+        const updatedScore = Math.max(0, w.totalScore + scoreDiff);
+
+        return {
+          ...w,
+          days: {
+            ...w.days,
+            [date]: {
+              status: nextStatus,
+              score: newScore,
+              overtimeHours: oldDay?.overtimeHours || 0,
+            },
+          },
+          totalScore: updatedScore,
+          total: `${updatedScore % 1 === 0 ? updatedScore : updatedScore.toFixed(1)}/${dateColumns.length}`,
+        };
+      })
+    );
+
+    // Sync to backend
+    try {
+      await api.put('/attendance/recap-table/adjust', {
+        userId,
+        date,
+        status: nextStatus,
+      });
+    } catch (err) {
+      console.error('Failed to adjust attendance:', err);
+      fetchData(); // Rollback on error
+    }
+  };
+
+  const onCellActivate = (row: number, col: number) => {
+    if (!canEdit) return;
+    if (col >= 4 && col < 4 + dateColumns.length) {
+      const date = dateColumns[col - 4];
+      const worker = workers[row];
+      if (worker && date) {
+        handleCycleStatus(worker.userId, date);
+      }
+    }
+  };
+
+  // 2D Matrix Grid Keyboard Navigation
+  const gridColCount = 6 + dateColumns.length;
+  const { gridProps, getRowProps, getCellProps } = useDataGridKeyboard(workers.length, gridColCount, {
+    gridId: 'recap-matrix',
+    onActivate: onCellActivate,
+  });
 
   // Formatters
   const formatRp = (val: number) => `Rp ${new Intl.NumberFormat('id-ID').format(val)}`;
@@ -366,25 +436,25 @@ export default function AttendanceRecap() {
       {/* Main Table */}
       <div className="relative">
         <div id="recap-export-container" className="overflow-x-auto rounded-2xl border-2 border-border-light bg-bg-white shadow-sm">
-          <table className="w-full border-collapse min-w-[1000px]">
+          <table {...gridProps} className="w-full border-collapse min-w-[1000px] focus:outline-none">
             <thead>
-              <tr className="bg-bg-secondary border-b border-border-light">
-                <th className="sticky left-0 z-20 bg-bg-secondary p-4 text-left w-[50px]">
+              <tr role="row" className="bg-bg-secondary border-b border-border-light">
+                <th role="columnheader" className="sticky left-0 z-20 bg-bg-secondary p-4 text-left w-[50px]">
                   <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
                     {t('attendanceRecap.table.no')}
                   </span>
                 </th>
-                <th className="sticky left-[50px] z-20 bg-bg-secondary p-4 text-left w-[220px]">
+                <th role="columnheader" className="sticky left-[50px] z-20 bg-bg-secondary p-4 text-left w-[220px]">
                   <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
                     {t('attendanceRecap.table.name')}
                   </span>
                 </th>
-                <th className="p-4 text-left w-[140px]">
+                <th role="columnheader" className="p-4 text-left w-[140px]">
                   <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
                     {t('attendanceRecap.table.position')}
                   </span>
                 </th>
-                <th className="p-4 text-left w-[130px]">
+                <th role="columnheader" className="p-4 text-right w-[130px]">
                   <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
                     {t('attendanceRecap.table.dailyWage')}
                   </span>
@@ -394,7 +464,7 @@ export default function AttendanceRecap() {
                   const d = new Date(Date.UTC(y, m - 1, dNum));
                   const isSunday = d.getUTCDay() === 0;
                   return (
-                    <th key={dateStr} className="p-3 text-center w-[50px] min-w-[50px]">
+                    <th role="columnheader" key={dateStr} className="p-3 text-center w-[50px] min-w-[50px]">
                       <div className={`text-[9px] font-black leading-none mb-1 ${isSunday ? 'text-red-500' : 'text-text-muted opacity-60'}`}>
                         {formatWIBDate(d, { weekday: 'short' }).toUpperCase()}
                       </div>
@@ -404,12 +474,12 @@ export default function AttendanceRecap() {
                     </th>
                   );
                 })}
-                <th className="p-4 text-center w-[70px]">
+                <th role="columnheader" className="sticky right-[80px] z-20 bg-bg-secondary p-4 text-right w-[80px] shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
                   <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
                     {t('attendanceRecap.table.total')}
                   </span>
                 </th>
-                <th className="p-4 text-center w-[70px]">
+                <th role="columnheader" className="sticky right-0 z-20 bg-bg-secondary p-4 text-right w-[80px]">
                   <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">
                     OT Hrs
                   </span>
@@ -437,11 +507,11 @@ export default function AttendanceRecap() {
                 </tr>
               ) : (
                 workers.map((worker, idx) => (
-                  <tr key={worker.userId} className="hover:bg-bg-secondary/50 transition-colors group">
-                    <td className="sticky left-0 z-10 bg-bg-white group-hover:bg-bg-secondary/50 p-4 text-xs font-bold text-text-muted transition-colors">
+                  <tr key={worker.userId} {...getRowProps(idx)} className="hover:bg-bg-secondary/50 transition-colors group">
+                    <td {...getCellProps(idx, 0)} className="sticky left-0 z-10 bg-bg-white group-hover:bg-bg-secondary/50 p-4 text-xs font-bold text-text-muted transition-colors focus:ring-2 focus:ring-primary focus:outline-none">
                       {(idx + 1 + (page - 1) * 10).toString().padStart(2, '0')}
                     </td>
-                    <td className="sticky left-[50px] z-10 bg-bg-white group-hover:bg-bg-secondary/50 p-4 transition-colors">
+                    <td {...getCellProps(idx, 1)} className="sticky left-[50px] z-10 bg-bg-white group-hover:bg-bg-secondary/50 p-4 transition-colors focus:ring-2 focus:ring-primary focus:outline-none">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-xs font-black shrink-0">
                           {worker.initials}
@@ -451,40 +521,51 @@ export default function AttendanceRecap() {
                         </span>
                       </div>
                     </td>
-                    <td className="p-4">
+                    <td {...getCellProps(idx, 2)} className="p-4 focus:ring-2 focus:ring-primary focus:outline-none">
                       <span className="text-sm text-text-secondary font-medium">
                         {worker.position}
                       </span>
                     </td>
-                    <td className="p-4">
-                      <span className="text-sm font-bold text-text-primary tabular-nums">
+                    <td {...getCellProps(idx, 3)} className="p-4 text-right focus:ring-2 focus:ring-primary focus:outline-none">
+                      <span className="text-sm font-bold font-mono text-text-primary tabular-nums">
                         {formatRp(worker.dailyRate)}
                       </span>
                     </td>
-                    {dateColumns.map((date) => (
-                      <td key={date} className="p-2 text-center">
-                        <div className="flex flex-col items-center gap-0.5">
-                          {renderStatusIcon(worker.days[date])}
-                          {(worker.days[date]?.overtimeHours || 0) > 0 && (
-                            <span className="text-[9px] font-black text-amber-600 leading-none tabular-nums">
-                              +{worker.days[date]!.overtimeHours.toFixed(1)}h
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    ))}
-                    <td className="p-4 text-center">
-                      <span className="text-sm font-black text-primary tabular-nums">
+                    {dateColumns.map((date, dateIdx) => {
+                      const dayData = worker.days[date];
+                      return (
+                        <td
+                          key={date}
+                          {...getCellProps(idx, 4 + dateIdx)}
+                          className={`p-2 text-center focus:ring-2 focus:ring-primary focus:outline-none select-none transition-colors ${
+                            canEdit ? 'cursor-pointer hover:bg-primary/10 rounded' : ''
+                          }`}
+                          onClick={() => canEdit && handleCycleStatus(worker.userId, date)}
+                          title={canEdit ? 'Klik atau tekan Space/Enter untuk mengubah kehadiran' : undefined}
+                        >
+                          <div className="flex flex-col items-center gap-0.5">
+                            {renderStatusIcon(dayData)}
+                            {(dayData?.overtimeHours || 0) > 0 && (
+                              <span className="text-[9px] font-black font-mono text-amber-600 leading-none tabular-nums">
+                                +{dayData!.overtimeHours.toFixed(1)}h
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                    <td {...getCellProps(idx, 4 + dateColumns.length)} className="sticky right-[80px] z-10 bg-bg-white group-hover:bg-bg-secondary/50 p-4 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] transition-colors focus:ring-2 focus:ring-primary focus:outline-none">
+                      <span className="text-sm font-black font-mono text-primary tabular-nums">
                         {worker.total}
                       </span>
                     </td>
-                    <td className="p-4 text-center">
+                    <td {...getCellProps(idx, 5 + dateColumns.length)} className="sticky right-0 z-10 bg-bg-white group-hover:bg-bg-secondary/50 p-4 text-right transition-colors focus:ring-2 focus:ring-primary focus:outline-none">
                       {(worker.totalOvertimeHours || 0) > 0 ? (
-                        <span className="text-sm font-black text-amber-600 tabular-nums">
+                        <span className="text-sm font-black font-mono text-amber-600 tabular-nums">
                           {worker.totalOvertimeHours.toFixed(1)}h
                         </span>
                       ) : (
-                        <span className="text-xs text-text-muted opacity-40">—</span>
+                        <span className="text-xs text-text-muted opacity-40 font-mono">—</span>
                       )}
                     </td>
                   </tr>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AxiosError } from 'axios';
 import { 
   Users as UsersIcon, 
@@ -36,7 +36,12 @@ import {
   Eye,
   RotateCcw,
   ShieldCheck,
-  HeartHandshake
+  HeartHandshake,
+  Columns3,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { 
   getUsers, 
@@ -123,6 +128,47 @@ const EXPORTABLE_COLUMNS = [
   { key: 'createdAt', label: 'Tanggal Dibuat (Created At)' },
 ];
 
+type TableDensity = 'compact' | 'normal' | 'comfortable';
+
+interface DataTableColumn {
+  id: string;
+  label: string;
+  minWidth: string;
+}
+
+const DATA_TABLE_COLUMNS: DataTableColumn[] = [
+  { id: 'role', label: 'Role & Jabatan', minWidth: 'min-w-[140px]' },
+  { id: 'employment', label: 'Status Kerja', minWidth: 'min-w-[150px]' },
+  { id: 'bpjsTk', label: 'BPJS TK', minWidth: 'min-w-[160px]' },
+  { id: 'bpjsKes', label: 'BPJS Kesehatan', minWidth: 'min-w-[160px]' },
+  { id: 'education', label: 'Pendidikan Terakhir', minWidth: 'min-w-[180px]' },
+  { id: 'competencies', label: 'Kompetensi & Sertifikasi', minWidth: 'min-w-[220px]' },
+  { id: 'emergency', label: 'Kontak Darurat', minWidth: 'min-w-[180px]' },
+  { id: 'contact', label: 'Telepon / Email', minWidth: 'min-w-[170px]' },
+  { id: 'verification', label: 'Verifikasi', minWidth: 'min-w-[120px]' },
+];
+
+const DENSITY_CONFIG = {
+  compact: {
+    th: 'py-2 px-3 text-xs',
+    td: 'py-2 px-3 text-xs',
+    avatar: 'w-7 h-7 text-xs',
+    subText: 'text-[10px]',
+  },
+  normal: {
+    th: 'py-3 px-3.5 text-xs',
+    td: 'py-2.5 px-3.5 text-xs',
+    avatar: 'w-8 h-8 text-xs',
+    subText: 'text-[11px]',
+  },
+  comfortable: {
+    th: 'py-3.5 px-4 text-xs',
+    td: 'py-3.5 px-4 text-sm',
+    avatar: 'w-9 h-9 text-sm',
+    subText: 'text-xs',
+  },
+};
+
 export default function Users() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -133,6 +179,24 @@ export default function Users() {
   const [competencyFilter, setCompetencyFilter] = useState('');
   const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'newest' | 'oldest'>('name-asc');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
+
+  // Enterprise Table UX States
+  const [tableDensity, setTableDensity] = useState<TableDensity>('normal');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
+  const columnDropdownRef = useRef<HTMLDivElement>(null);
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
+    role: true,
+    employment: true,
+    bpjsTk: true,
+    bpjsKes: true,
+    education: true,
+    competencies: true,
+    emergency: true,
+    contact: true,
+    verification: true,
+  });
 
   // Portfolio & Live Document Viewer state
   const [portfolioModalUser, setPortfolioModalUser] = useState<User | null>(null);
@@ -372,6 +436,51 @@ export default function Users() {
         return 0;
       });
   }, [users, searchQuery, roleFilter, employmentFilter, educationFilter, competencyFilter, sortBy]);
+
+  // Reset pagination when search or filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, roleFilter, employmentFilter, educationFilter, competencyFilter, sortBy]);
+
+  // Click-outside listener for Column Visibility dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (columnDropdownRef.current && !columnDropdownRef.current.contains(event.target as Node)) {
+        setIsColumnDropdownOpen(false);
+      }
+    };
+    if (isColumnDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isColumnDropdownOpen]);
+
+  const totalPages = useMemo(() => {
+    if (pageSize === -1) return 1;
+    return Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  }, [filteredUsers.length, pageSize]);
+
+  const paginatedUsers = useMemo(() => {
+    if (pageSize === -1) return filteredUsers;
+    const start = (currentPage - 1) * pageSize;
+    return filteredUsers.slice(start, start + pageSize);
+  }, [filteredUsers, currentPage, pageSize]);
+
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const maxVisible = 5;
+    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    const end = Math.min(totalPages, start + maxVisible - 1);
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
+  }, [currentPage, totalPages]);
 
   // Handle Portfolio & Live Viewer Openers
   const handleOpenPortfolio = (user: User, tab: 'education' | 'competencies' = 'education') => {
@@ -1151,8 +1260,9 @@ export default function Users() {
         </Card>
       ) : viewMode === 'grid' ? (
         /* GRID / CARD VIEW */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredUsers.map((user) => {
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {paginatedUsers.map((user) => {
             const isDangerRole = ['owner', 'president_director', 'operational_director', 'director'].includes(user.role);
             const isWarningRole = ['asset_admin', 'admin_project'].includes(user.role);
             const isInfoRole = ['site_manager', 'supervisor', 'foreman'].includes(user.role);
@@ -1422,16 +1532,239 @@ export default function Users() {
             );
           })}
         </div>
+
+        {/* Grid View Pagination Footer */}
+        {filteredUsers.length > 0 && (
+          <Card className="!p-3.5 border-2 border-border-light flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-bg-white shadow-xs">
+            <div className="flex items-center gap-4">
+              <span className="text-text-muted font-bold">
+                Menampilkan <span className="font-mono tabular-nums font-black text-text-primary">{filteredUsers.length === 0 ? 0 : (pageSize === -1 ? 1 : (currentPage - 1) * pageSize + 1)}</span>
+                {' - '}
+                <span className="font-mono tabular-nums font-black text-text-primary">{pageSize === -1 ? filteredUsers.length : Math.min(currentPage * pageSize, filteredUsers.length)}</span>
+                {' '}dari{' '}
+                <span className="font-mono tabular-nums font-black text-text-primary">{filteredUsers.length}</span> pekerja
+              </span>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-text-muted font-bold text-[11px]">Baris:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="bg-white border border-border-light rounded-lg px-2 py-1 text-xs font-bold font-mono text-text-primary outline-none focus:border-primary cursor-pointer shadow-2xs"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={-1}>Semua</option>
+                </select>
+              </div>
+            </div>
+
+            {pageSize !== -1 && totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(1)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center bg-white border border-border-light text-text-secondary hover:text-text-primary hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-all shadow-2xs"
+                  title="Halaman Pertama"
+                >
+                  <ChevronsLeft size={14} />
+                </button>
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center bg-white border border-border-light text-text-secondary hover:text-text-primary hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-all shadow-2xs"
+                  title="Halaman Sebelumnya"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+
+                {pageNumbers.map(page => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-7 h-7 rounded-lg text-xs font-mono tabular-nums font-black transition-all cursor-pointer ${
+                      currentPage === page
+                        ? 'bg-primary text-white shadow-xs'
+                        : 'bg-white border border-border-light text-text-secondary hover:bg-slate-100 hover:text-text-primary shadow-2xs'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center bg-white border border-border-light text-text-secondary hover:text-text-primary hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-all shadow-2xs"
+                  title="Halaman Berikutnya"
+                >
+                  <ChevronRight size={14} />
+                </button>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center bg-white border border-border-light text-text-secondary hover:text-text-primary hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-all shadow-2xs"
+                  title="Halaman Terakhir"
+                >
+                  <ChevronsRight size={14} />
+                </button>
+              </div>
+            )}
+          </Card>
+        )}
+      </div>
       ) : (
         /* TABLE VIEW */
-        <Card className="overflow-hidden border-2 border-border-light shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
+        <Card className="overflow-hidden border-2 border-border-light shadow-sm flex flex-col bg-bg-white">
+          {/* Table Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-slate-50 border-b border-border-light">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-text-muted">
+                Total:{' '}
+                <span className="font-mono tabular-nums font-black text-text-primary">{filteredUsers.length}</span> pekerja
+                {filteredUsers.length !== users.length && (
+                  <span className="text-text-muted"> (difilter dari <span className="font-mono tabular-nums">{users.length}</span>)</span>
+                )}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Density control */}
+              <div className="flex items-center bg-white border border-border-light rounded-lg p-0.5 shadow-2xs">
+                <span className="text-[11px] font-bold text-text-muted px-2 select-none">Kerapatan:</span>
+                <button
+                  type="button"
+                  onClick={() => setTableDensity('compact')}
+                  className={`px-2 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                    tableDensity === 'compact' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                  title="Kerapatan Rapat (Compact)"
+                >
+                  Rapat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTableDensity('normal')}
+                  className={`px-2 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                    tableDensity === 'normal' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                  title="Kerapatan Standar (Normal)"
+                >
+                  Standar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTableDensity('comfortable')}
+                  className={`px-2 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                    tableDensity === 'comfortable' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                  title="Kerapatan Lapang (Comfortable)"
+                >
+                  Lapang
+                </button>
+              </div>
+
+              {/* Column selector */}
+              <div className="relative" ref={columnDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsColumnDropdownOpen(prev => !prev)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                    isColumnDropdownOpen 
+                      ? 'bg-slate-900 text-white border-slate-900' 
+                      : 'bg-white text-text-primary border-border-light hover:bg-slate-50'
+                  }`}
+                  title="Kelola Kolom yang Ditampilkan"
+                >
+                  <Columns3 size={14} />
+                  <span>Kolom</span>
+                  <span className="font-mono tabular-nums text-[10px] bg-primary/20 text-primary px-1.5 py-0.2 rounded font-black">
+                    {Object.values(visibleColumns).filter(Boolean).length}/{DATA_TABLE_COLUMNS.length}
+                  </span>
+                  <ChevronDown size={12} className={`transition-transform duration-200 ${isColumnDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isColumnDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-64 bg-white rounded-xl shadow-xl border-2 border-border-light p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-border-light">
+                      <span className="text-xs font-black text-text-primary uppercase tracking-wider">Tampilan Kolom</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allTrue: Record<string, boolean> = {};
+                            DATA_TABLE_COLUMNS.forEach(c => allTrue[c.id] = true);
+                            setVisibleColumns(allTrue);
+                          }}
+                          className="text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                        >
+                          Semua
+                        </button>
+                        <span className="text-text-muted text-[10px]">•</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const defaults: Record<string, boolean> = {};
+                            DATA_TABLE_COLUMNS.forEach(c => defaults[c.id] = true);
+                            setVisibleColumns(defaults);
+                          }}
+                          className="text-[10px] font-bold text-text-muted hover:text-text-primary cursor-pointer"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                      {DATA_TABLE_COLUMNS.map((col) => (
+                        <label
+                          key={col.id}
+                          className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs font-medium text-text-primary select-none transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={visibleColumns[col.id] !== false}
+                            onChange={(e) => {
+                              setVisibleColumns(prev => ({
+                                ...prev,
+                                [col.id]: e.target.checked
+                              }));
+                            }}
+                            className="rounded border-slate-300 text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer"
+                          />
+                          <span>{col.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Table Container with Sticky / Frozen Columns */}
+          <div className="overflow-x-auto relative w-full">
+            <table role="grid" aria-rowcount={paginatedUsers.length} className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-900 text-white font-black uppercase tracking-wider border-b border-slate-800">
-                  <th className="py-3.5 px-4 text-center w-12">No</th>
+                <tr role="row" className="bg-slate-900 text-white font-black uppercase tracking-wider border-b border-slate-800">
+                  {/* Sticky 1: # Left-aligned qualitative number */}
+                  <th role="columnheader" className={`sticky left-0 z-30 bg-slate-900 text-white font-mono tabular-nums text-left w-12 min-w-[48px] max-w-[48px] ${DENSITY_CONFIG[tableDensity].th}`}>
+                    #
+                  </th>
+
+                  {/* Sticky 2: Pekerja / Karyawan */}
                   <th 
-                    className="py-3.5 px-4 min-w-[220px] cursor-pointer select-none hover:text-primary transition-colors group"
+                    role="columnheader"
+                    className={`sticky left-12 z-30 bg-slate-900 text-white text-left min-w-[230px] border-r border-slate-800 shadow-[4px_0_8px_-3px_rgba(0,0,0,0.4)] cursor-pointer select-none hover:text-primary transition-colors group ${DENSITY_CONFIG[tableDensity].th}`}
                     onClick={() => setSortBy(prev => prev === 'name-asc' ? 'name-desc' : 'name-asc')}
                     title="Klik untuk mengubah urutan A-Z / Z-A"
                   >
@@ -1450,257 +1783,321 @@ export default function Users() {
                       )}
                     </div>
                   </th>
-                  <th className="py-3.5 px-4 min-w-[140px]">Role & Jabatan</th>
-                  <th className="py-3.5 px-4 min-w-[150px]">Status Kerja</th>
-                  <th className="py-3.5 px-4 min-w-[170px]">BPJS TK</th>
-                  <th className="py-3.5 px-4 min-w-[170px]">BPJS Kesehatan</th>
-                  <th className="py-3.5 px-4 min-w-[190px]">Pendidikan Terakhir</th>
-                  <th className="py-3.5 px-4 min-w-[240px]">Kompetensi & Sertifikasi</th>
-                  <th className="py-3.5 px-4 min-w-[190px]">Kontak Darurat</th>
-                  <th className="py-3.5 px-4 min-w-[170px]">Telepon / Email</th>
-                  <th className="py-3.5 px-4 min-w-[110px] text-center">Verifikasi</th>
-                  <th className="py-3.5 px-4 text-right min-w-[130px]">Aksi</th>
+
+                  {visibleColumns.role && (
+                    <th role="columnheader" className={`min-w-[140px] text-left ${DENSITY_CONFIG[tableDensity].th}`}>Role & Jabatan</th>
+                  )}
+                  {visibleColumns.employment && (
+                    <th role="columnheader" className={`min-w-[150px] text-left ${DENSITY_CONFIG[tableDensity].th}`}>Status Kerja</th>
+                  )}
+                  {visibleColumns.bpjsTk && (
+                    <th role="columnheader" className={`min-w-[160px] text-left ${DENSITY_CONFIG[tableDensity].th}`}>BPJS TK</th>
+                  )}
+                  {visibleColumns.bpjsKes && (
+                    <th role="columnheader" className={`min-w-[160px] text-left ${DENSITY_CONFIG[tableDensity].th}`}>BPJS Kesehatan</th>
+                  )}
+                  {visibleColumns.education && (
+                    <th role="columnheader" className={`min-w-[180px] text-left ${DENSITY_CONFIG[tableDensity].th}`}>Pendidikan Terakhir</th>
+                  )}
+                  {visibleColumns.competencies && (
+                    <th role="columnheader" className={`min-w-[220px] text-left ${DENSITY_CONFIG[tableDensity].th}`}>Kompetensi & Sertifikasi</th>
+                  )}
+                  {visibleColumns.emergency && (
+                    <th role="columnheader" className={`min-w-[180px] text-left ${DENSITY_CONFIG[tableDensity].th}`}>Kontak Darurat</th>
+                  )}
+                  {visibleColumns.contact && (
+                    <th role="columnheader" className={`min-w-[170px] text-left ${DENSITY_CONFIG[tableDensity].th}`}>Telepon / Email</th>
+                  )}
+                  {visibleColumns.verification && (
+                    <th role="columnheader" className={`min-w-[120px] text-left ${DENSITY_CONFIG[tableDensity].th}`}>Verifikasi</th>
+                  )}
+
+                  {/* Sticky 3: Aksi */}
+                  <th role="columnheader" className={`sticky right-0 z-30 bg-slate-900 text-white text-right min-w-[140px] border-l border-slate-800 shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.4)] ${DENSITY_CONFIG[tableDensity].th}`}>
+                    Aksi
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-light">
-                {filteredUsers.map((user, idx) => {
+                {paginatedUsers.map((user, idx) => {
+                  const rowNumber = (pageSize === -1 ? 0 : (currentPage - 1) * pageSize) + idx + 1;
                   const employmentConfig = EMPLOYMENT_TYPE_OPTIONS.find(
                     e => e.value === (user.employmentType || 'tetap')
                   ) || EMPLOYMENT_TYPE_OPTIONS[0];
 
                   return (
-                    <tr key={user._id} className="hover:bg-bg-secondary/40 transition-colors">
-                      <td className="py-3 px-4 text-center font-bold text-text-muted">{idx + 1}</td>
-                      <td className="py-3 px-4">
+                    <tr role="row" aria-rowindex={rowNumber} key={user._id} className="group hover:bg-slate-50/80 transition-colors">
+                      {/* Sticky 1: # Left-aligned with monospace tabular figures */}
+                      <td className={`sticky left-0 z-10 bg-white group-hover:bg-slate-50 font-mono tabular-nums text-left font-bold text-text-muted w-12 min-w-[48px] max-w-[48px] border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                        {rowNumber}
+                      </td>
+
+                      {/* Sticky 2: Pekerja / Karyawan */}
+                      <td className={`sticky left-12 z-10 bg-white group-hover:bg-slate-50 text-left min-w-[230px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] border-b ${DENSITY_CONFIG[tableDensity].td}`}>
                         <div className="flex items-center gap-2.5">
-                          <div className="w-9 h-9 rounded-lg bg-bg-secondary text-text-secondary flex items-center justify-center font-black text-sm shrink-0 border border-border-light overflow-hidden">
+                          <div className={`${DENSITY_CONFIG[tableDensity].avatar} rounded-lg bg-bg-secondary text-text-secondary flex items-center justify-center font-black shrink-0 border border-border-light overflow-hidden`}>
                             {user.profileImage ? (
                               <img src={getImageUrl(user.profileImage)} alt={user.fullName} className="w-full h-full object-cover" />
                             ) : (
                               <span>{user.fullName.charAt(0).toUpperCase()}</span>
                             )}
                           </div>
-                          <div>
-                            <div className="font-black text-sm text-text-primary">{user.fullName}</div>
-                            <div className="text-text-muted font-bold text-[11px]">@{user.username}</div>
+                          <div className="min-w-0">
+                            <div className="font-black text-text-primary truncate max-w-[160px]" title={user.fullName}>
+                              {user.fullName}
+                            </div>
+                            <div className={`text-text-muted font-bold truncate max-w-[160px] ${DENSITY_CONFIG[tableDensity].subText}`}>
+                              @{user.username}
+                            </div>
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="font-black text-text-primary capitalize">{user.role}</div>
-                        {user.position ? (
-                          <div className="text-[11px] font-bold text-primary">{user.position}</div>
-                        ) : (
-                          <div className="text-[11px] text-text-muted">-</div>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${employmentConfig.bg} ${employmentConfig.text} ${employmentConfig.border}`}>
-                          {employmentConfig.label}
-                        </span>
-                        {(user.contractStartDate || user.contractEndDate) && (
-                          <div className="text-[10px] text-text-secondary mt-1 font-bold">
-                            {user.contractStartDate ? new Date(user.contractStartDate).toLocaleDateString('id-ID') : '...'} - {user.contractEndDate ? new Date(user.contractEndDate).toLocaleDateString('id-ID') : 'Selesai'}
-                          </div>
-                        )}
-                      </td>
 
-                      {/* DATA COLUMN: BPJS KETENAGAKERJAAN (TK) */}
-                      <td className="py-3 px-4">
-                        {user.bpjsTk ? (
-                          <div className="flex items-center gap-1.5 font-mono font-bold text-slate-800 bg-emerald-500/10 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-500/20 text-[11px] w-fit">
-                            <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
-                            <span className="tracking-tight select-all">{user.bpjsTk}</span>
-                          </div>
-                        ) : (
-                          <span className="text-text-muted/60 italic text-[11px]">Belum terdaftar</span>
-                        )}
-                      </td>
+                      {/* Role & Jabatan */}
+                      {visibleColumns.role && (
+                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                          <div className="font-black text-text-primary capitalize">{user.role}</div>
+                          {user.position ? (
+                            <div className={`font-bold text-primary ${DENSITY_CONFIG[tableDensity].subText}`}>{user.position}</div>
+                          ) : (
+                            <div className={`text-text-muted ${DENSITY_CONFIG[tableDensity].subText}`}>-</div>
+                          )}
+                        </td>
+                      )}
 
-                      {/* DATA COLUMN: BPJS KESEHATAN */}
-                      <td className="py-3 px-4">
-                        {user.bpjsKesehatan ? (
-                          <div className="flex items-center gap-1.5 font-mono font-bold text-slate-800 bg-sky-500/10 text-sky-800 px-2.5 py-1 rounded-lg border border-sky-500/20 text-[11px] w-fit">
-                            <HeartHandshake size={13} className="text-sky-600 shrink-0" />
-                            <span className="tracking-tight select-all">{user.bpjsKesehatan}</span>
-                          </div>
-                        ) : (
-                          <span className="text-text-muted/60 italic text-[11px]">Belum terdaftar</span>
-                        )}
-                      </td>
+                      {/* Status Kerja */}
+                      {visibleColumns.employment && (
+                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${employmentConfig.bg} ${employmentConfig.text} ${employmentConfig.border}`}>
+                            {employmentConfig.label}
+                          </span>
+                          {(user.contractStartDate || user.contractEndDate) && (
+                            <div className={`font-mono tabular-nums text-text-secondary mt-1 font-bold ${DENSITY_CONFIG[tableDensity].subText}`}>
+                              {user.contractStartDate ? new Date(user.contractStartDate).toLocaleDateString('id-ID') : '...'} - {user.contractEndDate ? new Date(user.contractEndDate).toLocaleDateString('id-ID') : 'Selesai'}
+                            </div>
+                          )}
+                        </td>
+                      )}
 
-                      {/* DATA COLUMN 1: PENDIDIKAN TERAKHIR */}
-                      <td className="py-3 px-4">
-                        {user.education?.level ? (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-700 border border-indigo-500/20">
-                                {user.education.level}
-                              </span>
-                              {user.education.graduationYear && (
-                                <span className="text-[10px] font-bold text-text-muted">
-                                  '{user.education.graduationYear.slice(-2)}
+                      {/* BPJS TK */}
+                      {visibleColumns.bpjsTk && (
+                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                          {user.bpjsTk ? (
+                            <div className="flex items-center gap-1.5 font-mono tabular-nums font-bold text-slate-800 bg-emerald-500/10 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-500/20 text-[11px] w-fit">
+                              <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
+                              <span className="tracking-tight select-all">{user.bpjsTk}</span>
+                            </div>
+                          ) : (
+                            <span className="text-text-muted/60 italic text-[11px]">Belum terdaftar</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* BPJS Kesehatan */}
+                      {visibleColumns.bpjsKes && (
+                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                          {user.bpjsKesehatan ? (
+                            <div className="flex items-center gap-1.5 font-mono tabular-nums font-bold text-slate-800 bg-sky-500/10 text-sky-800 px-2.5 py-1 rounded-lg border border-sky-500/20 text-[11px] w-fit">
+                              <HeartHandshake size={13} className="text-sky-600 shrink-0" />
+                              <span className="tracking-tight select-all">{user.bpjsKesehatan}</span>
+                            </div>
+                          ) : (
+                            <span className="text-text-muted/60 italic text-[11px]">Belum terdaftar</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Pendidikan Terakhir */}
+                      {visibleColumns.education && (
+                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                          {user.education?.level ? (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-700 border border-indigo-500/20">
+                                  {user.education.level}
                                 </span>
-                              )}
-                            </div>
-
-                            {(user.education.major || user.education.institution) && (
-                              <div className="text-[11px] font-bold text-text-primary truncate max-w-[180px]" title={`${user.education.major || ''} ${user.education.institution ? '• ' + user.education.institution : ''}`}>
-                                {user.education.major || user.education.institution}
+                                {user.education.graduationYear && (
+                                  <span className={`font-mono tabular-nums font-bold text-text-muted ${DENSITY_CONFIG[tableDensity].subText}`}>
+                                    '{user.education.graduationYear.slice(-2)}
+                                  </span>
+                                )}
                               </div>
-                            )}
 
-                            {user.education.documentUrl ? (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenViewerForEducation(user)}
-                                className="inline-flex items-center gap-1 text-[10px] font-black text-primary hover:text-primary-dark hover:underline bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20 transition-all cursor-pointer"
-                                title="Buka bukti ijazah di Live Viewer"
-                              >
-                                <Eye size={11} />
-                                <span>Lihat Ijazah</span>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenPortfolio(user, 'education')}
-                                className="inline-flex items-center gap-1 text-[10px] font-bold text-text-muted hover:text-primary hover:underline cursor-pointer"
-                                title="Unggah bukti kelulusan / ijazah"
-                              >
-                                <Plus size={11} />
-                                <span>Unggah Bukti</span>
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-text-muted/60 italic text-[11px]">Belum dicatat</span>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenPortfolio(user, 'education')}
-                              className="w-5 h-5 rounded bg-bg-secondary hover:bg-border-light text-text-muted hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
-                              title="Catat Pendidikan & Bukti"
-                            >
-                              <Plus size={12} />
-                            </button>
-                          </div>
-                        )}
-                      </td>
+                              {(user.education.major || user.education.institution) && (
+                                <div className={`font-bold text-text-primary truncate max-w-[180px] ${DENSITY_CONFIG[tableDensity].subText}`} title={`${user.education.major || ''} ${user.education.institution ? '• ' + user.education.institution : ''}`}>
+                                  {user.education.major || user.education.institution}
+                                </div>
+                              )}
 
-                      {/* DATA COLUMN 2: KOMPETENSI & SERTIFIKASI */}
-                      <td className="py-3 px-4">
-                        {user.competencies && user.competencies.length > 0 ? (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
-                                <Award size={11} />
-                                <span>{user.competencies.length} Sertifikat</span>
-                              </span>
-
-                              <button
-                                type="button"
-                                onClick={() => handleOpenPortfolio(user, 'competencies')}
-                                className="text-[10px] font-bold text-text-muted hover:text-primary cursor-pointer hover:underline"
-                                title="Kelola sertifikat pekerja"
-                              >
-                                Kelola
-                              </button>
-                            </div>
-
-                            <div className="flex flex-col gap-1">
-                              {user.competencies.slice(0, 2).map((cert) => {
-                                const isExpired = cert.expiryDate && new Date(cert.expiryDate) < new Date();
-                                return (
-                                  <div 
-                                    key={cert._id || cert.name}
-                                    className={`flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${
-                                      isExpired
-                                        ? 'bg-red-500/5 text-red-700 border-red-500/20'
-                                        : 'bg-bg-secondary/60 text-text-primary border-border-light'
-                                    }`}
-                                  >
-                                    <span className="truncate max-w-[130px]" title={cert.name}>{cert.name}</span>
-                                    {cert.documentUrl ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenViewerForCertificate(user, cert._id)}
-                                        className="text-primary hover:text-primary-dark p-0.5 cursor-pointer shrink-0"
-                                        title="Buka sertifikat ini di Live Viewer"
-                                      >
-                                        <Eye size={12} />
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                );
-                              })}
-                              {user.competencies.length > 2 && (
+                              {user.education.documentUrl ? (
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenPortfolio(user, 'competencies')}
-                                  className="text-[10px] font-bold text-text-muted hover:text-primary text-left pl-1 cursor-pointer"
+                                  onClick={() => handleOpenViewerForEducation(user)}
+                                  className="inline-flex items-center gap-1 text-[10px] font-black text-primary hover:text-primary-dark hover:underline bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20 transition-all cursor-pointer"
+                                  title="Buka bukti ijazah di Live Viewer"
                                 >
-                                  +{user.competencies.length - 2} sertifikat lainnya...
+                                  <Eye size={11} />
+                                  <span>Lihat Ijazah</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPortfolio(user, 'education')}
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold text-text-muted hover:text-primary hover:underline cursor-pointer"
+                                  title="Unggah bukti kelulusan / ijazah"
+                                >
+                                  <Plus size={11} />
+                                  <span>Unggah Bukti</span>
                                 </button>
                               )}
                             </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-text-muted/60 italic text-[11px]">Belum ada</span>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenPortfolio(user, 'competencies')}
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-bg-secondary hover:bg-border-light text-text-muted hover:text-primary transition-colors cursor-pointer"
-                              title="Tambah Sertifikat Baru"
-                            >
-                              <Plus size={11} />
-                              <span>Sertifikat</span>
-                            </button>
-                          </div>
-                        )}
-                      </td>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-text-muted/60 italic text-[11px]">Belum dicatat</span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPortfolio(user, 'education')}
+                                className="w-5 h-5 rounded bg-bg-secondary hover:bg-border-light text-text-muted hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
+                                title="Catat Pendidikan & Bukti"
+                              >
+                                <Plus size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
 
-                      <td className="py-3 px-4">
-                        {user.emergencyContact?.name || user.emergencyContact?.phone ? (
-                          <div>
-                            <div className="font-black text-text-primary flex items-center gap-1.5">
-                              <span>{user.emergencyContact.name || '-'}</span>
-                              {user.emergencyContact.relationship && (
-                                <span className="bg-red-500/10 text-red-700 text-[10px] font-black px-1.5 py-0.2 rounded border border-red-500/20">
-                                  {user.emergencyContact.relationship}
+                      {/* Kompetensi & Sertifikasi */}
+                      {visibleColumns.competencies && (
+                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                          {user.competencies && user.competencies.length > 0 ? (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
+                                  <Award size={11} />
+                                  <span className="font-mono tabular-nums">{user.competencies.length}</span>
+                                  <span>Sertifikat</span>
                                 </span>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPortfolio(user, 'competencies')}
+                                  className="text-[10px] font-bold text-text-muted hover:text-primary cursor-pointer hover:underline"
+                                  title="Kelola sertifikat pekerja"
+                                >
+                                  Kelola
+                                </button>
+                              </div>
+
+                              <div className="flex flex-col gap-1">
+                                {user.competencies.slice(0, 2).map((cert) => {
+                                  const isExpired = cert.expiryDate && new Date(cert.expiryDate) < new Date();
+                                  return (
+                                    <div 
+                                      key={cert._id || cert.name}
+                                      className={`flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${
+                                        isExpired
+                                          ? 'bg-red-500/5 text-red-700 border-red-500/20'
+                                          : 'bg-bg-secondary/60 text-text-primary border-border-light'
+                                      }`}
+                                    >
+                                      <span className="truncate max-w-[130px]" title={cert.name}>{cert.name}</span>
+                                      {cert.documentUrl ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenViewerForCertificate(user, cert._id)}
+                                          className="text-primary hover:text-primary-dark p-0.5 cursor-pointer shrink-0"
+                                          title="Buka sertifikat ini di Live Viewer"
+                                        >
+                                          <Eye size={12} />
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                                {user.competencies.length > 2 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenPortfolio(user, 'competencies')}
+                                    className="text-[10px] font-bold text-text-muted hover:text-primary text-left pl-1 cursor-pointer"
+                                  >
+                                    +{user.competencies.length - 2} sertifikat lainnya...
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-text-muted/60 italic text-[11px]">Belum ada</span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPortfolio(user, 'competencies')}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-bg-secondary hover:bg-border-light text-text-muted hover:text-primary transition-colors cursor-pointer"
+                                title="Tambah Sertifikat Baru"
+                              >
+                                <Plus size={11} />
+                                <span>Sertifikat</span>
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Kontak Darurat */}
+                      {visibleColumns.emergency && (
+                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                          {user.emergencyContact?.name || user.emergencyContact?.phone ? (
+                            <div>
+                              <div className="font-black text-text-primary flex items-center gap-1.5">
+                                <span>{user.emergencyContact.name || '-'}</span>
+                                {user.emergencyContact.relationship && (
+                                  <span className="bg-red-500/10 text-red-700 text-[10px] font-black px-1.5 py-0.2 rounded border border-red-500/20">
+                                    {user.emergencyContact.relationship}
+                                  </span>
+                                )}
+                              </div>
+                              {user.emergencyContact.phone && (
+                                <a href={`tel:${user.emergencyContact.phone}`} className={`font-mono tabular-nums font-bold text-red-700 hover:underline ${DENSITY_CONFIG[tableDensity].subText}`}>
+                                  {user.emergencyContact.phone}
+                                </a>
                               )}
                             </div>
-                            {user.emergencyContact.phone && (
-                              <a href={`tel:${user.emergencyContact.phone}`} className="text-[11px] font-bold text-red-700 hover:underline">
-                                {user.emergencyContact.phone}
-                              </a>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-text-muted/60 italic text-[11px]">Belum dicatat</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        {user.phone && <div className="font-bold text-text-primary">{user.phone}</div>}
-                        {user.email && <div className="text-text-secondary text-[11px] truncate max-w-[160px]">{user.email}</div>}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        {user.isVerified ? (
-                          <span className="inline-flex items-center gap-1 text-success font-black text-[10px] uppercase bg-success-bg px-2 py-0.5 rounded border border-success/30">
-                            <CheckCircle size={13} strokeWidth={2.5} /> Terverifikasi
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-warning font-black text-[10px] uppercase bg-warning-bg px-2 py-0.5 rounded border border-warning/30">
-                            <ShieldAlert size={13} strokeWidth={2.5} /> Pending
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right">
+                          ) : (
+                            <span className="text-text-muted/60 italic text-[11px]">Belum dicatat</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Telepon / Email */}
+                      {visibleColumns.contact && (
+                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                          {user.phone && <div className="font-mono tabular-nums font-bold text-text-primary">{user.phone}</div>}
+                          {user.email && <div className={`text-text-secondary truncate max-w-[160px] ${DENSITY_CONFIG[tableDensity].subText}`}>{user.email}</div>}
+                          {!user.phone && !user.email && <span className="text-text-muted/60 italic text-[11px]">-</span>}
+                        </td>
+                      )}
+
+                      {/* Verifikasi (No center-align: left-aligned badge) */}
+                      {visibleColumns.verification && (
+                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                          {user.isVerified ? (
+                            <span className="inline-flex items-center gap-1 text-success font-black text-[10px] uppercase bg-success-bg px-2 py-0.5 rounded border border-success/30">
+                              <CheckCircle size={13} strokeWidth={2.5} /> Terverifikasi
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-warning font-black text-[10px] uppercase bg-warning-bg px-2 py-0.5 rounded border border-warning/30">
+                              <ShieldAlert size={13} strokeWidth={2.5} /> Pending
+                            </span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Sticky 3: Aksi */}
+                      <td className={`sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right min-w-[140px] border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] border-b ${DENSITY_CONFIG[tableDensity].td}`}>
                         <div className="flex items-center justify-end gap-1.5">
                           {!user.isVerified && (
                             <button 
-                              className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-success/30 text-success hover:bg-success hover:text-white cursor-pointer"
+                              className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-success/30 text-success hover:bg-success hover:text-white cursor-pointer transition-colors"
                               onClick={() => handleVerifyUser(user._id!)}
                               title="Verifikasi Manual"
                             >
@@ -1708,21 +2105,21 @@ export default function Users() {
                             </button>
                           )}
                           <button 
-                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-primary/30 text-primary hover:bg-primary hover:text-white cursor-pointer"
+                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-primary/30 text-primary hover:bg-primary hover:text-white cursor-pointer transition-colors"
                             onClick={() => handleOpenPortfolio(user, 'education')}
                             title="Kelola Pendidikan & Sertifikat"
                           >
                             <Award size={14} />
                           </button>
                           <button 
-                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-primary/30 text-primary hover:bg-primary hover:text-white cursor-pointer"
+                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-primary/30 text-primary hover:bg-primary hover:text-white cursor-pointer transition-colors"
                             onClick={() => handleOpenEditUser(user)}
                             title="Edit Data"
                           >
                             <Edit size={14} />
                           </button>
                           <button 
-                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-danger/30 text-danger hover:bg-danger hover:text-white cursor-pointer"
+                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-danger/30 text-danger hover:bg-danger hover:text-white cursor-pointer transition-colors"
                             onClick={() => handleDeleteUser(user._id!)}
                             title="Hapus"
                           >
@@ -1735,6 +2132,95 @@ export default function Users() {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Table Footer / Pagination */}
+          <div className="p-3.5 bg-slate-50 border-t border-border-light flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-4">
+              <span className="text-text-muted font-bold">
+                Menampilkan <span className="font-mono tabular-nums font-black text-text-primary">{filteredUsers.length === 0 ? 0 : (pageSize === -1 ? 1 : (currentPage - 1) * pageSize + 1)}</span>
+                {' - '}
+                <span className="font-mono tabular-nums font-black text-text-primary">{pageSize === -1 ? filteredUsers.length : Math.min(currentPage * pageSize, filteredUsers.length)}</span>
+                {' '}dari{' '}
+                <span className="font-mono tabular-nums font-black text-text-primary">{filteredUsers.length}</span> pekerja
+              </span>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-text-muted font-bold text-[11px]">Baris:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="bg-white border border-border-light rounded-lg px-2 py-1 text-xs font-bold font-mono text-text-primary outline-none focus:border-primary cursor-pointer shadow-2xs"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={-1}>Semua</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Pagination Controls */}
+            {pageSize !== -1 && totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(1)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center bg-white border border-border-light text-text-secondary hover:text-text-primary hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-all shadow-2xs"
+                  title="Halaman Pertama"
+                >
+                  <ChevronsLeft size={14} />
+                </button>
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center bg-white border border-border-light text-text-secondary hover:text-text-primary hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-all shadow-2xs"
+                  title="Halaman Sebelumnya"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+
+                {pageNumbers.map(page => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-7 h-7 rounded-lg text-xs font-mono tabular-nums font-black transition-all cursor-pointer ${
+                      currentPage === page
+                        ? 'bg-primary text-white shadow-xs'
+                        : 'bg-white border border-border-light text-text-secondary hover:bg-slate-100 hover:text-text-primary shadow-2xs'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center bg-white border border-border-light text-text-secondary hover:text-text-primary hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-all shadow-2xs"
+                  title="Halaman Berikutnya"
+                >
+                  <ChevronRight size={14} />
+                </button>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center bg-white border border-border-light text-text-secondary hover:text-text-primary hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none cursor-pointer transition-all shadow-2xs"
+                  title="Halaman Terakhir"
+                >
+                  <ChevronsRight size={14} />
+                </button>
+              </div>
+            )}
           </div>
         </Card>
       )}
@@ -2599,27 +3085,27 @@ export default function Users() {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-text-primary font-black uppercase tracking-wider border-b-2 border-border-light">
-                    <th className="py-2.5 px-3 w-10 text-center">#</th>
-                    <th className="py-2.5 px-3 min-w-[160px]">Nama Lengkap *</th>
-                    <th className="py-2.5 px-3 min-w-[130px]">Username *</th>
-                    <th className="py-2.5 px-3 min-w-[150px]">Email *</th>
-                    <th className="py-2.5 px-3 min-w-[120px]">Password *</th>
-                    <th className="py-2.5 px-3 min-w-[120px]">Role</th>
-                    <th className="py-2.5 px-3 min-w-[130px]">Status Kerja</th>
-                    <th className="py-2.5 px-3 min-w-[120px]">Jabatan</th>
-                    <th className="py-2.5 px-3 min-w-[130px]">BPJS TK</th>
-                    <th className="py-2.5 px-3 min-w-[130px]">BPJS Kesehatan</th>
-                    <th className="py-2.5 px-3 min-w-[140px]">Kontak Darurat (Nama)</th>
-                    <th className="py-2.5 px-3 min-w-[120px]">Kontak Darurat (HP)</th>
-                    <th className="py-2.5 px-3 min-w-[100px]">Hubungan</th>
-                    <th className="py-2.5 px-3 w-10"></th>
+                    <th className="py-2.5 px-3 w-12 text-left font-mono tabular-nums">#</th>
+                    <th className="py-2.5 px-3 min-w-[160px] text-left">Nama Lengkap *</th>
+                    <th className="py-2.5 px-3 min-w-[130px] text-left">Username *</th>
+                    <th className="py-2.5 px-3 min-w-[150px] text-left">Email *</th>
+                    <th className="py-2.5 px-3 min-w-[120px] text-left">Password *</th>
+                    <th className="py-2.5 px-3 min-w-[120px] text-left">Role</th>
+                    <th className="py-2.5 px-3 min-w-[130px] text-left">Status Kerja</th>
+                    <th className="py-2.5 px-3 min-w-[120px] text-left">Jabatan</th>
+                    <th className="py-2.5 px-3 min-w-[130px] text-left">BPJS TK</th>
+                    <th className="py-2.5 px-3 min-w-[130px] text-left">BPJS Kesehatan</th>
+                    <th className="py-2.5 px-3 min-w-[140px] text-left">Kontak Darurat (Nama)</th>
+                    <th className="py-2.5 px-3 min-w-[120px] text-left">Kontak Darurat (HP)</th>
+                    <th className="py-2.5 px-3 min-w-[100px] text-left">Hubungan</th>
+                    <th className="py-2.5 px-3 w-12 text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-light">
                   {bulkRows.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-2 px-2 text-center font-bold text-text-muted">{idx + 1}</td>
-                      <td className="py-2 px-2">
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-2 px-3 text-left font-mono tabular-nums font-bold text-text-muted">{idx + 1}</td>
+                      <td className="py-2 px-2 text-left">
                         <input 
                           type="text"
                           required
@@ -2629,7 +3115,7 @@ export default function Users() {
                           className="w-full px-2.5 py-1.5 border border-border-light rounded-lg font-bold text-xs bg-white outline-none focus:border-primary"
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <input 
                           type="text"
                           required
@@ -2639,7 +3125,7 @@ export default function Users() {
                           className="w-full px-2.5 py-1.5 border border-border-light rounded-lg font-bold text-xs bg-white outline-none focus:border-primary lowercase"
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <input 
                           type="email"
                           required
@@ -2649,7 +3135,7 @@ export default function Users() {
                           className="w-full px-2.5 py-1.5 border border-border-light rounded-lg font-bold text-xs bg-white outline-none focus:border-primary"
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <input 
                           type="text"
                           required
@@ -2659,7 +3145,7 @@ export default function Users() {
                           className="w-full px-2.5 py-1.5 border border-border-light rounded-lg font-mono text-xs bg-white outline-none focus:border-primary"
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <select
                           value={row.role}
                           onChange={(e) => updateBulkRow(idx, 'role', e.target.value)}
@@ -2670,7 +3156,7 @@ export default function Users() {
                           ))}
                         </select>
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <select
                           value={row.employmentType}
                           onChange={(e) => updateBulkRow(idx, 'employmentType', e.target.value)}
@@ -2681,7 +3167,7 @@ export default function Users() {
                           ))}
                         </select>
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <input 
                           type="text"
                           placeholder="Jabatan"
@@ -2690,57 +3176,57 @@ export default function Users() {
                           className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-bold bg-white outline-none focus:border-primary"
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <input 
                           type="text" 
                           placeholder="No BPJS TK"
                           value={row.bpjsTk}
                           onChange={(e) => updateBulkRow(idx, 'bpjsTk', e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-mono font-bold bg-white outline-none focus:border-primary"
+                          className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-mono tabular-nums font-bold bg-white outline-none focus:border-primary"
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <input 
                           type="text" 
                           placeholder="No BPJS Kes"
                           value={row.bpjsKesehatan}
                           onChange={(e) => updateBulkRow(idx, 'bpjsKesehatan', e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-mono font-bold bg-white outline-none focus:border-primary"
+                          className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-mono tabular-nums font-bold bg-white outline-none focus:border-primary"
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <input 
-                          type="text"
+                          type="text" 
                           placeholder="Nama Kontak Darurat"
                           value={row.emergencyContactName}
                           onChange={(e) => updateBulkRow(idx, 'emergencyContactName', e.target.value)}
                           className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-bold bg-white outline-none focus:border-primary"
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <input 
-                          type="text"
+                          type="text" 
                           placeholder="No HP Darurat"
                           value={row.emergencyContactPhone}
                           onChange={(e) => updateBulkRow(idx, 'emergencyContactPhone', e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-bold bg-white outline-none focus:border-primary"
+                          className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-mono tabular-nums font-bold bg-white outline-none focus:border-primary"
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 text-left">
                         <input 
-                          type="text"
+                          type="text" 
                           placeholder="Hubungan"
                           value={row.emergencyContactRel}
                           onChange={(e) => updateBulkRow(idx, 'emergencyContactRel', e.target.value)}
                           className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-bold bg-white outline-none focus:border-primary"
                         />
                       </td>
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-2 px-3 text-right">
                         <button
                           type="button"
                           disabled={bulkRows.length <= 1}
                           onClick={() => removeBulkRow(idx)}
-                          className="text-red-500 hover:text-red-700 disabled:opacity-20 cursor-pointer"
+                          className="text-red-500 hover:text-red-700 disabled:opacity-20 cursor-pointer inline-flex items-center justify-end"
                           title="Hapus Baris"
                         >
                           <Trash2 size={15} />

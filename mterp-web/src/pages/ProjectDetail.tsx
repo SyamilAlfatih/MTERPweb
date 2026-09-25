@@ -19,6 +19,7 @@ import { ProjectData, WorkItem } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
 import { getImageUrl } from '../utils/image';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /* ─── Types ─── */
 
@@ -251,6 +252,11 @@ export default function ProjectDetail() {
   const chartRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+  const deleteModalRef = useRef<HTMLDivElement>(null);
+  const editModalRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(deleteModalRef, { isActive: !!reportToDelete, onEscape: () => setReportToDelete(null) });
+  useFocusTrap(editModalRef, { isActive: !!editingReport, onEscape: () => setEditingReport(null) });
 
   const userRole = user?.role?.toLowerCase() || 'worker';
   const canSeeFinancials = ['owner', 'director', 'supervisor', 'asset_admin'].includes(userRole);
@@ -809,7 +815,7 @@ export default function ProjectDetail() {
             <DollarSign size={24} color="var(--success)" />
             <div className="flex flex-col">
               <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.budget')}</span>
-              <span className="text-base text-text-primary font-bold">{formatRupiah(budget)}</span>
+              <span className="text-base text-text-primary font-bold font-mono tabular-nums">{formatRupiah(budget)}</span>
             </div>
           </Card>
 
@@ -819,7 +825,7 @@ export default function ProjectDetail() {
                 <TrendingUp size={24} color="var(--warning)" />
                 <div className="flex flex-col">
                   <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.plannedCost')}</span>
-                  <span className="text-base text-text-primary font-bold">{formatRupiah(totalPlannedCost)}</span>
+                  <span className="text-base text-text-primary font-bold font-mono tabular-nums">{formatRupiah(totalPlannedCost)}</span>
                 </div>
               </Card>
 
@@ -827,7 +833,7 @@ export default function ProjectDetail() {
                 <BarChart3 size={24} color="var(--info, #3B82F6)" />
                 <div className="flex flex-col">
                   <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.actualCost')}</span>
-                  <span className="text-base text-text-primary font-bold">{formatRupiah(totalActualCost)}</span>
+                  <span className="text-base text-text-primary font-bold font-mono tabular-nums">{formatRupiah(totalActualCost)}</span>
                 </div>
               </Card>
             </>
@@ -1408,12 +1414,12 @@ export default function ProjectDetail() {
 
       {/* Delete Confirmation Modal */}
       {reportToDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-bg-primary rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setReportToDelete(null)}>
+          <div ref={deleteModalRef} role="dialog" aria-modal="true" aria-labelledby="modal-delete-report-title" className="bg-bg-primary rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500/10 text-red-500 mb-4 mx-auto">
               <AlertTriangle size={24} />
             </div>
-            <h3 className="text-xl font-bold text-center text-text-primary m-0 mb-2">Hapus Laporan?</h3>
+            <h3 id="modal-delete-report-title" className="text-xl font-bold text-center text-text-primary m-0 mb-2">Hapus Laporan?</h3>
             <p className="text-center text-text-secondary text-sm mb-6">
               Laporan harian ini akan dihapus permanen. Perlu diingat bahwa progres dari work item <b>TIDAK</b> akan dikembalikan (Audit Trail).
             </p>
@@ -1427,10 +1433,10 @@ export default function ProjectDetail() {
 
       {/* Revise Edit Modal */}
       {editingReport && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-bg-primary rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setEditingReport(null)}>
+          <div ref={editModalRef} role="dialog" aria-modal="true" aria-labelledby="modal-revise-report-title" className="bg-bg-primary rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-text-primary m-0">Revisi Laporan</h3>
+              <h3 id="modal-revise-report-title" className="text-xl font-bold text-text-primary m-0">Revisi Laporan</h3>
               <button onClick={() => setEditingReport(null)} className="p-2 rounded-full hover:bg-bg-secondary text-text-muted transition-colors border-none bg-transparent cursor-pointer">
                 <X size={20} />
               </button>

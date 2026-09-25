@@ -24,10 +24,15 @@ import {
     Briefcase,
     Search,
     Download,
+    LayoutGrid,
+    List,
+    CheckSquare,
+    Square,
 } from 'lucide-react';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Alert, Button } from '../components/shared';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { useTranslation } from 'react-i18next';
 import { exportSlipToPdf } from '../utils/exportSlipPdf';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
@@ -178,6 +183,29 @@ export default function SlipGaji() {
     const [passphrase, setPassphrase] = useState('');
     const [authorizing, setAuthorizing] = useState(false);
     const [passphraseError, setPassphraseError] = useState('');
+    const [isBatchAuth, setIsBatchAuth] = useState(false);
+
+    // View mode & selection state
+    const [viewMode, setViewMode] = useState<'board' | 'table'>(() => {
+        return (localStorage.getItem('payroll_view_mode') as 'board' | 'table') || 'table';
+    });
+    const [tableDensity, setTableDensity] = useState<'compact' | 'normal' | 'comfortable'>('normal');
+    const [selectedSlipIds, setSelectedSlipIds] = useState<string[]>([]);
+
+    const DENSITY_CONFIG = {
+        compact: { th: 'py-2 px-3 text-xs', td: 'py-2 px-3 text-xs' },
+        normal: { th: 'py-3 px-3.5 text-xs', td: 'py-2.5 px-3.5 text-xs' },
+        comfortable: { th: 'py-3.5 px-4 text-xs', td: 'py-3.5 px-4 text-sm' },
+    };
+
+    // Modal container refs for accessible focus trapping
+    const genModalRef = useRef<HTMLDivElement>(null);
+    const detailModalRef = useRef<HTMLDivElement>(null);
+    const authModalRef = useRef<HTMLDivElement>(null);
+
+    useFocusTrap(authModalRef, { isActive: authModal, onEscape: () => { setAuthModal(false); setPassphraseError(''); } });
+    useFocusTrap(detailModalRef, { isActive: detailModal && !authModal, onEscape: () => setDetailModal(false) });
+    useFocusTrap(genModalRef, { isActive: genModal && !authModal && !detailModal, onEscape: () => setGenModal(false) });
 
     /* ---- data loading ---- */
     const fetchSlips = useCallback(async () => {
@@ -295,13 +323,35 @@ export default function SlipGaji() {
         setAuthorizing(true);
         setPassphraseError('');
         try {
-            const res = await api.post(`/slipgaji/${authSlipId}/authorize`, { passphrase });
-            setAuthModal(false);
-            setPassphrase('');
-            setPassphraseError('');
-            setAlertData({ visible: true, type: 'success', title: t('slipGaji.messages.authSuccess'), message: t('slipGaji.messages.authSuccessDesc', { name: user?.fullName }) });
-            if (selectedSlip?._id === authSlipId) setSelectedSlip(res.data);
-            fetchSlips();
+            if (isBatchAuth) {
+                let successCount = 0;
+                let lastError = '';
+                for (const slipId of selectedSlipIds) {
+                    try {
+                        await api.post(`/slipgaji/${slipId}/authorize`, { passphrase });
+                        successCount++;
+                    } catch (err: any) {
+                        lastError = err?.response?.data?.msg || 'Gagal otorisasi salah satu slip';
+                    }
+                }
+                setAuthModal(false);
+                setPassphrase('');
+                setSelectedSlipIds([]);
+                if (successCount > 0) {
+                    setAlertData({ visible: true, type: 'success', title: 'Batch Otorisasi Berhasil', message: `${successCount} slip gaji berhasil diotorisasi.` });
+                } else {
+                    setAlertData({ visible: true, type: 'error', title: 'Batch Otorisasi Gagal', message: lastError });
+                }
+                fetchSlips();
+            } else {
+                const res = await api.post(`/slipgaji/${authSlipId}/authorize`, { passphrase });
+                setAuthModal(false);
+                setPassphrase('');
+                setPassphraseError('');
+                setAlertData({ visible: true, type: 'success', title: t('slipGaji.messages.authSuccess'), message: t('slipGaji.messages.authSuccessDesc', { name: user?.fullName }) });
+                if (selectedSlip?._id === authSlipId) setSelectedSlip(res.data);
+                fetchSlips();
+            }
         } catch (err: any) {
             const msg = err?.response?.data?.msg || t('slipGaji.messages.authErrorDesc');
             setPassphraseError(msg);
@@ -324,7 +374,20 @@ export default function SlipGaji() {
     };
 
     const openDetail = (slip: SlipData) => { setSelectedSlip(slip); setDetailModal(true); };
-    const openAuth = (slipId: string) => { setAuthSlipId(slipId); setPassphrase(''); setPassphraseError(''); setAuthModal(true); };
+    const openAuth = (slipId: string) => { 
+        setIsBatchAuth(false);
+        setAuthSlipId(slipId); 
+        setPassphrase(''); 
+        setPassphraseError(''); 
+        setAuthModal(true); 
+    };
+    const openBatchAuth = () => {
+        if (selectedSlipIds.length === 0) return;
+        setIsBatchAuth(true);
+        setPassphrase('');
+        setPassphraseError('');
+        setAuthModal(true);
+    };
     const canSign = (slip: SlipData) => {
         if (role === 'director' && !slip.authorization.directorPassphrase) return true;
         if (role === 'owner' && !slip.authorization.ownerPassphrase) return true;
@@ -357,7 +420,7 @@ export default function SlipGaji() {
     };
 
     return (
-        <div className="p-6 max-w-[1100px] mx-auto">
+        <div className="p-6 max-w-7xl mx-auto max-sm:p-3">
             <Alert
                 visible={alertData.visible}
                 type={alertData.type}
@@ -398,25 +461,74 @@ export default function SlipGaji() {
                 </button>
             </div>
 
-            {/* Search Bar */}
-            <div className="relative mb-4">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Cari nama pekerja..."
-                    className="w-full pl-9 pr-9 py-2 border border-border rounded-lg bg-bg-white text-sm text-text-primary outline-none transition-all focus:border-primary focus:shadow-[0_0_0_3px_rgba(30,58,138,0.1)] placeholder:text-text-muted"
-                />
-                {searchQuery && (
-                    <button
-                        onClick={() => setSearchQuery('')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-border-light text-text-muted hover:bg-border hover:text-text-primary transition-colors"
-                        title="Hapus pencarian"
-                    >
-                        <X size={12} />
-                    </button>
-                )}
+            {/* Search Bar + View Toggle */}
+            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                <div className="relative flex-1 min-w-[240px]">
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        placeholder="Cari nama pekerja..."
+                        className="w-full pl-9 pr-9 py-2 border border-border rounded-lg bg-bg-white text-sm text-text-primary outline-none transition-all focus:border-primary focus:shadow-[0_0_0_3px_rgba(30,58,138,0.1)] placeholder:text-text-muted"
+                    />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-border-light text-text-muted hover:bg-border hover:text-text-primary transition-colors"
+                            title="Hapus pencarian"
+                        >
+                            <X size={12} />
+                        </button>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {/* View mode toggle */}
+                    <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-lg border border-border-light">
+                        <button
+                            onClick={() => { setViewMode('table'); localStorage.setItem('payroll_view_mode', 'table'); }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                viewMode === 'table'
+                                    ? 'bg-bg-white text-primary shadow-sm'
+                                    : 'text-text-muted hover:text-text-primary'
+                            }`}
+                        >
+                            <List size={14} />
+                            <span>Tabel Verifikasi</span>
+                        </button>
+                        <button
+                            onClick={() => { setViewMode('board'); localStorage.setItem('payroll_view_mode', 'board'); }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                viewMode === 'board'
+                                    ? 'bg-bg-white text-primary shadow-sm'
+                                    : 'text-text-muted hover:text-text-primary'
+                            }`}
+                        >
+                            <LayoutGrid size={14} />
+                            <span>Papan Kanban</span>
+                        </button>
+                    </div>
+
+                    {/* Density toggle for table view */}
+                    {viewMode === 'table' && (
+                        <div className="flex items-center gap-1">
+                            {(['compact', 'normal', 'comfortable'] as const).map((density) => (
+                                <button
+                                    key={density}
+                                    onClick={() => setTableDensity(density)}
+                                    className={`px-2 py-1 text-xs font-medium rounded border transition-all ${
+                                        tableDensity === density
+                                            ? 'border-primary bg-primary/10 text-primary font-semibold'
+                                            : 'border-border-light bg-bg-white text-text-secondary hover:bg-bg-secondary'
+                                    }`}
+                                >
+                                    {density === 'compact' ? 'Rapat' : density === 'normal' ? 'Standar' : 'Lapang'}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Slips List — Two Column Layout */}
@@ -442,7 +554,7 @@ export default function SlipGaji() {
                 const draftSlips = slips.filter(s => s.status === 'draft' && matchesSearch(s));
                 const approvedSlips = slips.filter(s => (s.status === 'authorized' || s.status === 'issued') && matchesSearch(s));
 
-                const SlipCard = ({ slip }: { slip: SlipData }) => {
+                const renderSlipCard = (slip: SlipData) => {
                     const badge = STATUS_BADGE[slip.status] || STATUS_BADGE.draft;
                     return (
                         <Card key={slip._id} className="!p-4 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md" onClick={() => openDetail(slip)}>
@@ -479,11 +591,11 @@ export default function SlipGaji() {
                                 )}
                                 <div className="flex items-center gap-1 text-xs text-text-secondary">
                                     <Briefcase size={12} />
-                                    <span>{formatRp(slip.earnings.totalDailyWage)}</span>
+                                    <span className="font-mono tabular-nums">{formatRp(slip.earnings.totalDailyWage)}</span>
                                 </div>
                                 <div className="flex items-center gap-1 text-xs text-text-secondary ml-auto font-bold !text-primary !text-sm">
                                     <DollarSign size={12} />
-                                    <span>{formatRp(slip.earnings.netPay)}</span>
+                                    <span className="font-mono tabular-nums">{formatRp(slip.earnings.netPay)}</span>
                                 </div>
                             </div>
 
@@ -515,6 +627,231 @@ export default function SlipGaji() {
                     );
                 };
 
+                const matchingSlips = slips.filter(matchesSearch);
+                const signableSlips = matchingSlips.filter(canSign);
+                const allSignableSelected = signableSlips.length > 0 && signableSlips.every(s => selectedSlipIds.includes(s._id));
+
+                const toggleSelectAll = () => {
+                    if (allSignableSelected) {
+                        setSelectedSlipIds([]);
+                    } else {
+                        setSelectedSlipIds(signableSlips.map(s => s._id));
+                    }
+                };
+
+                const toggleSelectOne = (id: string) => {
+                    setSelectedSlipIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+                };
+
+                if (viewMode === 'table') {
+                    return (
+                        <div className="flex flex-col gap-4">
+                            <div className="bg-bg-white rounded-xl border border-border-light overflow-hidden shadow-sm">
+                                <div className="overflow-x-auto">
+                                    <table role="grid" aria-rowcount={matchingSlips.length} className="w-full border-collapse text-left">
+                                        <thead>
+                                            <tr role="row" className="bg-slate-50/80 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold text-xs">
+                                                {/* Select All Checkbox */}
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky left-0 z-20 bg-slate-50 w-10 text-center border-r border-border-light`}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={toggleSelectAll}
+                                                        className="flex items-center justify-center mx-auto text-text-muted hover:text-primary transition-colors cursor-pointer"
+                                                        title={allSignableSelected ? 'Batalkan pilihan' : 'Pilih semua yang bisa diotorisasi'}
+                                                    >
+                                                        {allSignableSelected ? (
+                                                            <CheckSquare size={16} className="text-primary" />
+                                                        ) : (
+                                                            <Square size={16} />
+                                                        )}
+                                                    </button>
+                                                </th>
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky left-10 z-20 bg-slate-50 w-10 text-center border-r border-border-light`}>#</th>
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky left-20 z-20 bg-slate-50 min-w-[200px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
+                                                    Pekerja & No. Slip
+                                                </th>
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[110px]`}>Status</th>
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px]`}>Kehadiran</th>
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-right`}>Upah Harian</th>
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-right`}>Bonus/OT</th>
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-right`}>Potongan</th>
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[140px] text-right`}>Gaji Bersih</th>
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[140px]`}>Otorisasi</th>
+                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky right-0 z-20 bg-slate-50 text-right w-28 border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Aksi</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border-light">
+                                            {matchingSlips.map((slip, index) => {
+                                                const badge = STATUS_BADGE[slip.status] || STATUS_BADGE.draft;
+                                                const isSelected = selectedSlipIds.includes(slip._id);
+                                                const eligible = canSign(slip);
+
+                                                return (
+                                                    <tr 
+                                                        role="row"
+                                                        aria-rowindex={index + 1}
+                                                        key={slip._id} 
+                                                        className={`hover:bg-slate-50/80 transition-colors group cursor-pointer ${isSelected ? 'bg-primary/5' : ''}`}
+                                                        onClick={() => openDetail(slip)}
+                                                    >
+                                                        {/* Row Checkbox */}
+                                                        <td 
+                                                            className={`${DENSITY_CONFIG[tableDensity].td} sticky left-0 z-10 bg-white group-hover:bg-slate-50 text-center border-r border-border-light ${isSelected ? '!bg-primary/5' : ''}`}
+                                                            onClick={(e) => { e.stopPropagation(); toggleSelectOne(slip._id); }}
+                                                        >
+                                                            {eligible ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className="flex items-center justify-center mx-auto text-text-muted hover:text-primary transition-colors cursor-pointer"
+                                                                >
+                                                                    {isSelected ? (
+                                                                        <CheckSquare size={16} className="text-primary" />
+                                                                    ) : (
+                                                                        <Square size={16} />
+                                                                    )}
+                                                                </button>
+                                                            ) : (
+                                                                <span className="text-border text-xs">•</span>
+                                                            )}
+                                                        </td>
+
+                                                        {/* Sticky # */}
+                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} sticky left-10 z-10 bg-white group-hover:bg-slate-50 text-center text-text-muted font-mono tabular-nums border-r border-border-light ${isSelected ? '!bg-primary/5' : ''}`}>
+                                                            {index + 1}
+                                                        </td>
+
+                                                        {/* Sticky Worker & Slip Number */}
+                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} sticky left-20 z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] ${isSelected ? '!bg-primary/5' : ''}`}>
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0" style={{ background: badge.bg, color: badge.color }}>
+                                                                    {slip.workerId?.fullName?.[0]?.toUpperCase() || 'W'}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <div className="font-semibold text-text-primary truncate">{slip.workerId?.fullName || t('slipGaji.card.worker')}</div>
+                                                                    <div className="text-[10px] text-text-muted font-mono">{slip.slipNumber}</div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Status Badge */}
+                                                        <td className={DENSITY_CONFIG[tableDensity].td}>
+                                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-[0.3px] whitespace-nowrap" style={{ color: badge.color, background: badge.bg }}>
+                                                                {t(`slipGaji.status.${badge.labelKey}`)}
+                                                            </span>
+                                                        </td>
+
+                                                        {/* Attendance */}
+                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-text-secondary whitespace-nowrap`}>
+                                                            <span>{slip.attendanceSummary.presentDays} hr</span>
+                                                            {(slip.attendanceSummary.totalOvertimeHours || 0) > 0 && (
+                                                                <span className="ml-1 text-amber-600 font-semibold">({slip.attendanceSummary.totalOvertimeHours.toFixed(1)}h OT)</span>
+                                                            )}
+                                                        </td>
+
+                                                        {/* Upah Harian */}
+                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums text-text-secondary`}>
+                                                            {formatRp(slip.earnings.totalDailyWage)}
+                                                        </td>
+
+                                                        {/* Bonus / OT */}
+                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums text-text-secondary`}>
+                                                            {formatRp((slip.earnings.bonus || 0) + (slip.earnings.totalOvertime || 0))}
+                                                        </td>
+
+                                                        {/* Potongan */}
+                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums text-danger font-medium`}>
+                                                            -{formatRp((slip.earnings.deductions || 0) + (slip.earnings.kasbonDeduction || 0))}
+                                                        </td>
+
+                                                        {/* Gaji Bersih */}
+                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums font-bold text-primary`}>
+                                                            {formatRp(slip.earnings.netPay)}
+                                                        </td>
+
+                                                        {/* Otorisasi */}
+                                                        <td className={DENSITY_CONFIG[tableDensity].td}>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className={`flex items-center gap-0.5 text-[10px] ${slip.authorization.directorPassphrase ? 'text-[#059669]' : 'text-text-muted'}`} title="Direktur">
+                                                                    <Shield size={11} />
+                                                                    <span>D</span>
+                                                                </div>
+                                                                <div className={`flex items-center gap-0.5 text-[10px] ${slip.authorization.ownerPassphrase ? 'text-[#059669]' : 'text-text-muted'}`} title="Owner">
+                                                                    <Shield size={11} />
+                                                                    <span>O</span>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Sticky Aksi */}
+                                                        <td 
+                                                            className={`${DENSITY_CONFIG[tableDensity].td} sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] ${isSelected ? '!bg-primary/5' : ''}`}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                {eligible && (
+                                                                    <button
+                                                                        onClick={() => openAuth(slip._id)}
+                                                                        className="p-1 rounded text-teal-600 hover:bg-teal-50 transition-colors"
+                                                                        title="Otorisasi Slip"
+                                                                    >
+                                                                        <Lock size={14} />
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => handleExportPdf(slip)}
+                                                                    className="p-1 rounded text-text-muted hover:text-primary hover:bg-primary-bg transition-colors"
+                                                                    title="Unduh PDF"
+                                                                >
+                                                                    <Download size={14} />
+                                                                </button>
+                                                                {slip.status === 'draft' && (
+                                                                    <button
+                                                                        onClick={() => handleDelete(slip._id)}
+                                                                        className="p-1 rounded text-danger hover:bg-red-50 transition-colors"
+                                                                        title="Hapus Draft"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Floating Batch Action Bar */}
+                            {selectedSlipIds.length > 0 && (
+                                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-4 border border-slate-700 animate-in fade-in slide-in-from-bottom-4">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-6 h-6 rounded-full bg-teal-500 text-white text-xs font-bold flex items-center justify-center">
+                                            {selectedSlipIds.length}
+                                        </span>
+                                        <span className="text-sm font-medium">Slip Terpilih</span>
+                                    </div>
+                                    <div className="h-4 w-px bg-slate-700" />
+                                    <button
+                                        onClick={() => setSelectedSlipIds([])}
+                                        className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
+                                    >
+                                        Batalkan
+                                    </button>
+                                    <button
+                                        onClick={openBatchAuth}
+                                        className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white text-xs font-bold rounded-lg shadow-md transition-all hover:scale-105 cursor-pointer"
+                                    >
+                                        <Shield size={14} />
+                                        <span>Otorisasi Sekaligus ({selectedSlipIds.length})</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    );
+                }
+
                 return (
                     <div className="grid grid-cols-2 gap-5 items-start">
                         {/* Draft Column */}
@@ -538,7 +875,7 @@ export default function SlipGaji() {
                                     </span>
                                 </div>
                             ) : (
-                                draftSlips.map(slip => <SlipCard key={slip._id} slip={slip} />)
+                                draftSlips.map(renderSlipCard)
                             )}
                         </div>
 
@@ -563,7 +900,7 @@ export default function SlipGaji() {
                                     </span>
                                 </div>
                             ) : (
-                                approvedSlips.map(slip => <SlipCard key={slip._id} slip={slip} />)
+                                approvedSlips.map(renderSlipCard)
                             )}
                         </div>
                     </div>
@@ -573,13 +910,13 @@ export default function SlipGaji() {
             {/* ===== Generate Modal ===== */}
             {genModal && (
                 <div className="modal-overlay" onClick={() => setGenModal(false)}>
-                    <div className="bg-bg-white rounded-xl w-[90%] max-w-[520px] max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div ref={genModalRef} role="dialog" aria-modal="true" aria-labelledby="modal-generate-title" className="bg-bg-white rounded-xl w-[90%] max-w-[520px] max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-3 px-5 pt-5 pb-0">
                             <div className="w-[42px] h-[42px] rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #6366F1, #818CF8)' }}>
                                 <Receipt size={20} color="white" />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-text-primary m-0">{t('slipGaji.modals.generate.title')}</h3>
+                                <h3 id="modal-generate-title" className="text-lg font-bold text-text-primary m-0">{t('slipGaji.modals.generate.title')}</h3>
                                 <p className="text-xs text-text-muted m-0">{t('slipGaji.modals.generate.desc')}</p>
                             </div>
                             <button className="ml-auto w-8 h-8 border-none bg-bg-secondary rounded-full cursor-pointer flex items-center justify-center text-text-muted transition-colors hover:bg-border" onClick={() => setGenModal(false)}><X size={18} /></button>
@@ -641,7 +978,7 @@ export default function SlipGaji() {
                                                     { label: 'Lembur', value: `${previewData.attendanceSummary.totalOvertimeHours.toFixed(1)}h`, color: '#7C3AED' },
                                                 ].map(stat => (
                                                     <div key={stat.label} className="text-center py-2 px-1 bg-bg-white rounded-lg border border-border-light">
-                                                        <span className="block text-base font-extrabold" style={{ color: stat.color }}>{stat.value}</span>
+                                                        <span className="block text-base font-extrabold font-mono tabular-nums" style={{ color: stat.color }}>{stat.value}</span>
                                                         <span className="block text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px] mt-0.5">{stat.label}</span>
                                                     </div>
                                                 ))}
@@ -651,37 +988,37 @@ export default function SlipGaji() {
                                             <div className="bg-bg-white rounded-lg border border-border-light p-3 flex flex-col gap-1">
                                                 <div className="flex justify-between items-center text-xs text-text-secondary py-0.5">
                                                     <span>Upah Harian ({previewData.attendanceSummary.presentDays + previewData.attendanceSummary.lateDays} hari × {formatRp(previewData.earnings.dailyRate)})</span>
-                                                    <span className="font-semibold">{formatRp(previewData.earnings.totalDailyWage)}</span>
+                                                    <span className="font-semibold font-mono tabular-nums text-right">{formatRp(previewData.earnings.totalDailyWage)}</span>
                                                 </div>
                                                 {previewData.earnings.totalOvertime > 0 && (
                                                     <div className="flex justify-between items-center text-xs text-text-secondary py-0.5">
                                                         <span>Lembur</span>
-                                                        <span className="font-semibold text-[#059669]">+{formatRp(previewData.earnings.totalOvertime)}</span>
+                                                        <span className="font-semibold font-mono tabular-nums text-right text-[#059669]">+{formatRp(previewData.earnings.totalOvertime)}</span>
                                                     </div>
                                                 )}
                                                 {genBonus > 0 && (
                                                     <div className="flex justify-between items-center text-xs text-text-secondary py-0.5">
                                                         <span>Bonus</span>
-                                                        <span className="font-semibold text-[#059669]">+{formatRp(genBonus)}</span>
+                                                        <span className="font-semibold font-mono tabular-nums text-right text-[#059669]">+{formatRp(genBonus)}</span>
                                                     </div>
                                                 )}
                                                 <div className="border-t border-dashed border-border-light my-1" />
                                                 {genDeductions > 0 && (
                                                     <div className="flex justify-between items-center text-xs text-text-secondary py-0.5">
                                                         <span>Potongan</span>
-                                                        <span className="font-semibold text-[#DC2626]">-{formatRp(genDeductions)}</span>
+                                                        <span className="font-semibold font-mono tabular-nums text-right text-[#DC2626]">-{formatRp(genDeductions)}</span>
                                                     </div>
                                                 )}
                                                 {kasbonPreview.length > 0 && (
                                                     <div className="flex justify-between items-center text-xs text-text-secondary py-0.5">
                                                         <span>Kasbon ({kasbonPreview.length} item)</span>
-                                                        <span className="font-semibold text-[#DC2626]">-{formatRp(kasbonPreview.reduce((s, k) => s + k.amount, 0))}</span>
+                                                        <span className="font-semibold font-mono tabular-nums text-right text-[#DC2626]">-{formatRp(kasbonPreview.reduce((s, k) => s + k.amount, 0))}</span>
                                                     </div>
                                                 )}
                                                 {/* Live net pay */}
                                                 <div className="flex justify-between items-center pt-2 border-t-2 border-text-primary mt-1">
                                                     <span className="text-sm font-bold text-text-primary uppercase tracking-[0.3px]">Estimasi Gaji Bersih</span>
-                                                    <span className="text-base font-extrabold text-primary">
+                                                    <span className="text-base font-extrabold font-mono tabular-nums text-right text-primary">
                                                         {formatRp(Math.max(0,
                                                             previewData.earnings.totalDailyWage +
                                                             previewData.earnings.totalOvertime +
@@ -706,7 +1043,7 @@ export default function SlipGaji() {
                                                                     <span className="text-xs font-semibold text-amber-800">{k.reason || 'Kasbon'}</span>
                                                                     <span className="text-[10px] text-amber-600">{formatWIBDate(k.createdAt, { day: 'numeric', month: 'short' })}</span>
                                                                 </div>
-                                                                <span className="text-sm font-bold text-red-600">-{formatRp(k.amount)}</span>
+                                                                <span className="text-sm font-bold font-mono tabular-nums text-right text-red-600">-{formatRp(k.amount)}</span>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -757,13 +1094,13 @@ export default function SlipGaji() {
             {/* ===== Detail Modal ===== */}
             {detailModal && selectedSlip && (
                 <div className="modal-overlay" onClick={() => setDetailModal(false)}>
-                    <div className="bg-bg-white rounded-xl w-[90%] max-w-[600px] max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div ref={detailModalRef} role="dialog" aria-modal="true" aria-labelledby="modal-detail-title" className="bg-bg-white rounded-xl w-[90%] max-w-[600px] max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-3 px-5 pt-5 pb-0">
                             <div className="w-[42px] h-[42px] rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #059669, #34D399)' }}>
                                 <FileText size={20} color="white" />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-text-primary m-0">{t('slipGaji.modals.detail.title')}</h3>
+                                <h3 id="modal-detail-title" className="text-lg font-bold text-text-primary m-0">{t('slipGaji.modals.detail.title')}</h3>
                                 <p className="text-xs text-text-muted m-0">{selectedSlip.slipNumber}</p>
                             </div>
                             <button className="ml-auto w-8 h-8 border-none bg-bg-secondary rounded-full cursor-pointer flex items-center justify-center text-text-muted transition-colors hover:bg-border" onClick={() => setDetailModal(false)}><X size={18} /></button>
@@ -807,32 +1144,32 @@ export default function SlipGaji() {
                             {/* Attendance Summary */}
                             <div className="grid grid-cols-3 gap-2">
                                 <div className="text-center p-3 bg-bg-secondary rounded-md">
-                                    <span className="block text-lg font-bold text-text-primary">{selectedSlip.attendanceSummary.totalDays}</span>
+                                    <span className="block text-lg font-bold font-mono tabular-nums text-text-primary">{selectedSlip.attendanceSummary.totalDays}</span>
                                     <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.totalDays')}</span>
                                 </div>
                                 <div className="text-center p-3 bg-bg-secondary rounded-md">
-                                    <span className="block text-lg font-bold text-[#059669]">{selectedSlip.attendanceSummary.presentDays}</span>
+                                    <span className="block text-lg font-bold font-mono tabular-nums text-[#059669]">{selectedSlip.attendanceSummary.presentDays}</span>
                                     <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.present')}</span>
                                 </div>
                                 <div className="text-center p-3 bg-bg-secondary rounded-md">
-                                    <span className="block text-lg font-bold text-[#D97706]">{selectedSlip.attendanceSummary.lateDays}</span>
+                                    <span className="block text-lg font-bold font-mono tabular-nums text-[#D97706]">{selectedSlip.attendanceSummary.lateDays}</span>
                                     <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.late')}</span>
                                 </div>
                                 <div className="text-center p-3 bg-bg-secondary rounded-md">
-                                    <span className="block text-lg font-bold text-[#DC2626]">{selectedSlip.attendanceSummary.absentDays}</span>
+                                    <span className="block text-lg font-bold font-mono tabular-nums text-[#DC2626]">{selectedSlip.attendanceSummary.absentDays}</span>
                                     <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.absent')}</span>
                                 </div>
                                 <div className="text-center p-3 bg-bg-secondary rounded-md">
-                                    <span className="block text-lg font-bold text-[#7C3AED]">{selectedSlip.attendanceSummary.permitDays}</span>
+                                    <span className="block text-lg font-bold font-mono tabular-nums text-[#7C3AED]">{selectedSlip.attendanceSummary.permitDays}</span>
                                     <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.permit')}</span>
                                 </div>
                                 <div className="text-center p-3 bg-bg-secondary rounded-md">
-                                    <span className="block text-lg font-bold text-text-primary">{selectedSlip.attendanceSummary.totalHours}h</span>
+                                    <span className="block text-lg font-bold font-mono tabular-nums text-text-primary">{selectedSlip.attendanceSummary.totalHours}h</span>
                                     <span className="text-[9px] font-semibold text-text-muted uppercase tracking-[0.3px]">{t('slipGaji.modals.detail.totalHours')}</span>
                                 </div>
                                 {(selectedSlip.attendanceSummary.totalOvertimeHours || 0) > 0 && (
                                     <div className="text-center p-3 bg-amber-50 rounded-md col-span-3 border border-amber-100">
-                                        <span className="block text-lg font-bold text-amber-600">{selectedSlip.attendanceSummary.totalOvertimeHours.toFixed(1)}h</span>
+                                        <span className="block text-lg font-bold font-mono tabular-nums text-amber-600">{selectedSlip.attendanceSummary.totalOvertimeHours.toFixed(1)}h</span>
                                         <span className="text-[9px] font-semibold text-amber-500 uppercase tracking-[0.3px]">Jam Lembur</span>
                                     </div>
                                 )}
@@ -843,38 +1180,38 @@ export default function SlipGaji() {
                                 <h4 className="text-xs font-bold text-text-primary uppercase tracking-[0.5px] m-0 mb-3">{t('slipGaji.modals.detail.earnings.title')}</h4>
                                 <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                     <span>{t('slipGaji.modals.detail.earnings.dailyRate')}</span>
-                                    <span>{formatRp(selectedSlip.earnings.dailyRate)}</span>
+                                    <span className="font-mono tabular-nums text-right">{formatRp(selectedSlip.earnings.dailyRate)}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                     <span>{t('slipGaji.modals.detail.earnings.totalDailyWages', { days: selectedSlip.attendanceSummary.presentDays + selectedSlip.attendanceSummary.lateDays })}</span>
-                                    <span>{formatRp(selectedSlip.earnings.totalDailyWage)}</span>
+                                    <span className="font-mono tabular-nums text-right">{formatRp(selectedSlip.earnings.totalDailyWage)}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                     <span>{t('slipGaji.modals.detail.earnings.overtime')}</span>
-                                    <span className="text-[#059669]">{formatRp(selectedSlip.earnings.totalOvertime)}</span>
+                                    <span className="text-[#059669] font-mono tabular-nums text-right">+{formatRp(selectedSlip.earnings.totalOvertime)}</span>
                                 </div>
                                 {selectedSlip.earnings.bonus > 0 && (
                                     <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                         <span>{t('slipGaji.modals.detail.earnings.bonus')}</span>
-                                        <span className="text-[#059669]">{formatRp(selectedSlip.earnings.bonus)}</span>
+                                        <span className="text-[#059669] font-mono tabular-nums text-right">+{formatRp(selectedSlip.earnings.bonus)}</span>
                                     </div>
                                 )}
                                 <div className="border-t border-dashed border-border my-1.5" />
                                 {selectedSlip.earnings.deductions > 0 && (
                                     <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                         <span>{t('slipGaji.modals.detail.earnings.deductions')}</span>
-                                        <span className="text-[#DC2626]">-{formatRp(selectedSlip.earnings.deductions)}</span>
+                                        <span className="text-[#DC2626] font-mono tabular-nums text-right">-{formatRp(selectedSlip.earnings.deductions)}</span>
                                     </div>
                                 )}
                                 {selectedSlip.earnings.kasbonDeduction > 0 && (
                                     <div className="flex justify-between items-center py-1.5 text-sm text-text-secondary">
                                         <span>{t('slipGaji.modals.detail.earnings.kasbon')}</span>
-                                        <span className="text-[#DC2626]">-{formatRp(selectedSlip.earnings.kasbonDeduction)}</span>
+                                        <span className="text-[#DC2626] font-mono tabular-nums text-right">-{formatRp(selectedSlip.earnings.kasbonDeduction)}</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between items-center pt-2.5 border-t-2 border-text-primary text-base font-extrabold text-text-primary">
                                     <span>{t('slipGaji.modals.detail.earnings.netPay')}</span>
-                                    <span>{formatRp(selectedSlip.earnings.netPay)}</span>
+                                    <span className="font-mono tabular-nums text-right">{formatRp(selectedSlip.earnings.netPay)}</span>
                                 </div>
                             </div>
 
@@ -959,14 +1296,16 @@ export default function SlipGaji() {
             {/* ===== Authorization Modal ===== */}
             {authModal && (
                 <div className="modal-overlay" onClick={() => setAuthModal(false)}>
-                    <div className="bg-bg-white rounded-xl w-[90%] max-w-[420px] shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div ref={authModalRef} role="dialog" aria-modal="true" aria-labelledby="modal-auth-title" className="bg-bg-white rounded-xl w-[90%] max-w-[420px] shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
                         <div className="p-8 flex flex-col items-center text-center">
                             <div className="w-[60px] h-[60px] rounded-full bg-[#EEF2FF] text-primary flex items-center justify-center mb-5 shrink-0">
                                 <Lock size={32} />
                             </div>
-                            <h3 className="text-xl font-bold text-text-primary mb-2 mt-0">{t('slipGaji.modals.auth.title')}</h3>
+                            <h3 id="modal-auth-title" className="text-xl font-bold text-text-primary mb-2 mt-0">
+                                {isBatchAuth ? `Otorisasi Batch (${selectedSlipIds.length} Slip)` : t('slipGaji.modals.auth.title')}
+                            </h3>
                             <p className="text-sm text-text-muted mt-0 mb-6 leading-[1.6]">
-                                {t('slipGaji.modals.auth.desc')} <strong className="text-text-primary uppercase tracking-[0.5px]">{role}</strong>
+                                {isBatchAuth ? `Masukkan passphrase Anda untuk menyetujui ${selectedSlipIds.length} slip gaji terpilih sekaligus sebagai role:` : t('slipGaji.modals.auth.desc')} <strong className="text-text-primary uppercase tracking-[0.5px]">{role}</strong>
                             </p>
                             <div className="w-full relative flex items-center mb-4">
                                 <Shield size={16} className="absolute left-3.5 text-text-muted" />
@@ -991,7 +1330,7 @@ export default function SlipGaji() {
                                     {authorizing ? (
                                         <><Loader2 size={16} className="animate-spin" /> {t('slipGaji.modals.auth.btnAuthorizing')}</>
                                     ) : (
-                                        <><Unlock size={16} /> {t('slipGaji.modals.auth.btnAuthorize')}</>
+                                        <><Unlock size={16} /> {isBatchAuth ? `Setujui ${selectedSlipIds.length} Slip` : t('slipGaji.modals.auth.btnAuthorize')}</>
                                     )}
                                 </button>
                             </div>
