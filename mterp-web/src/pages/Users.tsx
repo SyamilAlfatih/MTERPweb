@@ -61,7 +61,8 @@ import {
   deleteApiKey
 } from '../api/api';
 import { User, ApiKey, EmploymentType } from '../types';
-import { Card } from '../components/shared';
+import { Card, AriaLiveRegion } from '../components/shared';
+import { useDataGridKeyboard } from '../hooks/useDataGridKeyboard';
 import { PhotoView } from 'react-photo-view';
 import { getImageUrl } from '../utils/image';
 import { LiveDocumentViewer, ViewerDocument } from '../components/users/LiveDocumentViewer';
@@ -481,6 +482,36 @@ export default function Users() {
     }
     return pages;
   }, [currentPage, totalPages]);
+
+  // Dynamic column calculation for 2D ARIA Keyboard Grid
+  const activeColumns = useMemo(() => {
+    const cols = ['index', 'user'];
+    if (visibleColumns.role) cols.push('role');
+    if (visibleColumns.employment) cols.push('employment');
+    if (visibleColumns.bpjsTk) cols.push('bpjsTk');
+    if (visibleColumns.bpjsKes) cols.push('bpjsKes');
+    if (visibleColumns.education) cols.push('education');
+    if (visibleColumns.competencies) cols.push('competencies');
+    if (visibleColumns.emergency) cols.push('emergency');
+    if (visibleColumns.contact) cols.push('contact');
+    if (visibleColumns.verification) cols.push('verification');
+    cols.push('actions');
+    return cols;
+  }, [visibleColumns]);
+
+  const { gridProps, getRowProps, getCellProps } = useDataGridKeyboard(
+    paginatedUsers.length,
+    activeColumns.length,
+    {
+      gridId: 'users-roster-grid',
+      onActivate: (row) => {
+        const u = paginatedUsers[row];
+        if (u) {
+          handleOpenPortfolio(u, 'education');
+        }
+      },
+    }
+  );
 
   // Handle Portfolio & Live Viewer Openers
   const handleOpenPortfolio = (user: User, tab: 'education' | 'competencies' = 'education') => {
@@ -1751,9 +1782,14 @@ export default function Users() {
             </div>
           </div>
 
+          {/* Screen Reader Live Region for Async Filters & Pagination */}
+          <AriaLiveRegion
+            message={`Menampilkan ${paginatedUsers.length} dari ${filteredUsers.length} pekerja. Halaman ${currentPage} dari ${totalPages}.`}
+          />
+
           {/* Table Container with Sticky / Frozen Columns */}
           <div className="overflow-x-auto relative w-full">
-            <table role="grid" aria-rowcount={paginatedUsers.length} className="w-full text-left border-collapse">
+            <table {...gridProps} aria-rowcount={paginatedUsers.length} aria-colcount={activeColumns.length} className="w-full text-left border-collapse">
               <thead>
                 <tr role="row" className="bg-slate-900 text-white font-black uppercase tracking-wider border-b border-slate-800">
                   {/* Sticky 1: # Left-aligned qualitative number */}
@@ -1824,16 +1860,18 @@ export default function Users() {
                   const employmentConfig = EMPLOYMENT_TYPE_OPTIONS.find(
                     e => e.value === (user.employmentType || 'tetap')
                   ) || EMPLOYMENT_TYPE_OPTIONS[0];
+                  let colIdx = 0;
 
                   return (
-                    <tr role="row" aria-rowindex={rowNumber} key={user._id} className="group hover:bg-slate-50/80 transition-colors">
+                    <tr {...getRowProps(idx)} aria-rowindex={rowNumber} key={user._id} className="group hover:bg-slate-50/80 transition-colors">
                       {/* Sticky 1: # Left-aligned with monospace tabular figures */}
-                      <td className={`sticky left-0 z-10 bg-white group-hover:bg-slate-50 font-mono tabular-nums text-left font-bold text-text-muted w-12 min-w-[48px] max-w-[48px] border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                      <td {...getCellProps(idx, colIdx++)} className={`sticky left-0 z-10 bg-white group-hover:bg-slate-50 font-mono tabular-nums text-left font-bold text-text-muted w-12 min-w-[48px] max-w-[48px] border-b border-border-light focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                         {rowNumber}
                       </td>
 
+
                       {/* Sticky 2: Pekerja / Karyawan */}
-                      <td className={`sticky left-12 z-10 bg-white group-hover:bg-slate-50 text-left min-w-[230px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] border-b ${DENSITY_CONFIG[tableDensity].td}`}>
+                      <td {...getCellProps(idx, colIdx++)} className={`sticky left-12 z-10 bg-white group-hover:bg-slate-50 text-left min-w-[230px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] border-b focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                         <div className="flex items-center gap-2.5">
                           <div className={`${DENSITY_CONFIG[tableDensity].avatar} rounded-lg bg-bg-secondary text-text-secondary flex items-center justify-center font-black shrink-0 border border-border-light overflow-hidden`}>
                             {user.profileImage ? (
@@ -1855,7 +1893,7 @@ export default function Users() {
 
                       {/* Role & Jabatan */}
                       {visibleColumns.role && (
-                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                        <td {...getCellProps(idx, colIdx++)} className={`text-left border-b border-border-light focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                           <div className="font-black text-text-primary capitalize">{user.role}</div>
                           {user.position ? (
                             <div className={`font-bold text-primary ${DENSITY_CONFIG[tableDensity].subText}`}>{user.position}</div>
@@ -1867,7 +1905,7 @@ export default function Users() {
 
                       {/* Status Kerja */}
                       {visibleColumns.employment && (
-                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                        <td {...getCellProps(idx, colIdx++)} className={`text-left border-b border-border-light focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                           <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${employmentConfig.bg} ${employmentConfig.text} ${employmentConfig.border}`}>
                             {employmentConfig.label}
                           </span>
@@ -1881,7 +1919,7 @@ export default function Users() {
 
                       {/* BPJS TK */}
                       {visibleColumns.bpjsTk && (
-                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                        <td {...getCellProps(idx, colIdx++)} className={`text-left border-b border-border-light focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                           {user.bpjsTk ? (
                             <div className="flex items-center gap-1.5 font-mono tabular-nums font-bold text-slate-800 bg-emerald-500/10 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-500/20 text-[11px] w-fit">
                               <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
@@ -1895,7 +1933,7 @@ export default function Users() {
 
                       {/* BPJS Kesehatan */}
                       {visibleColumns.bpjsKes && (
-                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                        <td {...getCellProps(idx, colIdx++)} className={`text-left border-b border-border-light focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                           {user.bpjsKesehatan ? (
                             <div className="flex items-center gap-1.5 font-mono tabular-nums font-bold text-slate-800 bg-sky-500/10 text-sky-800 px-2.5 py-1 rounded-lg border border-sky-500/20 text-[11px] w-fit">
                               <HeartHandshake size={13} className="text-sky-600 shrink-0" />
@@ -1909,7 +1947,7 @@ export default function Users() {
 
                       {/* Pendidikan Terakhir */}
                       {visibleColumns.education && (
-                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                        <td {...getCellProps(idx, colIdx++)} className={`text-left border-b border-border-light focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                           {user.education?.level ? (
                             <div className="space-y-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -1969,7 +2007,7 @@ export default function Users() {
 
                       {/* Kompetensi & Sertifikasi */}
                       {visibleColumns.competencies && (
-                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                        <td {...getCellProps(idx, colIdx++)} className={`text-left border-b border-border-light focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                           {user.competencies && user.competencies.length > 0 ? (
                             <div className="space-y-1.5">
                               <div className="flex items-center justify-between gap-1">
@@ -2045,7 +2083,7 @@ export default function Users() {
 
                       {/* Kontak Darurat */}
                       {visibleColumns.emergency && (
-                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                        <td {...getCellProps(idx, colIdx++)} className={`text-left border-b border-border-light focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                           {user.emergencyContact?.name || user.emergencyContact?.phone ? (
                             <div>
                               <div className="font-black text-text-primary flex items-center gap-1.5">
@@ -2070,7 +2108,7 @@ export default function Users() {
 
                       {/* Telepon / Email */}
                       {visibleColumns.contact && (
-                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                        <td {...getCellProps(idx, colIdx++)} className={`text-left border-b border-border-light focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                           {user.phone && <div className="font-mono tabular-nums font-bold text-text-primary">{user.phone}</div>}
                           {user.email && <div className={`text-text-secondary truncate max-w-[160px] ${DENSITY_CONFIG[tableDensity].subText}`}>{user.email}</div>}
                           {!user.phone && !user.email && <span className="text-text-muted/60 italic text-[11px]">-</span>}
@@ -2079,7 +2117,7 @@ export default function Users() {
 
                       {/* Verifikasi (No center-align: left-aligned badge) */}
                       {visibleColumns.verification && (
-                        <td className={`text-left border-b border-border-light ${DENSITY_CONFIG[tableDensity].td}`}>
+                        <td {...getCellProps(idx, colIdx++)} className={`text-left border-b border-border-light focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                           {user.isVerified ? (
                             <span className="inline-flex items-center gap-1 text-success font-black text-[10px] uppercase bg-success-bg px-2 py-0.5 rounded border border-success/30">
                               <CheckCircle size={13} strokeWidth={2.5} /> Terverifikasi
@@ -2093,7 +2131,7 @@ export default function Users() {
                       )}
 
                       {/* Sticky 3: Aksi */}
-                      <td className={`sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right min-w-[140px] border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] border-b ${DENSITY_CONFIG[tableDensity].td}`}>
+                      <td {...getCellProps(idx, colIdx++)} className={`sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right min-w-[140px] border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] border-b focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                         <div className="flex items-center justify-end gap-1.5">
                           {!user.isVerified && (
                             <button 

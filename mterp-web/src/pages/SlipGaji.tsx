@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ArrowLeft,
@@ -31,8 +31,9 @@ import {
 } from 'lucide-react';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, Alert, Button } from '../components/shared';
+import { Card, Alert, Button, AriaLiveRegion } from '../components/shared';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useDataGridKeyboard } from '../hooks/useDataGridKeyboard';
 import { useTranslation } from 'react-i18next';
 import { exportSlipToPdf } from '../utils/exportSlipPdf';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
@@ -419,6 +420,38 @@ export default function SlipGaji() {
         });
     };
 
+    const filteredSlips = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        return slips.filter(s => !q || (s.workerId?.fullName || '').toLowerCase().includes(q));
+    }, [slips, searchQuery]);
+
+    const { gridProps, getRowProps, getCellProps } = useDataGridKeyboard(
+        filteredSlips.length,
+        11,
+        {
+            gridId: 'payroll-verification-grid',
+            onActivate: (row, col) => {
+                const s = filteredSlips[row];
+                if (!s) return;
+                if (col === 0) {
+                    if (canSign(s)) {
+                        setSelectedSlipIds(prev => prev.includes(s._id) ? prev.filter(x => x !== s._id) : [...prev, s._id]);
+                    }
+                } else {
+                    openDetail(s);
+                }
+            },
+        }
+    );
+
+    const liveMessage = useMemo(() => {
+        let msg = `Menampilkan ${filteredSlips.length} slip gaji.`;
+        if (selectedSlipIds.length > 0) {
+            msg += ` ${selectedSlipIds.length} slip dipilih untuk otorisasi.`;
+        }
+        return msg;
+    }, [filteredSlips.length, selectedSlipIds.length]);
+
     return (
         <div className="p-6 max-w-7xl mx-auto max-sm:p-3">
             <Alert
@@ -530,6 +563,8 @@ export default function SlipGaji() {
                     )}
                 </div>
             </div>
+
+            <AriaLiveRegion message={liveMessage} />
 
             {/* Slips List — Two Column Layout */}
             {loading ? (
@@ -648,11 +683,11 @@ export default function SlipGaji() {
                         <div className="flex flex-col gap-4">
                             <div className="bg-bg-white rounded-xl border border-border-light overflow-hidden shadow-sm">
                                 <div className="overflow-x-auto">
-                                    <table role="grid" aria-rowcount={matchingSlips.length} className="w-full border-collapse text-left">
+                                    <table {...gridProps} className="w-full border-collapse text-left">
                                         <thead>
                                             <tr role="row" className="bg-slate-50/80 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold text-xs">
                                                 {/* Select All Checkbox */}
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky left-0 z-20 bg-slate-50 w-10 text-center border-r border-border-light`}>
+                                                <th role="columnheader" aria-colindex={1} className={`${DENSITY_CONFIG[tableDensity].th} sticky left-0 z-20 bg-slate-50 w-10 text-center border-r border-border-light`}>
                                                     <button
                                                         type="button"
                                                         onClick={toggleSelectAll}
@@ -666,18 +701,18 @@ export default function SlipGaji() {
                                                         )}
                                                     </button>
                                                 </th>
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky left-10 z-20 bg-slate-50 w-10 text-center border-r border-border-light`}>#</th>
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky left-20 z-20 bg-slate-50 min-w-[200px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
+                                                <th role="columnheader" aria-colindex={2} className={`${DENSITY_CONFIG[tableDensity].th} sticky left-10 z-20 bg-slate-50 w-10 text-center border-r border-border-light`}>#</th>
+                                                <th role="columnheader" aria-colindex={3} className={`${DENSITY_CONFIG[tableDensity].th} sticky left-20 z-20 bg-slate-50 min-w-[200px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
                                                     Pekerja & No. Slip
                                                 </th>
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[110px]`}>Status</th>
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px]`}>Kehadiran</th>
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-right`}>Upah Harian</th>
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-right`}>Bonus/OT</th>
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-right`}>Potongan</th>
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[140px] text-right`}>Gaji Bersih</th>
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[140px]`}>Otorisasi</th>
-                                                <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky right-0 z-20 bg-slate-50 text-right w-28 border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Aksi</th>
+                                                <th role="columnheader" aria-colindex={4} className={`${DENSITY_CONFIG[tableDensity].th} min-w-[110px]`}>Status</th>
+                                                <th role="columnheader" aria-colindex={5} className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px]`}>Kehadiran</th>
+                                                <th role="columnheader" aria-colindex={6} className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-right`}>Upah Harian</th>
+                                                <th role="columnheader" aria-colindex={7} className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-right`}>Bonus/OT</th>
+                                                <th role="columnheader" aria-colindex={8} className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-right`}>Potongan</th>
+                                                <th role="columnheader" aria-colindex={9} className={`${DENSITY_CONFIG[tableDensity].th} min-w-[140px] text-right`}>Gaji Bersih</th>
+                                                <th role="columnheader" aria-colindex={10} className={`${DENSITY_CONFIG[tableDensity].th} min-w-[140px]`}>Otorisasi</th>
+                                                <th role="columnheader" aria-colindex={11} className={`${DENSITY_CONFIG[tableDensity].th} sticky right-0 z-20 bg-slate-50 text-right w-28 border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Aksi</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border-light">
@@ -688,15 +723,15 @@ export default function SlipGaji() {
 
                                                 return (
                                                     <tr 
-                                                        role="row"
-                                                        aria-rowindex={index + 1}
+                                                        {...getRowProps(index)}
                                                         key={slip._id} 
                                                         className={`hover:bg-slate-50/80 transition-colors group cursor-pointer ${isSelected ? 'bg-primary/5' : ''}`}
                                                         onClick={() => openDetail(slip)}
                                                     >
                                                         {/* Row Checkbox */}
                                                         <td 
-                                                            className={`${DENSITY_CONFIG[tableDensity].td} sticky left-0 z-10 bg-white group-hover:bg-slate-50 text-center border-r border-border-light ${isSelected ? '!bg-primary/5' : ''}`}
+                                                            {...getCellProps(index, 0)}
+                                                            className={`${DENSITY_CONFIG[tableDensity].td} sticky left-0 z-10 bg-white group-hover:bg-slate-50 text-center border-r border-border-light focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset ${isSelected ? '!bg-primary/5' : ''}`}
                                                             onClick={(e) => { e.stopPropagation(); toggleSelectOne(slip._id); }}
                                                         >
                                                             {eligible ? (
@@ -716,12 +751,12 @@ export default function SlipGaji() {
                                                         </td>
 
                                                         {/* Sticky # */}
-                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} sticky left-10 z-10 bg-white group-hover:bg-slate-50 text-center text-text-muted font-mono tabular-nums border-r border-border-light ${isSelected ? '!bg-primary/5' : ''}`}>
+                                                        <td {...getCellProps(index, 1)} className={`${DENSITY_CONFIG[tableDensity].td} sticky left-10 z-10 bg-white group-hover:bg-slate-50 text-center text-text-muted font-mono tabular-nums border-r border-border-light focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset ${isSelected ? '!bg-primary/5' : ''}`}>
                                                             {index + 1}
                                                         </td>
 
                                                         {/* Sticky Worker & Slip Number */}
-                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} sticky left-20 z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] ${isSelected ? '!bg-primary/5' : ''}`}>
+                                                        <td {...getCellProps(index, 2)} className={`${DENSITY_CONFIG[tableDensity].td} sticky left-20 z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset ${isSelected ? '!bg-primary/5' : ''}`}>
                                                             <div className="flex items-center gap-2.5">
                                                                 <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0" style={{ background: badge.bg, color: badge.color }}>
                                                                     {slip.workerId?.fullName?.[0]?.toUpperCase() || 'W'}
@@ -734,14 +769,14 @@ export default function SlipGaji() {
                                                         </td>
 
                                                         {/* Status Badge */}
-                                                        <td className={DENSITY_CONFIG[tableDensity].td}>
+                                                        <td {...getCellProps(index, 3)} className={`${DENSITY_CONFIG[tableDensity].td} focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset`}>
                                                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-[0.3px] whitespace-nowrap" style={{ color: badge.color, background: badge.bg }}>
                                                                 {t(`slipGaji.status.${badge.labelKey}`)}
                                                             </span>
                                                         </td>
 
                                                         {/* Attendance */}
-                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-text-secondary whitespace-nowrap`}>
+                                                        <td {...getCellProps(index, 4)} className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-text-secondary whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset`}>
                                                             <span>{slip.attendanceSummary.presentDays} hr</span>
                                                             {(slip.attendanceSummary.totalOvertimeHours || 0) > 0 && (
                                                                 <span className="ml-1 text-amber-600 font-semibold">({slip.attendanceSummary.totalOvertimeHours.toFixed(1)}h OT)</span>
@@ -749,27 +784,27 @@ export default function SlipGaji() {
                                                         </td>
 
                                                         {/* Upah Harian */}
-                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums text-text-secondary`}>
+                                                        <td {...getCellProps(index, 5)} className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset`}>
                                                             {formatRp(slip.earnings.totalDailyWage)}
                                                         </td>
 
                                                         {/* Bonus / OT */}
-                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums text-text-secondary`}>
+                                                        <td {...getCellProps(index, 6)} className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset`}>
                                                             {formatRp((slip.earnings.bonus || 0) + (slip.earnings.totalOvertime || 0))}
                                                         </td>
 
                                                         {/* Potongan */}
-                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums text-danger font-medium`}>
+                                                        <td {...getCellProps(index, 7)} className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums text-danger font-medium focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset`}>
                                                             -{formatRp((slip.earnings.deductions || 0) + (slip.earnings.kasbonDeduction || 0))}
                                                         </td>
 
                                                         {/* Gaji Bersih */}
-                                                        <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums font-bold text-primary`}>
+                                                        <td {...getCellProps(index, 8)} className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums font-bold text-primary focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset`}>
                                                             {formatRp(slip.earnings.netPay)}
                                                         </td>
 
                                                         {/* Otorisasi */}
-                                                        <td className={DENSITY_CONFIG[tableDensity].td}>
+                                                        <td {...getCellProps(index, 9)} className={`${DENSITY_CONFIG[tableDensity].td} focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset`}>
                                                             <div className="flex items-center gap-2">
                                                                 <div className={`flex items-center gap-0.5 text-[10px] ${slip.authorization.directorPassphrase ? 'text-[#059669]' : 'text-text-muted'}`} title="Direktur">
                                                                     <Shield size={11} />
@@ -784,7 +819,8 @@ export default function SlipGaji() {
 
                                                         {/* Sticky Aksi */}
                                                         <td 
-                                                            className={`${DENSITY_CONFIG[tableDensity].td} sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] ${isSelected ? '!bg-primary/5' : ''}`}
+                                                            {...getCellProps(index, 10)}
+                                                            className={`${DENSITY_CONFIG[tableDensity].td} sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset ${isSelected ? '!bg-primary/5' : ''}`}
                                                             onClick={(e) => e.stopPropagation()}
                                                         >
                                                             <div className="flex items-center justify-end gap-1">

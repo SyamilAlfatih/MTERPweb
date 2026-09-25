@@ -21,7 +21,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, Badge, Button, EmptyState } from '../components/shared';
+import { Card, Badge, Button, EmptyState, AriaLiveRegion } from '../components/shared';
 import { ApprovalItem, KasbonItem } from '../types';
 import { formatDate as formatWIBDate } from '../utils/date';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -164,6 +164,16 @@ export default function Approvals() {
     return filteredItems.find((it) => it.data.id === selectedId) || null;
   }, [filteredItems, selectedId]);
 
+  const liveMessage = useMemo(() => {
+    let msg = `Menampilkan ${filteredItems.length} pengajuan.`;
+    if (selectedItem) {
+      const name = selectedItem.data.requester;
+      const desc = selectedItem.type === 'request' ? selectedItem.data.item : 'Kasbon';
+      msg += ` Terpilih: ${desc} oleh ${name}.`;
+    }
+    return msg;
+  }, [filteredItems.length, selectedItem]);
+
   // Keyboard navigation across items: ArrowUp, ArrowDown, A (Approve), R (Reject)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -282,6 +292,8 @@ export default function Approvals() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto max-lg:p-4 max-sm:p-3 min-h-[calc(100vh-100px)] flex flex-col">
+      <AriaLiveRegion message={liveMessage} />
+
       {/* Header */}
       <div className="flex justify-between items-center mb-5 max-sm:flex-col max-sm:items-start max-sm:gap-2">
         <div>

@@ -1,18 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Download, FileSpreadsheet, Search, Filter, ChevronDown,
   ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock,
   Users, TrendingUp, Wallet, Loader, Calendar, Minus,
+  X, Plus, Edit3,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/api';
-import { Card, Button, EmptyState } from '../components/shared';
+import { Card, Button, EmptyState, AriaLiveRegion } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
 import { useDataGridKeyboard } from '../hooks/useDataGridKeyboard';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface WorkerRecap {
   userId: string;
@@ -130,6 +132,79 @@ export default function AttendanceRecap() {
 
   const STATUS_CYCLE = ['Present', 'Late', 'Half-day', 'Permit', 'Absent'] as const;
 
+  // Day Adjustment Modal State (Status & Overtime Hours)
+  const [editDayModal, setEditDayModal] = useState<{
+    worker: WorkerRecap;
+    date: string;
+    status: string;
+    otHours: number;
+  } | null>(null);
+
+  const editDayModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(editDayModalRef, {
+    isActive: !!editDayModal,
+    onEscape: () => setEditDayModal(null),
+  });
+
+  const openEditDayModal = (worker: WorkerRecap, date: string) => {
+    const dayData = worker.days[date];
+    setEditDayModal({
+      worker,
+      date,
+      status: dayData?.status || 'Present',
+      otHours: dayData?.overtimeHours || 0,
+    });
+  };
+
+  const handleSaveDayAdjustment = async (userId: string, date: string, status: string, overtimeHours: number) => {
+    // Optimistic UI update
+    setWorkers((prevWorkers) =>
+      prevWorkers.map((w) => {
+        if (w.userId !== userId) return w;
+        const oldDay = w.days[date];
+        const newScore =
+          status === 'Present' ? 1 : status === 'Late' || status === 'Half-day' ? 0.5 : 0;
+        const oldScore = oldDay?.score || 0;
+        const scoreDiff = newScore - oldScore;
+        const updatedScore = Math.max(0, w.totalScore + scoreDiff);
+
+        const oldOt = oldDay?.overtimeHours || 0;
+        const otDiff = overtimeHours - oldOt;
+        const updatedTotalOt = Math.max(0, (w.totalOvertimeHours || 0) + otDiff);
+
+        return {
+          ...w,
+          days: {
+            ...w.days,
+            [date]: {
+              status,
+              score: newScore,
+              overtimeHours,
+            },
+          },
+          totalScore: updatedScore,
+          totalOvertimeHours: updatedTotalOt,
+          total: `${updatedScore % 1 === 0 ? updatedScore : updatedScore.toFixed(1)}/${dateColumns.length}`,
+        };
+      })
+    );
+
+    setEditDayModal(null);
+
+    // Sync to backend API
+    try {
+      await api.put('/attendance/recap-table/adjust', {
+        userId,
+        date,
+        status,
+        overtimeHours,
+      });
+    } catch (err) {
+      console.error('Failed to adjust attendance/overtime:', err);
+      fetchData(); // Rollback on error
+    }
+  };
+
   const handleCycleStatus = async (userId: string, date: string) => {
     const targetWorker = workers.find((w) => w.userId === userId);
     if (!targetWorker) return;
@@ -183,7 +258,7 @@ export default function AttendanceRecap() {
       const date = dateColumns[col - 4];
       const worker = workers[row];
       if (worker && date) {
-        handleCycleStatus(worker.userId, date);
+        openEditDayModal(worker, date);
       }
     }
   };
@@ -541,7 +616,15 @@ export default function AttendanceRecap() {
                             canEdit ? 'cursor-pointer hover:bg-primary/10 rounded' : ''
                           }`}
                           onClick={() => canEdit && handleCycleStatus(worker.userId, date)}
-                          title={canEdit ? 'Klik atau tekan Space/Enter untuk mengubah kehadiran' : undefined}
+                          onDoubleClick={(e) => {
+                            e.preventDefault();
+                            if (canEdit) openEditDayModal(worker, date);
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            if (canEdit) openEditDayModal(worker, date);
+                          }}
+                          title={canEdit ? 'Klik: ubah status | Double-klik / Klik Kanan: atur jam lembur (OT)' : undefined}
                         >
                           <div className="flex flex-col items-center gap-0.5">
                             {renderStatusIcon(dayData)}
@@ -723,6 +806,163 @@ export default function AttendanceRecap() {
               </div>
             </Card>
           )}
+        </div>
+      )}
+
+      {/* Screen Reader Live Region for Async Filters */}
+      <AriaLiveRegion
+        message={
+          loading
+            ? 'Memuat data rekap presensi...'
+            : `Menampilkan data rekap untuk ${workers.length} pekerja. Periode ${startDate} sampai ${endDate}.`
+        }
+      />
+
+      {/* Day Adjustment Modal (Status & Overtime Hours) */}
+      {editDayModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-in fade-in duration-150"
+          onClick={() => setEditDayModal(null)}
+        >
+          <div
+            ref={editDayModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="adjust-day-title"
+            className="bg-bg-white rounded-2xl max-w-[420px] w-full shadow-2xl overflow-hidden border border-border-light animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-border-light bg-slate-50 flex justify-between items-center">
+              <div>
+                <h3 id="adjust-day-title" className="text-base font-bold text-text-primary m-0">
+                  Ubah Kehadiran & Lembur
+                </h3>
+                <p className="text-xs text-text-muted m-0 mt-0.5 font-medium">
+                  {editDayModal.worker.fullName} • {formatWIBDate(editDayModal.date, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditDayModal(null)}
+                className="w-8 h-8 rounded-full bg-border-light/60 hover:bg-border-light flex items-center justify-center text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5">
+              {/* Status Selection */}
+              <div>
+                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">
+                  Status Kehadiran
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['Present', 'Late', 'Half-day', 'Permit', 'Absent'] as const).map((st) => {
+                    const isSelected = editDayModal.status === st;
+                    const labels: Record<string, string> = {
+                      Present: 'Hadir (1.0)',
+                      Late: 'Telat (0.5)',
+                      'Half-day': '½ Hari (0.5)',
+                      Permit: 'Izin (0.0)',
+                      Absent: 'Alpha (0.0)',
+                    };
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setEditDayModal({ ...editDayModal, status: st })}
+                        className={`px-2.5 py-2 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer ${
+                          isSelected
+                            ? 'bg-primary text-white border-primary shadow-sm'
+                            : 'bg-bg-secondary text-text-secondary border-border-light hover:bg-slate-100'
+                        }`}
+                      >
+                        {labels[st]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Overtime Hours */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider">
+                    Jam Lembur (Overtime)
+                  </label>
+                  <span className="text-xs font-mono font-bold text-amber-600">
+                    +{Number(editDayModal.otHours || 0).toFixed(1)} jam
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="16"
+                    step="0.5"
+                    value={editDayModal.otHours}
+                    onChange={(e) =>
+                      setEditDayModal({
+                        ...editDayModal,
+                        otHours: Math.max(0, Math.min(16, parseFloat(e.target.value) || 0)),
+                      })
+                    }
+                    className="flex-1 px-3 py-2 border-2 border-border-light rounded-xl font-mono text-base font-bold text-text-primary bg-bg-white focus:border-primary outline-none"
+                    placeholder="0"
+                  />
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 4].map((hrs) => (
+                      <button
+                        key={hrs}
+                        type="button"
+                        onClick={() =>
+                          setEditDayModal({
+                            ...editDayModal,
+                            otHours: (editDayModal.otHours || 0) + hrs,
+                          })
+                        }
+                        className="px-2.5 py-2 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-mono font-bold border border-amber-200 cursor-pointer transition-colors"
+                      >
+                        +{hrs}h
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setEditDayModal({ ...editDayModal, otHours: 0 })}
+                      className="px-2.5 py-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg text-xs font-mono font-bold border border-slate-200 cursor-pointer transition-colors"
+                    >
+                      0h
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditDayModal(null)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-border-light bg-bg-white text-text-secondary hover:bg-bg-secondary text-sm font-semibold cursor-pointer transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleSaveDayAdjustment(
+                      editDayModal.worker.userId,
+                      editDayModal.date,
+                      editDayModal.status,
+                      editDayModal.otHours
+                    )
+                  }
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-primary text-white hover:bg-primary-dark text-sm font-bold shadow-md shadow-primary/20 cursor-pointer transition-colors"
+                >
+                  Simpan Perubahan
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
