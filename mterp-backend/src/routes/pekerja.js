@@ -21,6 +21,8 @@ const PEKERJA_FIELDS = [
   'address',
   'emergencyContact',
   'paymentInfo',
+  'bpjsTk',
+  'bpjsKesehatan',
   'isVerified',
   'profileImage',
   'createdAt',
@@ -39,6 +41,8 @@ const buildQuery = (query) => {
       { email: searchRegex },
       { phone: searchRegex },
       { position: searchRegex },
+      { bpjsTk: searchRegex },
+      { bpjsKesehatan: searchRegex },
     ];
   }
 

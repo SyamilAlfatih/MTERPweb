@@ -143,6 +143,8 @@ export interface User {
   contractEndDate?: string;
   emergencyContact?: EmergencyContact;
   paymentInfo?: UserPaymentInfo;
+  bpjsTk?: string;
+  bpjsKesehatan?: string;
   education?: Education;
   competencies?: CompetencyCertificate[];
   token?: string;

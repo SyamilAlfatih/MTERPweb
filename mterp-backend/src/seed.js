@@ -21,6 +21,8 @@ mongoose.connect(MONGODB_URI).then(async () => {
       position: 'Project Owner & Investor',
       isVerified: true,
       phone: '081234567890',
+      bpjsTk: '00018273645',
+      bpjsKesehatan: '00091827364',
     },
     {
       username: 'sitemanager',
@@ -31,6 +33,8 @@ mongoose.connect(MONGODB_URI).then(async () => {
       position: 'Chief Site Manager',
       isVerified: true,
       phone: '081298765432',
+      bpjsTk: '00028374651',
+      bpjsKesehatan: '00082736451',
     },
     {
       username: 'supervisor',
@@ -41,6 +45,8 @@ mongoose.connect(MONGODB_URI).then(async () => {
       position: 'Civil & Structure Supervisor',
       isVerified: true,
       phone: '081345678901',
+      bpjsTk: '00039485762',
+      bpjsKesehatan: '00073645182',
     },
     {
       username: 'adminproject',
@@ -51,6 +57,8 @@ mongoose.connect(MONGODB_URI).then(async () => {
       position: 'Project Administration & Cost Control',
       isVerified: true,
       phone: '081567890123',
+      bpjsTk: '00040596873',
+      bpjsKesehatan: '00064518293',
     },
     {
       username: 'tukang1',
@@ -61,6 +69,8 @@ mongoose.connect(MONGODB_URI).then(async () => {
       position: 'Mandor Utama Struktur',
       isVerified: true,
       phone: '081789012345',
+      bpjsTk: '00051607984',
+      bpjsKesehatan: '00055627381',
     },
   ];
 
@@ -71,6 +81,9 @@ mongoose.connect(MONGODB_URI).then(async () => {
       existing = await User.create(u);
       console.log(`Created user: ${existing.fullName} (${existing.role})`);
     } else {
+      if (!existing.bpjsTk && u.bpjsTk) existing.bpjsTk = u.bpjsTk;
+      if (!existing.bpjsKesehatan && u.bpjsKesehatan) existing.bpjsKesehatan = u.bpjsKesehatan;
+      await existing.save();
       console.log(`User exists: ${existing.fullName} (${existing.role})`);
     }
     seededUsers.push(existing);

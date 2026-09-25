@@ -191,6 +191,8 @@ router.put('/profile', auth, async (req, res) => {
     if (email) updateData.email = email;
     if (phone) updateData.phone = phone;
     if (address) updateData.address = address;
+    if (req.body.bpjsTk !== undefined) updateData.bpjsTk = req.body.bpjsTk ? String(req.body.bpjsTk).trim() : '';
+    if (req.body.bpjsKesehatan !== undefined) updateData.bpjsKesehatan = req.body.bpjsKesehatan ? String(req.body.bpjsKesehatan).trim() : '';
     if (paymentInfo) {
       if (paymentInfo.bankAccount !== undefined) updateData['paymentInfo.bankAccount'] = paymentInfo.bankAccount;
       if (paymentInfo.bankPlatform !== undefined) updateData['paymentInfo.bankPlatform'] = paymentInfo.bankPlatform;

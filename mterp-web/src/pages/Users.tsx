@@ -34,7 +34,9 @@ import {
   GraduationCap,
   Award,
   Eye,
-  RotateCcw
+  RotateCcw,
+  ShieldCheck,
+  HeartHandshake
 } from 'lucide-react';
 import { 
   getUsers, 
@@ -103,6 +105,8 @@ const EXPORTABLE_COLUMNS = [
   { key: 'role', label: 'Role / Peran' },
   { key: 'position', label: 'Jabatan (Position)' },
   { key: 'employmentType', label: 'Status Kerja (Employment Type)' },
+  { key: 'bpjsTk', label: 'BPJS Ketenagakerjaan (TK)' },
+  { key: 'bpjsKesehatan', label: 'BPJS Kesehatan' },
   { key: 'latestEducation', label: 'Pendidikan Terakhir (Education)' },
   { key: 'competencies', label: 'Sertifikasi / Kompetensi (Certificates)' },
   { key: 'contractStartDate', label: 'Mulai Kontrak (Contract Start)' },
@@ -169,6 +173,8 @@ export default function Users() {
     contractEndDate: '',
     phone: '',
     address: '',
+    bpjsTk: '',
+    bpjsKesehatan: '',
     emergencyContact: {
       name: '',
       phone: '',
@@ -191,6 +197,8 @@ export default function Users() {
     employmentType: 'tetap' as EmploymentType,
     contractStartDate: '',
     contractEndDate: '',
+    bpjsTk: '',
+    bpjsKesehatan: '',
     emergencyContact: {
       name: '',
       phone: '',
@@ -232,6 +240,8 @@ export default function Users() {
     employmentType: EmploymentType;
     position: string;
     phone: string;
+    bpjsTk: string;
+    bpjsKesehatan: string;
     emergencyContactName: string;
     emergencyContactPhone: string;
     emergencyContactRel: string;
@@ -245,6 +255,8 @@ export default function Users() {
       employmentType: 'tetap',
       position: '',
       phone: '',
+      bpjsTk: '',
+      bpjsKesehatan: '',
       emergencyContactName: '',
       emergencyContactPhone: '',
       emergencyContactRel: '',
@@ -293,6 +305,7 @@ export default function Users() {
     const verified = users.filter(u => u.isVerified).length;
     const certified = users.filter(u => (u.competencies?.length || 0) > 0).length;
     const withProof = users.filter(u => Boolean(u.education?.documentUrl)).length;
+    const withBpjs = users.filter(u => Boolean(u.bpjsTk || u.bpjsKesehatan)).length;
     const expiringCerts = users.reduce((acc, u) => {
       const count = (u.competencies || []).filter(c => {
         if (!c.expiryDate) return false;
@@ -302,7 +315,7 @@ export default function Users() {
       return acc + count;
     }, 0);
 
-    return { total, verified, certified, withProof, expiringCerts };
+    return { total, verified, certified, withProof, withBpjs, expiringCerts };
   }, [users]);
 
   const filteredUsers = useMemo(() => {
@@ -315,6 +328,8 @@ export default function Users() {
           user.username.toLowerCase().includes(searchLower) ||
           user.phone?.toLowerCase().includes(searchLower) ||
           user.position?.toLowerCase().includes(searchLower) ||
+          (user.bpjsTk || '').toLowerCase().includes(searchLower) ||
+          (user.bpjsKesehatan || '').toLowerCase().includes(searchLower) ||
           user.emergencyContact?.name?.toLowerCase().includes(searchLower) ||
           user.education?.institution?.toLowerCase().includes(searchLower) ||
           user.education?.major?.toLowerCase().includes(searchLower) ||
@@ -478,6 +493,8 @@ export default function Users() {
         contractEndDate: '',
         phone: '',
         address: '',
+        bpjsTk: '',
+        bpjsKesehatan: '',
         emergencyContact: { name: '', phone: '', relationship: '' },
         education: { level: '', institution: '', major: '', graduationYear: '' },
       });
@@ -502,6 +519,8 @@ export default function Users() {
       employmentType: (user.employmentType as EmploymentType) || 'tetap',
       contractStartDate: user.contractStartDate ? user.contractStartDate.slice(0, 10) : '',
       contractEndDate: user.contractEndDate ? user.contractEndDate.slice(0, 10) : '',
+      bpjsTk: user.bpjsTk || '',
+      bpjsKesehatan: user.bpjsKesehatan || '',
       emergencyContact: {
         name: user.emergencyContact?.name || '',
         phone: user.emergencyContact?.phone || '',
@@ -650,6 +669,8 @@ export default function Users() {
         employmentType: 'tetap',
         position: '',
         phone: '',
+        bpjsTk: '',
+        bpjsKesehatan: '',
         emergencyContactName: '',
         emergencyContactPhone: '',
         emergencyContactRel: '',
@@ -706,6 +727,8 @@ export default function Users() {
         employmentType: r.employmentType,
         position: r.position,
         phone: r.phone,
+        bpjsTk: r.bpjsTk,
+        bpjsKesehatan: r.bpjsKesehatan,
         emergencyContact: {
           name: r.emergencyContactName,
           phone: r.emergencyContactPhone,
@@ -880,10 +903,12 @@ export default function Users() {
           <div>
             <div className="text-[10px] font-black uppercase tracking-wider text-text-muted">Total Tenaga Kerja</div>
             <div className="text-2xl font-black text-text-primary mt-1 tracking-tight">{stats.total}</div>
-            <div className="text-[11px] font-bold text-text-secondary mt-0.5 flex items-center gap-1.5">
+            <div className="text-[11px] font-bold text-text-secondary mt-0.5 flex items-center gap-1.5 flex-wrap">
               <span className="text-emerald-600">{users.filter(u => (u.employmentType || 'tetap') === 'tetap').length} Tetap</span>
               <span>•</span>
               <span className="text-blue-600">{users.filter(u => u.employmentType === 'kontrak').length} Kontrak</span>
+              <span>•</span>
+              <span className="text-teal-600">{stats.withBpjs} BPJS</span>
             </div>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center border border-blue-500/20 shrink-0">
@@ -1250,6 +1275,30 @@ export default function Users() {
                     </div>
                   )}
 
+                  {/* BPJS Information Box if available */}
+                  {(user.bpjsTk || user.bpjsKesehatan) && (
+                    <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 mb-3 text-xs">
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1 mb-0.5">
+                          <ShieldCheck size={11} className="text-emerald-600" />
+                          BPJS TK
+                        </span>
+                        <span className="font-mono text-[11px] font-bold text-slate-800 truncate block select-all" title={user.bpjsTk}>
+                          {user.bpjsTk || '-'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1 mb-0.5">
+                          <HeartHandshake size={11} className="text-sky-600" />
+                          BPJS Kes
+                        </span>
+                        <span className="font-mono text-[11px] font-bold text-slate-800 truncate block select-all" title={user.bpjsKesehatan}>
+                          {user.bpjsKesehatan || '-'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Kualifikasi: Pendidikan & Sertifikasi */}
                   <div className="bg-bg-secondary/40 p-3 rounded-xl border border-border-light/80 mb-3 text-xs space-y-2">
                     <div className="flex items-center justify-between">
@@ -1403,6 +1452,8 @@ export default function Users() {
                   </th>
                   <th className="py-3.5 px-4 min-w-[140px]">Role & Jabatan</th>
                   <th className="py-3.5 px-4 min-w-[150px]">Status Kerja</th>
+                  <th className="py-3.5 px-4 min-w-[170px]">BPJS TK</th>
+                  <th className="py-3.5 px-4 min-w-[170px]">BPJS Kesehatan</th>
                   <th className="py-3.5 px-4 min-w-[190px]">Pendidikan Terakhir</th>
                   <th className="py-3.5 px-4 min-w-[240px]">Kompetensi & Sertifikasi</th>
                   <th className="py-3.5 px-4 min-w-[190px]">Kontak Darurat</th>
@@ -1451,6 +1502,30 @@ export default function Users() {
                           <div className="text-[10px] text-text-secondary mt-1 font-bold">
                             {user.contractStartDate ? new Date(user.contractStartDate).toLocaleDateString('id-ID') : '...'} - {user.contractEndDate ? new Date(user.contractEndDate).toLocaleDateString('id-ID') : 'Selesai'}
                           </div>
+                        )}
+                      </td>
+
+                      {/* DATA COLUMN: BPJS KETENAGAKERJAAN (TK) */}
+                      <td className="py-3 px-4">
+                        {user.bpjsTk ? (
+                          <div className="flex items-center gap-1.5 font-mono font-bold text-slate-800 bg-emerald-500/10 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-500/20 text-[11px] w-fit">
+                            <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
+                            <span className="tracking-tight select-all">{user.bpjsTk}</span>
+                          </div>
+                        ) : (
+                          <span className="text-text-muted/60 italic text-[11px]">Belum terdaftar</span>
+                        )}
+                      </td>
+
+                      {/* DATA COLUMN: BPJS KESEHATAN */}
+                      <td className="py-3 px-4">
+                        {user.bpjsKesehatan ? (
+                          <div className="flex items-center gap-1.5 font-mono font-bold text-slate-800 bg-sky-500/10 text-sky-800 px-2.5 py-1 rounded-lg border border-sky-500/20 text-[11px] w-fit">
+                            <HeartHandshake size={13} className="text-sky-600 shrink-0" />
+                            <span className="tracking-tight select-all">{user.bpjsKesehatan}</span>
+                          </div>
+                        ) : (
+                          <span className="text-text-muted/60 italic text-[11px]">Belum terdaftar</span>
                         )}
                       </td>
 
@@ -1927,6 +2002,36 @@ export default function Users() {
                 </div>
               </div>
 
+              {/* BPJS Sub-section */}
+              <div className="p-4 bg-slate-50 border-2 border-slate-200 rounded-xl space-y-3">
+                <span className="text-xs font-black text-slate-800 uppercase flex items-center gap-1.5">
+                  <ShieldCheck size={14} className="text-emerald-600" />
+                  Jaminan Sosial (BPJS)
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">No. BPJS Ketenagakerjaan (TK)</label>
+                    <input 
+                      type="text" 
+                      value={newUser.bpjsTk}
+                      onChange={(e) => setNewUser({...newUser, bpjsTk: e.target.value})}
+                      placeholder="e.g. 00012345678"
+                      className="w-full px-3 py-2 border border-border-light rounded-lg font-mono font-bold text-xs bg-white outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">No. BPJS Kesehatan</label>
+                    <input 
+                      type="text" 
+                      value={newUser.bpjsKesehatan}
+                      onChange={(e) => setNewUser({...newUser, bpjsKesehatan: e.target.value})}
+                      placeholder="e.g. 00098765432"
+                      className="w-full px-3 py-2 border border-border-light rounded-lg font-mono font-bold text-xs bg-white outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Kontak Darurat Sub-section */}
               <div className="p-4 bg-red-50/60 border-2 border-red-200 rounded-xl space-y-3">
                 <span className="text-xs font-black text-red-800 uppercase flex items-center gap-1.5">
@@ -2094,6 +2199,36 @@ export default function Users() {
                   onChange={(e) => setEditFormData({...editFormData, address: e.target.value})}
                   className="w-full px-3.5 py-2.5 border-2 border-border-light rounded-xl font-bold text-text-primary bg-bg-white focus:border-primary outline-none text-sm"
                 />
+              </div>
+
+              {/* BPJS Sub-section */}
+              <div className="p-4 bg-slate-50 border-2 border-slate-200 rounded-xl space-y-3">
+                <span className="text-xs font-black text-slate-800 uppercase flex items-center gap-1.5">
+                  <ShieldCheck size={14} className="text-emerald-600" />
+                  Jaminan Sosial (BPJS)
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">No. BPJS Ketenagakerjaan (TK)</label>
+                    <input 
+                      type="text" 
+                      value={editFormData.bpjsTk}
+                      onChange={(e) => setEditFormData({...editFormData, bpjsTk: e.target.value})}
+                      placeholder="e.g. 00012345678"
+                      className="w-full px-3 py-2 border border-border-light rounded-lg font-mono font-bold text-xs bg-white outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">No. BPJS Kesehatan</label>
+                    <input 
+                      type="text" 
+                      value={editFormData.bpjsKesehatan}
+                      onChange={(e) => setEditFormData({...editFormData, bpjsKesehatan: e.target.value})}
+                      placeholder="e.g. 00098765432"
+                      className="w-full px-3 py-2 border border-border-light rounded-lg font-mono font-bold text-xs bg-white outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Kontak Darurat (Emergency Contact) */}
@@ -2472,6 +2607,8 @@ export default function Users() {
                     <th className="py-2.5 px-3 min-w-[120px]">Role</th>
                     <th className="py-2.5 px-3 min-w-[130px]">Status Kerja</th>
                     <th className="py-2.5 px-3 min-w-[120px]">Jabatan</th>
+                    <th className="py-2.5 px-3 min-w-[130px]">BPJS TK</th>
+                    <th className="py-2.5 px-3 min-w-[130px]">BPJS Kesehatan</th>
                     <th className="py-2.5 px-3 min-w-[140px]">Kontak Darurat (Nama)</th>
                     <th className="py-2.5 px-3 min-w-[120px]">Kontak Darurat (HP)</th>
                     <th className="py-2.5 px-3 min-w-[100px]">Hubungan</th>
@@ -2551,6 +2688,24 @@ export default function Users() {
                           value={row.position}
                           onChange={(e) => updateBulkRow(idx, 'position', e.target.value)}
                           className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-bold bg-white outline-none focus:border-primary"
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input 
+                          type="text" 
+                          placeholder="No BPJS TK"
+                          value={row.bpjsTk}
+                          onChange={(e) => updateBulkRow(idx, 'bpjsTk', e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-mono font-bold bg-white outline-none focus:border-primary"
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input 
+                          type="text" 
+                          placeholder="No BPJS Kes"
+                          value={row.bpjsKesehatan}
+                          onChange={(e) => updateBulkRow(idx, 'bpjsKesehatan', e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-border-light rounded-lg text-xs font-mono font-bold bg-white outline-none focus:border-primary"
                         />
                       </td>
                       <td className="py-2 px-2">

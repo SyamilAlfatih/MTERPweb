@@ -63,6 +63,16 @@ const userSchema = new mongoose.Schema({
     bankPlatform: { type: String, trim: true, default: '' },
     accountName: { type: String, trim: true, default: '' },
   },
+  bpjsTk: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  bpjsKesehatan: {
+    type: String,
+    trim: true,
+    default: '',
+  },
   employmentType: {
     type: String,
     enum: ['tetap', 'kontrak', 'harian_lepas', 'magang'],

@@ -63,6 +63,8 @@ const EXPORT_COLUMNS = {
   },
   phone: { header: 'Phone', width: 16, get: (u) => u.phone || '' },
   address: { header: 'Address', width: 30, get: (u) => u.address || '' },
+  bpjsTk: { header: 'BPJS Ketenagakerjaan (TK)', width: 24, get: (u) => u.bpjsTk || '' },
+  bpjsKesehatan: { header: 'BPJS Kesehatan', width: 22, get: (u) => u.bpjsKesehatan || '' },
   latestEducation: {
     header: 'Pendidikan Terakhir',
     width: 25,
@@ -118,6 +120,8 @@ const buildUserFilter = (query) => {
       { email: searchRegex },
       { phone: searchRegex },
       { position: searchRegex },
+      { bpjsTk: searchRegex },
+      { bpjsKesehatan: searchRegex },
     ];
   }
 
@@ -253,6 +257,8 @@ router.get('/import-template', async (req, res) => {
       'Position',
       'Phone',
       'Address',
+      'BPJS Ketenagakerjaan (TK)',
+      'BPJS Kesehatan',
       'Emergency Contact Name',
       'Emergency Contact Phone',
       'Emergency Contact Relationship',
@@ -281,6 +287,8 @@ router.get('/import-template', async (req, res) => {
         'Tukang Besi',
         '081234567890',
         'Jl. Melati No. 12, Jakarta',
+        '00012345678',
+        '00098765432',
         'Siti Aminah',
         '081298765432',
         'Istri',
@@ -295,6 +303,8 @@ router.get('/import-template', async (req, res) => {
         'Tukang Kayu',
         '085678901234',
         'Jl. Mawar No. 45, Bandung',
+        '00055443322',
+        '00066778899',
         'Hasan Hidayat',
         '085611223344',
         'Ayah',
@@ -313,6 +323,8 @@ router.get('/import-template', async (req, res) => {
       { width: 20 }, // Position
       { width: 18 }, // Phone
       { width: 30 }, // Address
+      { width: 24 }, // BPJS TK
+      { width: 22 }, // BPJS Kesehatan
       { width: 25 }, // Emergency Contact Name
       { width: 22 }, // Emergency Contact Phone
       { width: 25 }, // Emergency Contact Relationship
@@ -329,6 +341,8 @@ router.get('/import-template', async (req, res) => {
     infoSheet.addRow(['Role', 'Peran dalam sistem', VALID_ROLES.join(', ')]);
     infoSheet.addRow(['Employment Type', 'Status ikatan kerja', VALID_EMPLOYMENT_TYPES.join(', ')]);
     infoSheet.addRow(['Position', 'Jabatan / Keahlian spesifik', 'Bebas']);
+    infoSheet.addRow(['BPJS Ketenagakerjaan (TK)', 'Nomor kartu BPJS TK / KPJ (Opsional)', 'Nomor / Teks']);
+    infoSheet.addRow(['BPJS Kesehatan', 'Nomor kartu BPJS Kesehatan (Opsional)', 'Nomor / Teks']);
     infoSheet.addRow(['Emergency Contact', 'Kontak Darurat (Keluarga/Kerabat)', 'Nama, No HP, Hubungan (Istri, Ayah, Ibu, dll)']);
     infoSheet.columns = [{ width: 25 }, { width: 35 }, { width: 50 }];
 
@@ -391,6 +405,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
     const colPosition = findCol(['position', 'posisi', 'jabatan']);
     const colPhone = findCol(['phone', 'nohp', 'telepon', 'telp', 'hp']);
     const colAddress = findCol(['address', 'alamat']);
+    const colBpjsTk = findCol(['bpjstk', 'bpjsketenagakerjaan', 'nobpjstk', 'nomorbpjstk', 'kpj', 'bpjstkno']);
+    const colBpjsKes = findCol(['bpjskesehatan', 'bpjskes', 'nobpjskesehatan', 'nobpjskes', 'nomorbpjskesehatan', 'bpjskesno']);
     const colEmergName = findCol(['emergencycontactname', 'namakontakdarurat', 'kontakdaruratnama', 'daruratnama', 'emergencyname']);
     const colEmergPhone = findCol(['emergencycontactphone', 'nohpkontakdarurat', 'kontakdarurattelepon', 'kontakdaruratphone', 'daruratphone', 'emergencyphone']);
     const colEmergRel = findCol(['emergencycontactrelationship', 'hubungankontakdarurat', 'hubungankeluarga', 'kontakdarurathubungan', 'darurathubungan', 'relationship', 'hubungan']);
@@ -426,6 +442,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
       const position = getCellStr(colPosition);
       const phone = getCellStr(colPhone);
       const address = getCellStr(colAddress);
+      const bpjsTk = getCellStr(colBpjsTk);
+      const bpjsKesehatan = getCellStr(colBpjsKes);
       const emergencyContactName = getCellStr(colEmergName);
       const emergencyContactPhone = getCellStr(colEmergPhone);
       const emergencyContactRel = getCellStr(colEmergRel);
@@ -483,6 +501,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
           position,
           phone,
           address,
+          bpjsTk,
+          bpjsKesehatan,
           emergencyContact: {
             name: emergencyContactName,
             phone: emergencyContactPhone,
@@ -643,6 +663,8 @@ router.post('/bulk', async (req, res) => {
           position: u.position || '',
           phone: u.phone || '',
           address: u.address || '',
+          bpjsTk: u.bpjsTk ? String(u.bpjsTk).trim() : '',
+          bpjsKesehatan: u.bpjsKesehatan ? String(u.bpjsKesehatan).trim() : '',
           emergencyContact: {
             name: u.emergencyContact?.name || '',
             phone: u.emergencyContact?.phone || '',
@@ -707,6 +729,8 @@ router.post('/', async (req, res) => {
       contractStartDate,
       contractEndDate,
       emergencyContact,
+      bpjsTk,
+      bpjsKesehatan,
     } = req.body;
 
     // Check if user exists
@@ -732,6 +756,8 @@ router.post('/', async (req, res) => {
       contractStartDate: contractStartDate || null,
       contractEndDate: contractEndDate || null,
       emergencyContact: emergencyContact || { name: '', phone: '', relationship: '' },
+      bpjsTk: bpjsTk ? String(bpjsTk).trim() : '',
+      bpjsKesehatan: bpjsKesehatan ? String(bpjsKesehatan).trim() : '',
       isVerified: true
     });
 
@@ -769,6 +795,12 @@ router.put('/:id', async (req, res) => {
     }
     if (contractStartDate !== undefined) updateData.contractStartDate = contractStartDate || null;
     if (contractEndDate !== undefined) updateData.contractEndDate = contractEndDate || null;
+    if (req.body.bpjsTk !== undefined) {
+      updateData.bpjsTk = req.body.bpjsTk ? String(req.body.bpjsTk).trim() : '';
+    }
+    if (req.body.bpjsKesehatan !== undefined) {
+      updateData.bpjsKesehatan = req.body.bpjsKesehatan ? String(req.body.bpjsKesehatan).trim() : '';
+    }
     if (emergencyContact !== undefined) {
       updateData.emergencyContact = {
         name: emergencyContact.name ? emergencyContact.name.trim() : '',
