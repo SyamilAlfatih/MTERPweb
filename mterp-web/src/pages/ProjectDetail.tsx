@@ -249,6 +249,10 @@ export default function ProjectDetail() {
   const [deletingReport, setDeletingReport] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const [tableDensity, setTableDensity] = useState<'compact' | 'normal' | 'comfortable'>('normal');
+  const [reportSearch, setReportSearch] = useState('');
+  const [reportDensity, setReportDensity] = useState<'compact' | 'normal'>('normal');
+
   const chartRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -1294,24 +1298,72 @@ export default function ProjectDetail() {
 
       {/* Reported Daily Reports */}
       {dailyReports.length > 0 && (
-        <Card className="mb-4 overflow-hidden">
-          <div className="flex items-center gap-2 p-4 pb-3 max-sm:p-3">
-            <FileText size={20} color="var(--primary)" />
-            <h3 className="text-base font-bold text-text-primary m-0 flex-1">Laporan Harian / Daily Reports</h3>
-            <Badge label={`${dailyReports.length} Laporan`} variant="neutral" size="small" />
+        <Card className="mb-4 overflow-hidden border border-border-light shadow-xs">
+          <div className="flex items-center justify-between gap-3 p-4 pb-3 max-sm:p-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <FileText size={20} color="var(--primary)" />
+              <h3 className="text-base font-bold text-text-primary m-0">Laporan Harian / Daily Reports</h3>
+              <Badge label={`${dailyReports.length} Laporan`} variant="neutral" size="small" />
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Report search input */}
+              <input
+                type="text"
+                value={reportSearch}
+                onChange={(e) => setReportSearch(e.target.value)}
+                placeholder="Cari catatan laporan..."
+                className="py-1 px-2.5 text-xs border border-border rounded-lg bg-bg-white text-text-primary focus:outline-none focus:border-primary"
+              />
+
+              {/* Density toggle */}
+              <div className="flex items-center bg-bg-secondary rounded-lg p-0.5 border border-border-light">
+                <button
+                  type="button"
+                  onClick={() => setReportDensity('compact')}
+                  className={`px-2 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
+                    reportDensity === 'compact' ? 'bg-primary text-white shadow-xs' : 'text-text-muted hover:text-text-primary'
+                  }`}
+                  title="Tampilan Rapat"
+                >
+                  Rapat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReportDensity('normal')}
+                  className={`px-2 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
+                    reportDensity === 'normal' ? 'bg-primary text-white shadow-xs' : 'text-text-muted hover:text-text-primary'
+                  }`}
+                  title="Tampilan Standar"
+                >
+                  Standar
+                </button>
+              </div>
+            </div>
           </div>
           <div className="flex flex-col gap-2 p-4 pt-0">
-            {dailyReports.map((report) => {
+            {dailyReports
+              .filter(r => {
+                if (!reportSearch.trim()) return true;
+                const q = reportSearch.toLowerCase();
+                return (
+                  r.notes?.toLowerCase().includes(q) ||
+                  r.weather?.toLowerCase().includes(q) ||
+                  r.createdBy?.fullName?.toLowerCase().includes(q)
+                );
+              })
+              .map((report) => {
               const isExpanded = expandedReports.includes(report._id);
+              const headerPad = reportDensity === 'compact' ? 'p-2' : 'p-3';
               return (
                 <div key={report._id} className="border border-border rounded-xl overflow-hidden bg-bg-secondary">
                   {/* Header Row */}
                   <div 
-                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-bg-white transition-colors"
+                    className={`flex items-center justify-between ${headerPad} cursor-pointer hover:bg-bg-white transition-colors`}
                     onClick={() => toggleReportExpand(report._id)}
                   >
                     <div className="flex items-center gap-4 flex-wrap flex-1">
-                      <div className="flex items-center gap-2 text-sm font-bold">
+                      <div className="flex items-center gap-2 text-sm font-bold font-mono tabular-nums">
                         <Calendar size={14} className="text-text-muted" />
                         {fmtDate(report.date)}
                       </div>
@@ -1320,7 +1372,7 @@ export default function ProjectDetail() {
                         Oleh: <span className="font-semibold text-text-primary">{report.createdBy?.fullName || 'Unknown'}</span>
                       </div>
                       {(report.photos?.length > 0) && (
-                        <div className="flex items-center gap-1 text-xs text-text-muted">
+                        <div className="flex items-center gap-1 text-xs text-text-muted font-mono tabular-nums">
                           <ImageIcon size={14} /> {report.photos.length}
                         </div>
                       )}
@@ -1487,60 +1539,119 @@ export default function ProjectDetail() {
       {/* Work Items Table */}
       {workItems.length > 0 && (
         <div ref={tableRef}>
-          <Card className="mb-4 overflow-hidden">
-            <div className="flex items-center gap-2 p-4 pb-3 max-sm:p-3">
-              <Layers size={20} color="var(--primary)" />
-              <h3 className="text-base font-bold text-text-primary m-0 flex-1">{t('projectDetail.workItems.title')}</h3>
-              <Badge label={`${workItems.length} ${t('projectDetail.workItems.items')}`} variant="neutral" size="small" />
+          <Card className="mb-4 overflow-hidden border border-border-light shadow-xs">
+            <div className="flex items-center justify-between gap-3 p-4 pb-3 max-sm:p-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Layers size={20} color="var(--primary)" />
+                <h3 className="text-base font-bold text-text-primary m-0">{t('projectDetail.workItems.title')}</h3>
+                <Badge label={`${workItems.length} ${t('projectDetail.workItems.items')}`} variant="neutral" size="small" />
+              </div>
+
+              {/* Sub-table Density Switcher */}
+              <div className="flex items-center bg-bg-secondary rounded-lg p-0.5 border border-border-light">
+                <button
+                  type="button"
+                  onClick={() => setTableDensity('compact')}
+                  className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                    tableDensity === 'compact' ? 'bg-primary text-white shadow-xs' : 'text-text-muted hover:text-text-primary'
+                  }`}
+                  title="Kepadatan Rapat (Compact)"
+                >
+                  Rapat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTableDensity('normal')}
+                  className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                    tableDensity === 'normal' ? 'bg-primary text-white shadow-xs' : 'text-text-muted hover:text-text-primary'
+                  }`}
+                  title="Kepadatan Standar (Normal)"
+                >
+                  Standar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTableDensity('comfortable')}
+                  className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                    tableDensity === 'comfortable' ? 'bg-primary text-white shadow-xs' : 'text-text-muted hover:text-text-primary'
+                  }`}
+                  title="Kepadatan Lapang (Comfortable)"
+                >
+                  Lapang
+                </button>
+              </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm [&_th]:py-2 [&_th]:px-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-bold [&_th]:text-text-muted [&_th]:uppercase [&_th]:tracking-[0.5px] [&_th]:border-b [&_th]:border-border [&_th]:whitespace-nowrap [&_th]:bg-bg-secondary [&_td]:p-3 [&_td]:border-b [&_td]:border-border [&_td]:text-text-secondary [&_td]:whitespace-nowrap [&_tbody>tr:last-child>td]:border-b-0 [&_tbody>tr:hover]:bg-bg-secondary">
-                <thead>
+
+            <div className="overflow-x-auto max-h-[500px]">
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 bg-bg-secondary z-10 border-b border-border shadow-xs text-xs font-bold text-text-muted uppercase tracking-[0.5px]">
                   <tr>
-                    <th>{t('projectDetail.workItems.headers.num')}</th>
-                    <th>{t('projectDetail.workItems.headers.name')}</th>
-                    <th>{t('projectDetail.workItems.headers.start')}</th>
-                    <th>{t('projectDetail.workItems.headers.end')}</th>
-                    <th>{t('projectDetail.workItems.headers.qty')}</th>
-                    <th>{t('projectDetail.workItems.headers.unit')}</th>
-                    {canSeeFinancials && <th>{t('projectDetail.workItems.headers.cost')}</th>}
-                    {canSeeFinancials && <th>{t('projectDetail.workItems.headers.weight')}</th>}
-                    <th>{t('projectDetail.workItems.headers.progress')}</th>
-                    {canSeeFinancials && <th>{t('projectDetail.workItems.headers.actualCost')}</th>}
+                    <th className="py-2.5 px-3 text-center w-10">#</th>
+                    <th className="py-2.5 px-3 text-left min-w-[200px]">{t('projectDetail.workItems.headers.name')}</th>
+                    <th className="py-2.5 px-3 text-center min-w-[110px]">{t('projectDetail.workItems.headers.start')}</th>
+                    <th className="py-2.5 px-3 text-center min-w-[110px]">{t('projectDetail.workItems.headers.end')}</th>
+                    <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.workItems.headers.qty')}</th>
+                    <th className="py-2.5 px-3 text-center">{t('projectDetail.workItems.headers.unit')}</th>
+                    {canSeeFinancials && <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.workItems.headers.cost')}</th>}
+                    {canSeeFinancials && <th className="py-2.5 px-3 text-center">{t('projectDetail.workItems.headers.weight')}</th>}
+                    <th className="py-2.5 px-3 text-right font-mono tabular-nums min-w-[140px]">{t('projectDetail.workItems.headers.progress')}</th>
+                    {canSeeFinancials && <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.workItems.headers.actualCost')}</th>}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border bg-bg-white text-text-secondary">
                   {workItems.map((item, i) => {
                     const weight = totalPlannedCost > 0
                       ? ((item.cost || 0) / totalPlannedCost * 100).toFixed(1)
                       : '0';
                     const wiAny = item as any;
+                    const cellPad = {
+                      compact: 'py-1.5 px-3 text-xs',
+                      normal: 'py-2.5 px-3 text-sm',
+                      comfortable: 'py-3.5 px-3 text-sm',
+                    }[tableDensity];
+
                     return (
-                      <tr key={wiAny._id || i} className="transition-colors duration-150">
-                        <td className="font-bold text-text-muted text-xs w-8">{i + 1}</td>
-                        <td className="font-semibold text-text-primary max-w-[200px] overflow-hidden text-ellipsis">{item.name}</td>
-                        <td className="text-xs text-text-muted font-medium whitespace-nowrap">{fmtDate(wiAny.startDate || wiAny.dates?.plannedStart)}</td>
-                        <td className="text-xs text-text-muted font-medium whitespace-nowrap">{fmtDate(wiAny.endDate || wiAny.dates?.plannedEnd)}</td>
-                        <td>{item.qty || 0}</td>
-                        <td>{wiAny.unit || item.volume || '-'}</td>
-                        {canSeeFinancials && <td className="font-mono text-xs font-semibold">{formatRupiah(item.cost || 0)}</td>}
+                      <tr key={wiAny._id || i} className="hover:bg-slate-50 transition-colors duration-150">
+                        <td className={`${cellPad} font-bold text-text-muted text-center font-mono tabular-nums text-xs`}>{i + 1}</td>
+                        <td className={`${cellPad} font-semibold text-text-primary max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap`}>
+                          {item.name}
+                        </td>
+                        <td className={`${cellPad} text-xs text-text-muted font-mono tabular-nums text-center whitespace-nowrap`}>
+                          {fmtDate(wiAny.startDate || wiAny.dates?.plannedStart)}
+                        </td>
+                        <td className={`${cellPad} text-xs text-text-muted font-mono tabular-nums text-center whitespace-nowrap`}>
+                          {fmtDate(wiAny.endDate || wiAny.dates?.plannedEnd)}
+                        </td>
+                        <td className={`${cellPad} text-right font-mono tabular-nums text-text-primary`}>{item.qty || 0}</td>
+                        <td className={`${cellPad} text-center text-text-secondary`}>{wiAny.unit || item.volume || '-'}</td>
                         {canSeeFinancials && (
-                          <td>
+                          <td className={`${cellPad} font-mono tabular-nums text-right font-semibold text-text-primary`}>
+                            {formatRupiah(item.cost || 0)}
+                          </td>
+                        )}
+                        {canSeeFinancials && (
+                          <td className={`${cellPad} text-center`}>
                             <Badge label={`${weight}%`} variant="primary" size="small" />
                           </td>
                         )}
-                        <td>
-                          <div className="flex items-center gap-2 min-w-[120px]">
-                            <div className="flex-1 h-[6px] bg-bg-secondary rounded-full overflow-hidden">
+                        <td className={`${cellPad} text-right`}>
+                          <div className="flex items-center gap-2 justify-end min-w-[120px]">
+                            <div className="w-16 h-[6px] bg-slate-100 rounded-full overflow-hidden">
                               <div
-                                className="h-full bg-gradient-to-r from-primary to-success rounded-full transition-[width] duration-300"
+                                className="h-full bg-gradient-to-r from-primary to-emerald-500 rounded-full transition-[width] duration-300"
                                 style={{ width: `${wiAny.progress || 0}%` }}
                               />
                             </div>
-                            <span className="text-xs font-bold text-text-primary min-w-[36px] text-right">{wiAny.progress || 0}%</span>
+                            <span className="text-xs font-bold font-mono tabular-nums text-text-primary min-w-[36px] text-right">
+                              {wiAny.progress || 0}%
+                            </span>
                           </div>
                         </td>
-                        {canSeeFinancials && <td className="font-mono text-xs font-semibold">{formatRupiah(wiAny.actualCost || 0)}</td>}
+                        {canSeeFinancials && (
+                          <td className={`${cellPad} font-mono tabular-nums text-right font-semibold text-text-primary`}>
+                            {formatRupiah(wiAny.actualCost || 0)}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -1551,46 +1662,63 @@ export default function ProjectDetail() {
 
           {/* Supply Plan Table */}
           {canSeeFinancials && supplies.length > 0 && (
-            <Card className="mb-4 overflow-hidden">
-              <div className="flex items-center gap-2 p-4 pb-3 max-sm:p-3">
-                <Package size={20} color="var(--warning)" />
-                <h3 className="text-base font-bold text-text-primary m-0 flex-1">{t('projectDetail.supplyPlan.title')}</h3>
-                <Badge label={`${supplies.length} ${t('projectDetail.supplyPlan.items')}`} variant="neutral" size="small" />
+            <Card className="mb-4 overflow-hidden border border-border-light shadow-xs">
+              <div className="flex items-center justify-between gap-3 p-4 pb-3 max-sm:p-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Package size={20} color="var(--warning)" />
+                  <h3 className="text-base font-bold text-text-primary m-0">{t('projectDetail.supplyPlan.title')}</h3>
+                  <Badge label={`${supplies.length} ${t('projectDetail.supplyPlan.items')}`} variant="neutral" size="small" />
+                </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-sm [&_th]:py-2 [&_th]:px-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-bold [&_th]:text-text-muted [&_th]:uppercase [&_th]:tracking-[0.5px] [&_th]:border-b [&_th]:border-border [&_th]:whitespace-nowrap [&_th]:bg-bg-secondary [&_td]:p-3 [&_td]:border-b [&_td]:border-border [&_td]:text-text-secondary [&_td]:whitespace-nowrap [&_tbody>tr:last-child>td]:border-b-0 [&_tbody>tr:hover]:bg-bg-secondary">
-                  <thead>
+
+              <div className="overflow-x-auto max-h-[500px]">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 bg-bg-secondary z-10 border-b border-border shadow-xs text-xs font-bold text-text-muted uppercase tracking-[0.5px]">
                     <tr>
-                      <th>{t('projectDetail.supplyPlan.headers.num')}</th>
-                      <th>{t('projectDetail.supplyPlan.headers.item')}</th>
-                      <th>{t('projectDetail.supplyPlan.headers.start')}</th>
-                      <th>{t('projectDetail.supplyPlan.headers.end')}</th>
-                      <th>{t('projectDetail.supplyPlan.headers.qty')}</th>
-                      <th>{t('projectDetail.supplyPlan.headers.unit')}</th>
-                      <th>{t('projectDetail.supplyPlan.headers.cost')}</th>
-                      <th>{t('projectDetail.supplyPlan.headers.weight')}</th>
-                      <th>{t('projectDetail.supplyPlan.headers.status')}</th>
-                      <th>{t('projectDetail.supplyPlan.headers.actualCost')}</th>
+                      <th className="py-2.5 px-3 text-center w-10">#</th>
+                      <th className="py-2.5 px-3 text-left min-w-[200px]">{t('projectDetail.supplyPlan.headers.item')}</th>
+                      <th className="py-2.5 px-3 text-center min-w-[110px]">{t('projectDetail.supplyPlan.headers.start')}</th>
+                      <th className="py-2.5 px-3 text-center min-w-[110px]">{t('projectDetail.supplyPlan.headers.end')}</th>
+                      <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.supplyPlan.headers.qty')}</th>
+                      <th className="py-2.5 px-3 text-center">{t('projectDetail.supplyPlan.headers.unit')}</th>
+                      <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.supplyPlan.headers.cost')}</th>
+                      <th className="py-2.5 px-3 text-center">{t('projectDetail.supplyPlan.headers.weight')}</th>
+                      <th className="py-2.5 px-3 text-center">{t('projectDetail.supplyPlan.headers.status')}</th>
+                      <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.supplyPlan.headers.actualCost')}</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-border bg-bg-white text-text-secondary">
                     {supplies.map((s: any, i: number) => {
                       const supplyWeight = totalPlannedCost > 0
                         ? ((s.cost || 0) / totalPlannedCost * 100).toFixed(1)
                         : '0';
+                      const cellPad = {
+                        compact: 'py-1.5 px-3 text-xs',
+                        normal: 'py-2.5 px-3 text-sm',
+                        comfortable: 'py-3.5 px-3 text-sm',
+                      }[tableDensity];
+
                       return (
-                        <tr key={s._id || i} className="transition-colors duration-150">
-                          <td className="font-bold text-text-muted text-xs w-8">{i + 1}</td>
-                          <td className="font-semibold text-text-primary max-w-[200px] overflow-hidden text-ellipsis">{s.item}</td>
-                          <td className="text-xs text-text-muted font-medium whitespace-nowrap">{fmtDate(s.startDate)}</td>
-                          <td className="text-xs text-text-muted font-medium whitespace-nowrap">{fmtDate(s.endDate)}</td>
-                          <td>{s.qty || 0}</td>
-                          <td>{s.unit || '-'}</td>
-                          <td className="font-mono text-xs font-semibold">{formatRupiah(s.cost || 0)}</td>
-                          <td>
+                        <tr key={s._id || i} className="hover:bg-slate-50 transition-colors duration-150">
+                          <td className={`${cellPad} font-bold text-text-muted text-center font-mono tabular-nums text-xs`}>{i + 1}</td>
+                          <td className={`${cellPad} font-semibold text-text-primary max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap`}>
+                            {s.item}
+                          </td>
+                          <td className={`${cellPad} text-xs text-text-muted font-mono tabular-nums text-center whitespace-nowrap`}>
+                            {fmtDate(s.startDate)}
+                          </td>
+                          <td className={`${cellPad} text-xs text-text-muted font-mono tabular-nums text-center whitespace-nowrap`}>
+                            {fmtDate(s.endDate)}
+                          </td>
+                          <td className={`${cellPad} text-right font-mono tabular-nums text-text-primary`}>{s.qty || 0}</td>
+                          <td className={`${cellPad} text-center text-text-secondary`}>{s.unit || '-'}</td>
+                          <td className={`${cellPad} font-mono tabular-nums text-right font-semibold text-text-primary`}>
+                            {formatRupiah(s.cost || 0)}
+                          </td>
+                          <td className={`${cellPad} text-center`}>
                             <Badge label={`${supplyWeight}%`} variant="warning" size="small" />
                           </td>
-                          <td>
+                          <td className={`${cellPad} text-center`}>
                             <Badge
                               label={s.status || 'Pending'}
                               variant={
@@ -1601,7 +1729,9 @@ export default function ProjectDetail() {
                               size="small"
                             />
                           </td>
-                          <td className="font-mono text-xs font-semibold">{formatRupiah(s.actualCost || 0)}</td>
+                          <td className={`${cellPad} font-mono tabular-nums text-right font-semibold text-text-primary`}>
+                            {formatRupiah(s.actualCost || 0)}
+                          </td>
                         </tr>
                       );
                     })}
