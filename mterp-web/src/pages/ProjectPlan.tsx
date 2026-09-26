@@ -50,6 +50,10 @@ import {
   Clock,
   Briefcase,
   HelpCircle,
+  Indent,
+  Outdent,
+  Trash2,
+  X,
 } from 'lucide-react';
 import './ProjectPlan.css';
 
@@ -331,37 +335,71 @@ export const ProjectPlan: React.FC = () => {
 
   const handleDeleteSelected = async () => {
     if (!id || selectedTaskIds.length === 0) return;
-    const taskToDelete = tasks.find(t => t._id === selectedTaskIds[0]);
-    if (!taskToDelete) return;
-
-    if (!window.confirm(`Delete task "${taskToDelete.name}"?`)) return;
-
-    try {
-      const res = await deleteProjectPlanTask(id, taskToDelete._id);
-      setTasks(res.tasks);
-      setSelectedTaskIds([]);
-    } catch (err: any) {
-      alert(err.response?.data?.msg || 'Failed to delete task');
+    const count = selectedTaskIds.length;
+    if (count === 1) {
+      const taskToDelete = tasks.find(t => t._id === selectedTaskIds[0]);
+      if (!taskToDelete) return;
+      if (!window.confirm(`Delete task "${taskToDelete.name}"?`)) return;
+      try {
+        const res = await deleteProjectPlanTask(id, taskToDelete._id);
+        setTasks(res.tasks);
+        setSelectedTaskIds([]);
+      } catch (err: any) {
+        alert(err.response?.data?.msg || 'Failed to delete task');
+      }
+    } else {
+      if (!window.confirm(`Hapus ${count} tugas terpilih secara bersamaan?`)) return;
+      try {
+        let lastTasks = tasks;
+        for (const tId of selectedTaskIds) {
+          try {
+            const res = await deleteProjectPlanTask(id, tId);
+            lastTasks = res.tasks;
+          } catch (e) {
+            console.error('Failed to delete task', tId, e);
+          }
+        }
+        setTasks(lastTasks);
+        setSelectedTaskIds([]);
+      } catch (err: any) {
+        alert(err.response?.data?.msg || 'Failed to delete some tasks');
+      }
     }
   };
 
   const handleIndent = async () => {
     if (!id || selectedTaskIds.length === 0) return;
     try {
-      const res = await indentProjectTask(id, selectedTaskIds[0]);
-      setTasks(res.tasks);
+      let lastTasks = tasks;
+      for (const tId of selectedTaskIds) {
+        try {
+          const res = await indentProjectTask(id, tId);
+          lastTasks = res.tasks;
+        } catch (e) {
+          console.warn('Cannot indent task', tId, e);
+        }
+      }
+      setTasks(lastTasks);
     } catch (err: any) {
-      alert(err.response?.data?.msg || 'Cannot indent task');
+      alert(err.response?.data?.msg || 'Cannot indent some tasks');
     }
   };
 
   const handleOutdent = async () => {
     if (!id || selectedTaskIds.length === 0) return;
     try {
-      const res = await outdentProjectTask(id, selectedTaskIds[0]);
-      setTasks(res.tasks);
+      let lastTasks = tasks;
+      for (const tId of selectedTaskIds) {
+        try {
+          const res = await outdentProjectTask(id, tId);
+          lastTasks = res.tasks;
+        } catch (e) {
+          console.warn('Cannot outdent task', tId, e);
+        }
+      }
+      setTasks(lastTasks);
     } catch (err: any) {
-      alert(err.response?.data?.msg || 'Cannot outdent task');
+      alert(err.response?.data?.msg || 'Cannot outdent some tasks');
     }
   };
 
@@ -427,7 +465,9 @@ export const ProjectPlan: React.FC = () => {
 
   const handleSetPercent = async (percent: number) => {
     if (!id || selectedTaskIds.length === 0) return;
-    handleUpdateTask(selectedTaskIds[0], 'percentComplete', percent);
+    for (const tId of selectedTaskIds) {
+      handleUpdateTask(tId, 'percentComplete', percent);
+    }
   };
 
   const handleSetBaseline = async (index?: number) => {
@@ -796,6 +836,8 @@ export const ProjectPlan: React.FC = () => {
                   selectedTaskIds={selectedTaskIds}
                   collapsedTaskIds={collapsedTaskIds}
                   onSelectTask={handleSelectTask}
+                  onSelectAll={ids => setSelectedTaskIds(ids)}
+                  onClearSelection={() => setSelectedTaskIds([])}
                   onToggleCollapse={toggleCollapse}
                   onUpdateTask={handleUpdateTask}
                   onOpenDialog={taskId => setDialogTaskId(taskId)}
@@ -840,6 +882,83 @@ export const ProjectPlan: React.FC = () => {
                   onScroll={handleChartScroll}
                 />
               </div>
+            </div>
+          )}
+
+          {/* Floating ERP Batch Action Toolbar */}
+          {selectedTaskIds.length > 0 && activeView === 'gantt' && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 bg-slate-900/95 text-white dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-2xl border border-slate-700 flex flex-wrap items-center gap-3 animate-in fade-in slide-in-from-bottom-3 duration-200">
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white font-mono text-[11px] font-bold shadow-xs">
+                  {selectedTaskIds.length}
+                </span>
+                <span className="text-xs font-semibold text-slate-100 whitespace-nowrap">
+                  Tugas Terpilih
+                </span>
+              </div>
+
+              <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+
+              {/* Quick Bulk Progress Buttons */}
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-slate-400 font-medium mr-1">Progress:</span>
+                {[0, 25, 50, 75, 100].map(pct => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => handleSetPercent(pct)}
+                    className="px-1.5 py-0.5 bg-slate-800 hover:bg-blue-600 text-[10px] font-mono font-semibold rounded text-slate-200 hover:text-white transition-colors"
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+
+              <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+
+              {/* Bulk Indent & Outdent */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleOutdent}
+                  title="Outdent Level (Geser ke luar)"
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded text-xs flex items-center gap-1 transition-colors"
+                >
+                  <Outdent size={13} />
+                  <span className="hidden sm:inline">Outdent</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleIndent}
+                  title="Indent Level (Geser ke dalam)"
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded text-xs flex items-center gap-1 transition-colors"
+                >
+                  <Indent size={13} />
+                  <span className="hidden sm:inline">Indent</span>
+                </button>
+              </div>
+
+              <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+
+              {/* Bulk Delete */}
+              <button
+                type="button"
+                onClick={handleDeleteSelected}
+                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold flex items-center gap-1 transition-colors shadow-xs"
+              >
+                <Trash2 size={13} />
+                <span>Hapus ({selectedTaskIds.length})</span>
+              </button>
+
+              {/* Deselect / Close */}
+              <button
+                type="button"
+                onClick={() => setSelectedTaskIds([])}
+                className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition-colors ml-1"
+                title="Batal Pilihan (Esc)"
+              >
+                <X size={15} />
+              </button>
             </div>
           )}
         </div>

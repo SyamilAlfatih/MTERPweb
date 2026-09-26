@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { ProjectResource, ResourceType } from '../../types';
+import CostInput, { formatRupiahDots, stripDots } from '../shared/CostInput';
 import {
   Plus,
   Trash2,
@@ -55,9 +56,17 @@ export const ResourceSheetView: React.FC<ResourceSheetViewProps> = ({
 
   const startEdit = useCallback((res: ProjectResource, field: string) => {
     setEditingCell({ id: res._id, field });
-    setEditValue((res as any)[field] ?? '');
+    const raw = (res as any)[field];
+    if (['standardRate', 'overtimeRate', 'costPerUse'].includes(field)) {
+      setEditValue(formatRupiahDots(raw ?? 0));
+    } else {
+      setEditValue(raw !== undefined && raw !== null ? String(raw) : '');
+    }
     // Focus input on next tick
-    setTimeout(() => inputRef.current?.focus(), 30);
+    setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, 30);
   }, []);
 
   const commitEdit = useCallback(
@@ -65,9 +74,11 @@ export const ResourceSheetView: React.FC<ResourceSheetViewProps> = ({
       if (!editingCell || editingCell.id !== resourceId) return;
       const field = editingCell.field;
       let val = editValue;
-      // Numeric fields
-      if (['maxUnits', 'standardRate', 'overtimeRate', 'costPerUse'].includes(field)) {
-        val = parseFloat(String(editValue).replace(/[^0-9.]/g, '')) || 0;
+      // Numeric and currency fields
+      if (['standardRate', 'overtimeRate', 'costPerUse'].includes(field)) {
+        val = Number(stripDots(String(editValue))) || 0;
+      } else if (field === 'maxUnits') {
+        val = parseInt(String(editValue).replace(/[^\d]/g, ''), 10) || 0;
       }
       setEditingCell(null);
       setSavingId(resourceId);
@@ -155,25 +166,32 @@ export const ResourceSheetView: React.FC<ResourceSheetViewProps> = ({
   ) => {
     const isEditing = editingCell?.id === res._id && editingCell?.field === field;
     const raw = (res as any)[field] as number | undefined;
+    const isCostField = ['standardRate', 'overtimeRate', 'costPerUse'].includes(field) || prefix.includes('Rp');
     if (isEditing) {
       return (
         <input
           ref={inputRef}
-          type="number"
+          type="text"
           value={editValue}
-          onChange={e => setEditValue(e.target.value)}
+          onChange={e => {
+            if (isCostField) {
+              setEditValue(formatRupiahDots(e.target.value));
+            } else {
+              setEditValue(e.target.value);
+            }
+          }}
           onBlur={() => commitEdit(res._id)}
           onKeyDown={e => handleKeyDown(e, res._id)}
-          className="w-full px-1.5 py-0.5 border border-blue-500 rounded text-xs outline-none text-right font-mono bg-blue-50"
+          className="w-full px-1.5 py-0.5 border border-blue-500 rounded text-xs outline-none text-right font-mono tabular-nums bg-blue-50"
         />
       );
     }
     const display = prefix
-      ? `${prefix}${(raw ?? 0).toLocaleString('id-ID')}`
+      ? `${prefix}${formatRupiahDots(raw ?? 0)}`
       : `${raw ?? 0}${suffix}`;
     return (
       <span
-        className="block text-right font-mono cursor-text hover:bg-blue-50 px-1 py-0.5 rounded transition-colors"
+        className="block text-right font-mono tabular-nums cursor-text hover:bg-blue-50 px-1 py-0.5 rounded transition-colors"
         onDoubleClick={() => startEdit(res, field)}
         title="Double-click to edit"
       >
@@ -322,13 +340,13 @@ export const ResourceSheetView: React.FC<ResourceSheetViewProps> = ({
           </div>
 
           <div className="w-36">
-            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">Std. Rate (Rp/day)</label>
-            <input
-              type="number"
-              min="0"
+            <CostInput
+              label="Std. Rate (Rp/day)"
+              prefix="Rp"
+              compact
               value={newStandardRate}
-              onChange={e => setNewStandardRate(parseFloat(e.target.value) || 0)}
-              className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono"
+              onChange={val => setNewStandardRate(val)}
+              placeholder="0"
             />
           </div>
 

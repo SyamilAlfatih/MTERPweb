@@ -244,9 +244,71 @@ const projectTaskSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  legacySupplyId: {
+    type: String,
+    default: null,
+  },
   legacyTaskId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Task',
+    default: null,
+  },
+
+  // Unified Item Type & RAB Classification
+  itemType: {
+    type: String,
+    enum: ['summary', 'work', 'supply', 'milestone'],
+    default: 'work',
+  },
+  category: {
+    type: String,
+    enum: ['general', 'material', 'labor', 'equipment', 'subcontractor', 'overhead'],
+    default: 'general',
+  },
+
+  // Physical Quantities & Unit Rates (RAB Engine)
+  quantity: {
+    type: Number,
+    default: 1,
+    min: 0,
+  },
+  unit: {
+    type: String,
+    default: 'ls',
+    trim: true,
+  },
+  unitRate: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  totalBudget: {
+    type: Number,
+    default: 0,
+  },
+
+  // Realization & Progress
+  realizedQuantity: {
+    type: Number,
+    default: 0,
+  },
+  realizedAmount: {
+    type: Number,
+    default: 0,
+  },
+  physicalWeight: {
+    type: Number,
+    default: 0,
+  },
+
+  // Supply Specific Fields
+  supplyStatus: {
+    type: String,
+    enum: ['Pending', 'Ordered', 'Delivered'],
+    default: 'Pending',
+  },
+  deliveryDate: {
+    type: Date,
     default: null,
   },
 

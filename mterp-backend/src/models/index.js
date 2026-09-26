@@ -16,6 +16,8 @@ const ApiKey = require('./ApiKey');
 const ProjectTask = require('./ProjectTask');
 const ProjectCalendar = require('./ProjectCalendar');
 const ProjectResource = require('./ProjectResource');
+const RABItem = require('./RABItem');
+const LocalPurchase = require('./LocalPurchase');
 
 module.exports = {
   User,
@@ -36,4 +38,6 @@ module.exports = {
   ProjectTask,
   ProjectCalendar,
   ProjectResource,
+  RABItem,
+  LocalPurchase,
 };

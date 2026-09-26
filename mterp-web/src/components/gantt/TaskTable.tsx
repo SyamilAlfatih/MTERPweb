@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ProjectTask } from '../../types';
 import { ColumnDef } from './useGanttState';
+import { formatRupiahDots } from '../shared/CostInput';
 import {
   ChevronRight,
   ChevronDown,
@@ -21,6 +22,8 @@ interface TaskTableProps {
   selectedTaskIds: string[];
   collapsedTaskIds: Set<string>;
   onSelectTask: (taskId: string, isMulti: boolean) => void;
+  onSelectAll?: (ids: string[]) => void;
+  onClearSelection?: () => void;
   onToggleCollapse: (taskId: string) => void;
   onUpdateTask: (taskId: string, field: keyof ProjectTask, value: any) => void;
   onOpenDialog: (taskId: string) => void;
@@ -36,6 +39,8 @@ export const TaskTable: React.FC<TaskTableProps> = ({
   selectedTaskIds,
   collapsedTaskIds,
   onSelectTask,
+  onSelectAll,
+  onClearSelection,
   onToggleCollapse,
   onUpdateTask,
   onOpenDialog,
@@ -97,7 +102,7 @@ export const TaskTable: React.FC<TaskTableProps> = ({
     else if (field === 'finishDate') initialVal = task.finishDate ? task.finishDate.slice(0, 10) : '';
     else if (field === 'percentComplete') initialVal = String(task.percentComplete || 0);
     else if (field === 'name') initialVal = task.name;
-    else if (field === 'plannedCost') initialVal = String(task.plannedCost || 0);
+    else if (field === 'plannedCost') initialVal = task.plannedCost ? formatRupiahDots(task.plannedCost) : '';
     else if (field === 'predecessors') {
       initialVal = (task.predecessors || [])
         .map(p => {
@@ -128,7 +133,8 @@ export const TaskTable: React.FC<TaskTableProps> = ({
     } else if (field === 'startDate' || field === 'finishDate') {
       if (editValue) onUpdateTask(taskId, field as keyof ProjectTask, editValue);
     } else if (field === 'plannedCost') {
-      const parsed = Math.max(0, parseFloat(editValue) || 0);
+      const clean = editValue.replace(/\./g, '').replace(/[^\d]/g, '');
+      const parsed = Math.max(0, parseInt(clean, 10) || 0);
       onUpdateTask(taskId, 'plannedCost', parsed);
     }
 
@@ -166,7 +172,21 @@ export const TaskTable: React.FC<TaskTableProps> = ({
   };
 
   const visibleColumns = columns.filter(c => c.visible);
-  const totalTableWidth = visibleColumns.reduce((sum, c) => sum + c.width, 0);
+  const totalTableWidth = 36 + visibleColumns.reduce((sum, c) => sum + c.width, 0);
+
+  const allVisibleSelected = visibleTasks.length > 0 && visibleTasks.every(t => selectedTaskIds.includes(t._id));
+  const someVisibleSelected = visibleTasks.some(t => selectedTaskIds.includes(t._id));
+  const isIndeterminate = someVisibleSelected && !allVisibleSelected;
+
+  const handleToggleSelectAll = () => {
+    if (allVisibleSelected) {
+      if (onClearSelection) onClearSelection();
+      else onSelectAll?.([]);
+    } else {
+      const visibleIds = visibleTasks.map(t => t._id);
+      onSelectAll?.(visibleIds);
+    }
+  };
 
   return (
     <div
@@ -178,11 +198,30 @@ export const TaskTable: React.FC<TaskTableProps> = ({
       <div style={{ width: totalTableWidth, minWidth: '100%' }}>
         {/* Table Header */}
         <div className="sticky top-0 z-20 flex bg-gradient-to-b from-slate-50 to-slate-100 border-b border-slate-300 text-xs font-semibold text-slate-700 h-[50px] shadow-xs">
+          {/* Multi-selection Checkbox Header */}
+          <div
+            className="flex items-center justify-center border-r border-slate-300 bg-slate-100 shrink-0"
+            style={{ width: 36, minWidth: 36 }}
+          >
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              ref={el => {
+                if (el) el.indeterminate = isIndeterminate;
+              }}
+              onChange={handleToggleSelectAll}
+              aria-label="Select all tasks"
+              className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+            />
+          </div>
+
           {visibleColumns.map(col => (
             <div
               key={col.id}
-              className="relative flex items-center px-2 border-r border-slate-200 uppercase tracking-wider text-[11px] font-bold text-slate-700 truncate"
-              style={{ width: col.width, minWidth: col.width, justifyContent: col.align || 'left' }}
+              className={`relative flex items-center px-2 border-r border-slate-200 uppercase tracking-wider text-[11px] font-bold text-slate-700 truncate ${
+                col.align === 'right' ? 'justify-end text-right' : col.align === 'center' ? 'justify-center text-center' : 'justify-start text-left'
+              }`}
+              style={{ width: col.width, minWidth: col.width }}
             >
               <span className="truncate">{col.label}</span>
               {/* Drag handle for resizing column */}
@@ -214,6 +253,20 @@ export const TaskTable: React.FC<TaskTableProps> = ({
                     : 'bg-white hover:bg-blue-50/50'
                 } ${task.isSummary ? 'font-semibold text-slate-900 bg-slate-50/40' : 'text-slate-700'}`}
               >
+                {/* Row Checkbox */}
+                <div
+                  onClick={e => e.stopPropagation()}
+                  className="flex items-center justify-center border-r border-slate-200 shrink-0 h-full"
+                  style={{ width: 36, minWidth: 36 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => onSelectTask(task._id, true)}
+                    aria-label={`Select task ${task.name}`}
+                    className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                  />
+                </div>
                 {visibleColumns.map(col => {
                   const isEditing = editingCell?.taskId === task._id && editingCell?.field === col.id;
 
@@ -240,6 +293,20 @@ export const TaskTable: React.FC<TaskTableProps> = ({
                             onBlur={commitCellEdit}
                             onKeyDown={handleKeyDown}
                             className="w-full h-7 px-1 text-xs border border-blue-500 rounded outline-none bg-white"
+                          />
+                        ) : col.id === 'plannedCost' ? (
+                          <input
+                            ref={editInputRef}
+                            type="text"
+                            inputMode="numeric"
+                            value={editValue}
+                            onChange={e => {
+                              const clean = e.target.value.replace(/\./g, '').replace(/[^\d]/g, '');
+                              setEditValue(clean ? formatRupiahDots(Number(clean)) : '');
+                            }}
+                            onBlur={commitCellEdit}
+                            onKeyDown={handleKeyDown}
+                            className="w-full h-7 px-1 text-xs border border-blue-500 rounded outline-none bg-white font-mono text-right"
                           />
                         ) : (
                           <input
@@ -325,6 +392,21 @@ export const TaskTable: React.FC<TaskTableProps> = ({
                                     </button>
                                   )}
                                   {!task.isSummary && <span className="w-4 inline-block" />}
+                                  {task.itemType === 'work' && (
+                                    <span className="shrink-0 mr-1.5 px-1.5 py-0.2 text-[9px] font-bold rounded bg-indigo-50 text-indigo-700 border border-indigo-200/70" title="Item Pekerjaan / Jasa">
+                                      Pekerjaan
+                                    </span>
+                                  )}
+                                  {task.itemType === 'supply' && (
+                                    <span className="shrink-0 mr-1.5 px-1.5 py-0.2 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200/70" title="Item Pengadaan / Material">
+                                      Supply
+                                    </span>
+                                  )}
+                                  {task.isSummary && (
+                                    <span className="shrink-0 mr-1.5 px-1.5 py-0.2 text-[9px] font-bold rounded bg-purple-50 text-purple-700 border border-purple-200/70" title="Paket Pekerjaan (Summary)">
+                                      WBS
+                                    </span>
+                                  )}
                                   <span className="truncate">{task.name}</span>
                                 </div>
                               );
@@ -574,6 +656,42 @@ export const TaskTable: React.FC<TaskTableProps> = ({
                               const eac = cpi > 0 ? Math.round(bac / cpi) : bac;
                               return <span className="font-mono text-[11px] text-slate-700">{`Rp ${eac.toLocaleString('id-ID')}`}</span>;
                             }
+
+                            case 'itemType':
+                              return (
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  task.itemType === 'supply'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : task.itemType === 'summary' || task.isSummary
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : task.itemType === 'milestone' || task.isMilestone
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-indigo-100 text-indigo-800'
+                                }`}>
+                                  {task.itemType === 'supply' ? 'Supply' : (task.itemType === 'summary' || task.isSummary) ? 'WBS' : task.isMilestone ? 'Milestone' : 'Pekerjaan'}
+                                </span>
+                              );
+
+                            case 'quantity':
+                              return (
+                                <span className="font-mono text-[11px] text-slate-700">
+                                  {task.quantity !== undefined ? task.quantity.toLocaleString('id-ID') : '-'}
+                                </span>
+                              );
+
+                            case 'unit':
+                              return (
+                                <span className="text-[11px] text-slate-600 font-medium">
+                                  {task.unit || '-'}
+                                </span>
+                              );
+
+                            case 'unitRate':
+                              return (
+                                <span className="font-mono text-[11px] text-slate-700">
+                                  {task.unitRate ? `Rp ${task.unitRate.toLocaleString('id-ID')}` : '-'}
+                                </span>
+                              );
 
                             default:
                               return <span>{String((task as any)[col.id] || '')}</span>;

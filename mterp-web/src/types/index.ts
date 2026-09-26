@@ -442,6 +442,19 @@ export interface ProjectTask {
   lateStart?: string;
   lateFinish?: string;
 
+  // Unified Item Type & RAB Classification
+  itemType?: 'summary' | 'work' | 'supply' | 'milestone';
+  category?: 'general' | 'material' | 'labor' | 'equipment' | 'subcontractor' | 'overhead';
+  quantity?: number;
+  unit?: string;
+  unitRate?: number;
+  totalBudget?: number;
+  realizedQuantity?: number;
+  realizedAmount?: number;
+  physicalWeight?: number;
+  supplyStatus?: 'Pending' | 'Ordered' | 'Delivered';
+  deliveryDate?: string | null;
+
   // Client UI state
   isExpanded?: boolean;
   isSelected?: boolean;
@@ -507,4 +520,53 @@ export interface ExcelImportPreview {
   sampleTasks: Partial<ProjectTask>[];
   warnings: string[];
 }
+
+export interface RABItem {
+  _id: string;
+  projectId: string;
+  wbsCode: string;
+  description: string;
+  category: 'material' | 'labor' | 'equipment' | 'subcontractor' | 'overhead';
+  unitOfMeasure: string;
+  budgetedQuantity: number;
+  unitRate: number;
+  totalBudget: number;
+  realizedQuantity: number;
+  realizedAmount: number;
+  committedQuantity: number;
+  remainingQuantity?: number;
+  remainingBudget?: number;
+  realizationPercentage?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LocalPurchase {
+  _id: string;
+  projectId: string;
+  rabItemId: string | RABItem;
+  voucherNumber: string;
+  purchaserName: string;
+  supplierName: string;
+  supplierContact?: string;
+  itemDescription: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  receiptPhotoUrl: string;
+  geotagLocation?: {
+    lat?: number;
+    lng?: number;
+    addressText?: string;
+  };
+  notes?: string;
+  status: 'DRAFT' | 'SUBMITTED' | 'VERIFIED' | 'REJECTED';
+  verifiedBy?: string | { _id: string; fullName: string; role: string };
+  verifiedAt?: string;
+  rejectionReason?: string;
+  createdBy?: string | { _id: string; fullName: string; role: string };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 

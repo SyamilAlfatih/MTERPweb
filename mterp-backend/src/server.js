@@ -24,6 +24,8 @@ const {
   attendanceSessionRoutes,
   pekerjaRoutes,
   apiKeyRoutes,
+  rabRoutes,
+  localPurchaseRoutes,
 } = require('./routes');
 const updatesRoutes = require('./routes/updates');
 const dashboardRoutes = require('./routes/dashboard');
@@ -88,6 +90,10 @@ app.use(express.urlencoded({ extended: true }));
 // API Routes
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/projects/:projectId/plan', projectPlanRoutes);
+app.use('/api/projects/:projectId/rab', rabRoutes);
+app.use('/api/rab', rabRoutes);
+app.use('/api/projects/:projectId/local-purchases', localPurchaseRoutes);
+app.use('/api/local-purchases', localPurchaseRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/tools', toolRoutes);

@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const { Request, Project, User, Supply } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const { notify, notifyByRole } = require('../utils/notify');
+const { withTransaction } = require('../utils/transaction');
 
 const router = express.Router();
 
@@ -161,43 +162,76 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (r
       updateData.rejectionReason = rejectionReason;
     }
     
-    const request = await Request.findByIdAndUpdate(
-      req.params.id,
-      { $set: updateData },
-      { new: true }
-    )
-      .populate('requestedBy', 'fullName role')
-      .populate('projectId', 'nama lokasi')
-      .populate('approvedBy', 'fullName');
-    
-    if (!request) {
-      return res.status(404).json({ msg: 'Request not found' });
-    }
-    
-    // Add approved material to supply plan
-    if (status === 'Approved' && request.projectId) {
-      const existingSupply = await Supply.findOne({
-        projectId: request.projectId._id,
-        item: request.item,
-        status: 'Pending'
-      });
-      
-      if (existingSupply) {
-         existingSupply.qty += Number(request.qty) || 0;
-         await existingSupply.save();
-      } else {
-        const newSupply = new Supply({
-          projectId: request.projectId._id,
-          item: request.item,
-          qty: Number(request.qty) || 0,
-          unit: request.unit || 'Pcs',
-          cost: request.costEstimate || 0,
-          status: 'Pending'
-        });
-        await newSupply.save();
+    const request = await withTransaction(async (session) => {
+      const updatedReq = session
+        ? await Request.findByIdAndUpdate(
+            req.params.id,
+            { $set: updateData },
+            { new: true, session }
+          )
+        : await Request.findByIdAndUpdate(
+            req.params.id,
+            { $set: updateData },
+            { new: true }
+          );
+
+      if (!updatedReq) {
+        const err = new Error('Request not found');
+        err.statusCode = 404;
+        throw err;
       }
-    }
-    
+
+      // Add approved material to supply plan atomically
+      if (status === 'Approved' && updatedReq.projectId) {
+        const supplyQuery = {
+          projectId: updatedReq.projectId,
+          item: updatedReq.item,
+          status: 'Pending'
+        };
+
+        const existingSupply = session
+          ? await Supply.findOne(supplyQuery).session(session)
+          : await Supply.findOne(supplyQuery);
+
+        if (existingSupply) {
+          if (session) {
+            await Supply.updateOne(
+              { _id: existingSupply._id },
+              { $inc: { qty: Number(updatedReq.qty) || 0 } },
+              { session }
+            );
+          } else {
+            await Supply.updateOne(
+              { _id: existingSupply._id },
+              { $inc: { qty: Number(updatedReq.qty) || 0 } }
+            );
+          }
+        } else {
+          const newSupply = new Supply({
+            projectId: updatedReq.projectId,
+            item: updatedReq.item,
+            qty: Number(updatedReq.qty) || 0,
+            unit: updatedReq.unit || 'Pcs',
+            cost: updatedReq.costEstimate || 0,
+            status: 'Pending'
+          });
+
+          if (session) {
+            await newSupply.save({ session });
+          } else {
+            await newSupply.save();
+          }
+        }
+      }
+
+      return updatedReq;
+    });
+
+    // Populate for response outside transaction
+    await request.populate('requestedBy', 'fullName role');
+    await request.populate('projectId', 'nama lokasi');
+    await request.populate('approvedBy', 'fullName');
+
     res.json(request);
 
     // Notify the requester about approval/rejection (fire-and-forget)

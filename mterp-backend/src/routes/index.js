@@ -11,6 +11,8 @@ const attendanceSessionRoutes = require('./attendanceSession');
 const pekerjaRoutes = require('./pekerja');
 const apiKeyRoutes = require('./apikeys');
 const projectPlanRoutes = require('./projectPlan');
+const rabRoutes = require('./rab');
+const localPurchaseRoutes = require('./localPurchases');
 
 module.exports = {
   authRoutes,
@@ -26,4 +28,7 @@ module.exports = {
   attendanceSessionRoutes,
   pekerjaRoutes,
   apiKeyRoutes,
+  rabRoutes,
+  localPurchaseRoutes,
 };
+

@@ -1,8 +1,13 @@
 const express = require('express');
-const { Project, Supply, DailyReport, MaterialLog, ProjectReport } = require('../models');
+const mongoose = require('mongoose');
+const router = express.Router();
+const { Project, Supply, DailyReport, MaterialLog, ProjectReport, ProjectTask, ProjectCalendar, ProjectResource, RABItem } = require('../models');
 const bcrypt = require('bcryptjs');
 const { auth, authorize } = require('../middleware/auth');
 const apiKeyAuth = require('../middleware/apiKeyAuth');
+const { withTransaction } = require('../utils/transaction');
+const { ensureProjectTasksFromLegacy, syncProjectTasksToProjectEntities } = require('../utils/projectSync');
+const { recalculateProjectSchedule } = require('../utils/scheduling');
 
 // Middleware toleran: terima JWT Bearer ATAU X-API-Key
 const authOrApiKey = (req, res, next) => {
@@ -49,8 +54,6 @@ async function convertToWebP(filePath) {
     return filePath;
   }
 }
-
-const router = express.Router();
 
 // GET /api/projects - Get all projects
 // Accepts JWT Bearer token OR X-API-Key header (for external integrations like EnercoSafe)
@@ -109,36 +112,44 @@ function sheetToJson(ws) {
   return rows;
 }
 
-// GET /api/projects/import-template - Download a blank .xlsx template
+// GET /api/projects/import-template - Download a blank .xlsx template matching ERP WBS Wizard
 router.get('/import-template', auth, authorize('owner', 'director'), async (req, res) => {
   try {
     const wb = new ExcelJS.Workbook();
 
+    // Sheet 1: Project Info
     const wsProject = wb.addWorksheet('Project Info');
     addSheetData(wsProject,
       ['Nama Proyek', 'Lokasi', 'Deskripsi', 'Total Anggaran', 'Tanggal Mulai', 'Tanggal Selesai'],
-      [['Proyek Jembatan Kali', 'Jakarta Selatan', 'Pembangunan jembatan penyeberangan', 500000000, '2026-04-01', '2026-12-31']],
-      22
+      [['Pembangunan Gedung & Fasilitas Terpadu', 'Jakarta Selatan', 'Pembangunan struktur gedung dan fasilitas penunjang proyek', 1500000000, '2026-04-01', '2026-12-31']],
+      25
     );
 
-    const wsSupply = wb.addWorksheet('Supplies');
-    addSheetData(wsSupply,
-      ['Nama Barang', 'Jumlah', 'Satuan', 'Biaya', 'Tanggal Mulai', 'Tanggal Selesai'],
-      [['Semen Tiga Roda', 100, 'sak', 7500000, '2026-04-01', '2026-04-15']],
-      18
-    );
-
-    const wsWork = wb.addWorksheet('Work Items');
-    addSheetData(wsWork,
-      ['Nama Pekerjaan', 'Jumlah', 'Satuan', 'Biaya', 'Tanggal Mulai', 'Tanggal Selesai'],
-      [['Pekerjaan Pondasi', 50, 'M3', 25000000, '2026-04-01', '2026-06-30']],
-      18
+    // Sheet 2: WBS & Task Items (Single Source of Truth WBS Table)
+    const wsWBS = wb.addWorksheet('WBS & Task Items');
+    addSheetData(wsWBS,
+      ['Kode WBS', 'Level', 'Tipe', 'Nama Task / Item', 'Kategori', 'Volume', 'Satuan', 'Harga Satuan', 'Total Biaya', 'Durasi (Hari)', 'Tanggal Mulai', 'Tanggal Selesai'],
+      [
+        ['1', 1, 'summary', 'Pekerjaan Struktur Bawah (Substructure)', 'general', 1, 'ls', 0, 0, 30, '2026-04-01', '2026-04-30'],
+        ['1.1', 2, 'work', 'Pemancangan Spun Pile Dia 50cm', 'labor', 120, 'titik', 350000, 42000000, 14, '2026-04-01', '2026-04-14'],
+        ['1.2', 2, 'supply', 'Spun Pile Beton Dia 50cm L=12m', 'material', 120, 'btg', 2500000, 300000000, 10, '2026-04-01', '2026-04-10'],
+        ['1.3', 2, 'work', 'Galian Tanah Pile Cap & Tie Beam', 'labor', 450, 'M3', 85000, 38250000, 12, '2026-04-10', '2026-04-22'],
+        ['1.4', 2, 'supply', 'Ready Mix Concrete K-350 Pile Cap', 'material', 180, 'M3', 950000, 171000000, 7, '2026-04-15', '2026-04-22'],
+        ['1.5', 2, 'milestone', 'Milestone: Struktur Bawah Selesai', 'general', 0, 'ls', 0, 0, 0, '2026-04-30', '2026-04-30'],
+        ['2', 1, 'summary', 'Pekerjaan Struktur Atas (Superstructure)', 'general', 1, 'ls', 0, 0, 60, '2026-05-01', '2026-06-30'],
+        ['2.1', 2, 'work', 'Pembesian Balok & Pelat Lantai', 'labor', 15000, 'kg', 3500, 52500000, 20, '2026-05-01', '2026-05-20'],
+        ['2.2', 2, 'supply', 'Besi Beton Ulir D16 & D19 (SNI)', 'material', 15000, 'kg', 14500, 217500000, 15, '2026-05-01', '2026-05-15'],
+        ['2.3', 2, 'work', 'Pengecoran Pelat & Balok Lantai 1', 'labor', 220, 'M3', 250000, 55000000, 10, '2026-05-21', '2026-05-31'],
+        ['2.4', 2, 'supply', 'Ready Mix Concrete K-300 Lantai 1', 'material', 220, 'M3', 920000, 202400000, 5, '2026-05-21', '2026-05-26'],
+        ['2.5', 2, 'milestone', 'Milestone: Topping Off Lantai 1', 'general', 0, 'ls', 0, 0, 0, '2026-06-30', '2026-06-30'],
+      ],
+      20
     );
 
     const buf = await wb.xlsx.writeBuffer();
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename="MTERP_Project_Template.xlsx"');
+    res.setHeader('Content-Disposition', 'attachment; filename="MTERP_Project_WBS_Template.xlsx"');
     res.send(Buffer.from(buf));
   } catch (error) {
     console.error('Generate import template error:', error);
@@ -146,7 +157,7 @@ router.get('/import-template', auth, authorize('owner', 'director'), async (req,
   }
 });
 
-// POST /api/projects/import - Parse uploaded .xlsx and return structured data
+// POST /api/projects/import - Parse uploaded .xlsx and return structured WBS data
 router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
   upload.single('file'),
   async (req, res) => {
@@ -194,56 +205,267 @@ router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
         }
       }
 
-      // ---- Sheet 2: Supplies ----
-      const supplies = [];
-      if (sheets.length > 1) {
-        const supplyRows = sheetToJson(sheets[1]);
-        for (const row of supplyRows) {
-          const keys = Object.keys(row);
-          const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
+      // Check for unified WBS sheet (Sheet 2 or named WBS)
+      let wbsSheet = null;
+      let legacySuppliesSheet = null;
+      let legacyWorkSheet = null;
 
-          const item = String(row[find(['namabarang', 'itemname', 'item', 'nama'])] || '').trim();
-          if (!item) continue;
-
-          supplies.push({
-            id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
-            item,
-            qty: Number(row[find(['jumlah', 'qty', 'quantity'])]) || 0,
-            unit: String(row[find(['satuan', 'unit'])] || 'pcs'),
-            cost: Number(row[find(['biaya', 'cost', 'harga'])]) || 0,
-            status: 'Pending',
-            startDate: parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
-            endDate: parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
-          });
+      for (const s of sheets) {
+        const nameNorm = norm(s.name);
+        if (nameNorm.includes('wbs') || nameNorm.includes('task')) {
+          wbsSheet = s;
+        } else if (nameNorm.includes('supply') || nameNorm.includes('material') || nameNorm.includes('barang')) {
+          legacySuppliesSheet = s;
+        } else if (nameNorm.includes('work') || nameNorm.includes('pekerjaan')) {
+          legacyWorkSheet = s;
         }
       }
 
-      // ---- Sheet 3: Work Items ----
+      // Default fallback by inspecting row 1 headers of sheet 2
+      if (!wbsSheet && sheets.length >= 2 && !legacySuppliesSheet && !legacyWorkSheet) {
+        const s2Rows = sheetToJson(sheets[1]);
+        if (s2Rows.length > 0) {
+          const s2Keys = Object.keys(s2Rows[0]).map(norm);
+          if (s2Keys.some(k => k.includes('wbs') || k.includes('tipe') || k.includes('type') || k.includes('level'))) {
+            wbsSheet = sheets[1];
+          }
+        }
+      }
+
+      const tasks = [];
+      const supplies = [];
       const workItems = [];
-      if (sheets.length > 2) {
-        const workRows = sheetToJson(sheets[2]);
-        for (const row of workRows) {
+
+      if (wbsSheet) {
+        const rows = sheetToJson(wbsSheet);
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
           const keys = Object.keys(row);
           const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
 
-          const name = String(row[find(['namapekerjaan', 'workitemname', 'name', 'nama', 'pekerjaan'])] || '').trim();
+          const name = String(row[find(['namataskitem', 'namatask', 'namabarang', 'namapekerjaan', 'name', 'nama', 'item', 'task'])] || '').trim();
           if (!name) continue;
 
-          const unitVal = String(row[find(['satuan', 'unit'])] || 'M2');
-          workItems.push({
-            id: Date.now() + Math.floor(Math.random() * 10000),
+          const rawWbs = String(row[find(['kodewbs', 'wbs', 'kode', 'code'])] || '').trim();
+          const rawLevel = Number(row[find(['level', 'outlinelevel', 'tingkat'])]);
+          const outlineLevel = rawLevel >= 1 ? rawLevel : (rawWbs ? rawWbs.split('.').length : 1);
+
+          let rawType = String(row[find(['tipe', 'type', 'itemtype', 'jenis'])] || '').toLowerCase().trim();
+          let itemType = 'work';
+          if (['summary', 'grup', 'group', 'paket'].includes(rawType)) {
+            itemType = 'summary';
+          } else if (['supply', 'material', 'barang', 'pengadaan'].includes(rawType)) {
+            itemType = 'supply';
+          } else if (['milestone', 'target'].includes(rawType)) {
+            itemType = 'milestone';
+          } else if (['work', 'pekerjaan', 'jasa'].includes(rawType)) {
+            itemType = 'work';
+          }
+
+          let rawCat = String(row[find(['kategori', 'category'])] || '').toLowerCase().trim();
+          let category = 'general';
+          if (rawCat.includes('mat')) category = 'material';
+          else if (rawCat.includes('upah') || rawCat.includes('labor') || rawCat.includes('tukang')) category = 'labor';
+          else if (rawCat.includes('alat') || rawCat.includes('equip')) category = 'equipment';
+          else if (rawCat.includes('sub')) category = 'subcontractor';
+          else if (rawCat.includes('over')) category = 'overhead';
+          else category = itemType === 'supply' ? 'material' : (itemType === 'work' ? 'labor' : 'general');
+
+          const quantity = itemType === 'milestone' ? 0 : (Number(row[find(['volume', 'qty', 'jumlah', 'vol', 'kuantitas'])]) || 1);
+          const unit = String(row[find(['satuan', 'unit'])] || (itemType === 'supply' ? 'pcs' : 'ls')).trim();
+          const unitRate = Number(row[find(['hargasatuan', 'rate', 'unitrate', 'harga', 'satuanharga'])]) || 0;
+          let cost = Number(row[find(['totalbiaya', 'biaya', 'cost', 'totalharga'])]);
+          if (isNaN(cost) || cost === 0) {
+            cost = Math.round(quantity * unitRate);
+          }
+
+          const duration = itemType === 'milestone' ? 0 : (Number(row[find(['durasi', 'duration', 'hari'])]) || 7);
+          const startDate = parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]) || projectData.startDate || '';
+          const endDate = parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]) || projectData.endDate || '';
+
+          const taskObj = {
+            id: String(Date.now() + i),
+            wbsCode: rawWbs || String(i + 1),
+            outlineLevel,
+            itemType,
             name,
-            qty: Number(row[find(['jumlah', 'qty', 'quantity', 'volume'])]) || 0,
-            unit: unitVal,
-            volume: unitVal,
-            cost: Number(row[find(['biaya', 'cost', 'harga'])]) || 0,
-            startDate: parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
-            endDate: parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
+            category,
+            quantity,
+            unit,
+            unitRate,
+            cost,
+            duration,
+            startDate,
+            endDate,
+            deliveryDate: endDate || startDate,
+          };
+
+          tasks.push(taskObj);
+
+          if (itemType === 'supply') {
+            supplies.push({
+              id: taskObj.id,
+              item: name,
+              qty: quantity,
+              unit,
+              unitRate,
+              cost,
+              status: 'Pending',
+              startDate,
+              endDate,
+              deliveryDate: endDate,
+            });
+          } else if (itemType === 'work') {
+            workItems.push({
+              id: taskObj.id,
+              name,
+              qty: quantity,
+              volume: unit,
+              unit,
+              unitRate,
+              cost,
+              category,
+              startDate,
+              endDate,
+              duration,
+            });
+          }
+        }
+      } else {
+        // Fallback: Legacy 2/3 sheets parser (Supplies + Work Items)
+        if (legacySuppliesSheet || sheets.length > 1) {
+          const supplyRows = sheetToJson(legacySuppliesSheet || sheets[1]);
+          for (const row of supplyRows) {
+            const keys = Object.keys(row);
+            const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
+            const item = String(row[find(['namabarang', 'itemname', 'item', 'nama'])] || '').trim();
+            if (!item) continue;
+            const qty = Number(row[find(['jumlah', 'qty', 'quantity'])]) || 1;
+            const cost = Number(row[find(['biaya', 'cost', 'harga'])]) || 0;
+            const unitRate = qty > 0 ? Math.round(cost / qty) : cost;
+            supplies.push({
+              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+              item,
+              qty,
+              unit: String(row[find(['satuan', 'unit'])] || 'pcs'),
+              unitRate,
+              cost,
+              status: 'Pending',
+              startDate: parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
+              endDate: parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
+            });
+          }
+        }
+
+        if (legacyWorkSheet || sheets.length > 2) {
+          const workRows = sheetToJson(legacyWorkSheet || sheets[2]);
+          for (const row of workRows) {
+            const keys = Object.keys(row);
+            const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
+            const name = String(row[find(['namapekerjaan', 'workitemname', 'name', 'nama', 'pekerjaan'])] || '').trim();
+            if (!name) continue;
+            const unitVal = String(row[find(['satuan', 'unit'])] || 'M2');
+            const qty = Number(row[find(['jumlah', 'qty', 'quantity', 'volume'])]) || 1;
+            const cost = Number(row[find(['biaya', 'cost', 'harga'])]) || 0;
+            const unitRate = qty > 0 ? Math.round(cost / qty) : cost;
+            workItems.push({
+              id: Date.now() + Math.floor(Math.random() * 10000),
+              name,
+              qty,
+              unit: unitVal,
+              volume: unitVal,
+              unitRate,
+              cost,
+              category: 'labor',
+              startDate: parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
+              endDate: parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
+            });
+          }
+        }
+
+        // Synthesize unified tasks array from supplies & workItems
+        if (workItems.length > 0) {
+          tasks.push({
+            id: 'summary-work',
+            wbsCode: '1',
+            outlineLevel: 1,
+            itemType: 'summary',
+            name: 'Pekerjaan Konstruksi / Lapangan',
+            category: 'labor',
+            quantity: 1,
+            unit: 'ls',
+            unitRate: 0,
+            cost: workItems.reduce((s, w) => s + (w.cost || 0), 0),
+            duration: 30,
+            startDate: projectData.startDate,
+            endDate: projectData.endDate,
+          });
+          workItems.forEach((w, idx) => {
+            tasks.push({
+              id: String(w.id || Date.now() + idx),
+              wbsCode: `1.${idx + 1}`,
+              outlineLevel: 2,
+              itemType: 'work',
+              name: w.name,
+              category: w.category || 'labor',
+              quantity: w.qty,
+              unit: w.unit,
+              unitRate: w.unitRate,
+              cost: w.cost,
+              duration: w.duration || 7,
+              startDate: w.startDate || projectData.startDate,
+              endDate: w.endDate || projectData.endDate,
+            });
+          });
+        }
+
+        if (supplies.length > 0) {
+          const supWbs = tasks.length > 0 ? '2' : '1';
+          tasks.push({
+            id: 'summary-supply',
+            wbsCode: supWbs,
+            outlineLevel: 1,
+            itemType: 'summary',
+            name: 'Pengadaan & Material Proyek',
+            category: 'material',
+            quantity: 1,
+            unit: 'ls',
+            unitRate: 0,
+            cost: supplies.reduce((s, sup) => s + (sup.cost || 0), 0),
+            duration: 30,
+            startDate: projectData.startDate,
+            endDate: projectData.endDate,
+          });
+          supplies.forEach((s, idx) => {
+            tasks.push({
+              id: String(s.id || Date.now() + idx),
+              wbsCode: `${supWbs}.${idx + 1}`,
+              outlineLevel: 2,
+              itemType: 'supply',
+              name: s.item,
+              category: 'material',
+              quantity: s.qty,
+              unit: s.unit,
+              unitRate: s.unitRate,
+              cost: s.cost,
+              duration: 7,
+              startDate: s.startDate || projectData.startDate,
+              endDate: s.endDate || projectData.endDate,
+              deliveryDate: s.deliveryDate || s.endDate,
+            });
           });
         }
       }
 
-      res.json({ projectData, supplies, workItems });
+      // If projectData.totalBudget is 0, auto-sum from root tasks
+      if (!projectData.totalBudget || projectData.totalBudget === 0) {
+        const rootTasks = tasks.filter(t => t.outlineLevel === 1);
+        projectData.totalBudget = rootTasks.length > 0
+          ? rootTasks.reduce((s, t) => s + (t.cost || 0), 0)
+          : tasks.reduce((s, t) => s + (t.cost || 0), 0);
+      }
+
+      res.json({ projectData, tasks, supplies, workItems });
     } catch (error) {
       console.error('Import project spreadsheet error:', error);
       res.status(500).json({ msg: 'Failed to parse spreadsheet' });
@@ -263,11 +485,76 @@ router.get('/:id', auth, async (req, res) => {
       return res.status(404).json({ msg: 'Project not found' });
     }
 
-    // Fetch supplies from separate collection
-    const supplies = await Supply.find({ projectId: project._id }).sort({ createdAt: 1 }).lean();
-    
-    // Merge supplies into response for backward compatibility
-    project.supplies = supplies;
+    // Auto-migrate legacy projects to unified WBS ProjectTask hierarchy
+    await ensureProjectTasksFromLegacy(project._id);
+
+    // Fetch unified WBS tasks (single canonical source of truth)
+    const tasks = await ProjectTask.find({ projectId: project._id }).sort({ sortOrder: 1 }).lean();
+
+    if (tasks.length > 0) {
+      // 1. Work Items projection from unified ProjectTask (NO DUAL DATA)
+      const workTasks = tasks.filter(t => t.itemType === 'work');
+      project.workItems = workTasks.map(t => ({
+        _id: t._id,
+        name: t.name,
+        qty: t.quantity || 1,
+        volume: t.unit || 'M2',
+        unit: t.unit || 'M2',
+        cost: t.plannedCost || ((t.quantity || 1) * (t.unitRate || 0)),
+        actualCost: t.actualCost || 0,
+        progress: t.percentComplete || 0,
+        physicalWeight: t.physicalWeight || 0,
+        startDate: t.startDate,
+        endDate: t.finishDate,
+        outlineLevel: t.outlineLevel,
+        wbsCode: t.wbsCode,
+        parentTaskId: t.parentTaskId,
+        isSummary: t.isSummary,
+      }));
+
+      // 2. Supplies projection from unified ProjectTask (NO DUAL DATA)
+      const supplyTasks = tasks.filter(t => t.itemType === 'supply');
+      project.supplies = supplyTasks.map(t => ({
+        _id: t._id,
+        projectId: t.projectId,
+        item: t.name,
+        qty: t.quantity || 1,
+        unit: t.unit || 'pcs',
+        cost: t.plannedCost || ((t.quantity || 1) * (t.unitRate || 0)),
+        actualCost: t.actualCost || 0,
+        totalQtyUsed: t.realizedQuantity || 0,
+        status: t.supplyStatus || (t.percentComplete === 100 ? 'Delivered' : t.percentComplete > 0 ? 'Ordered' : 'Pending'),
+        startDate: t.startDate,
+        endDate: t.finishDate,
+        deliveryDate: t.deliveryDate,
+        outlineLevel: t.outlineLevel,
+        wbsCode: t.wbsCode,
+        parentTaskId: t.parentTaskId,
+      }));
+
+      // 3. Roll up totalBudget and progress directly from tasks
+      const rootTasks = tasks.filter(t => t.outlineLevel === 1);
+      const computedBudget = rootTasks.length > 0
+        ? rootTasks.reduce((sum, t) => sum + (t.plannedCost || 0), 0)
+        : tasks.reduce((sum, t) => sum + (t.plannedCost || 0), 0);
+      if (computedBudget > 0) {
+        project.totalBudget = computedBudget;
+      }
+
+      const leafTasks = tasks.filter(t => !t.isSummary);
+      if (leafTasks.length > 0) {
+        const totalWeight = leafTasks.reduce((s, t) => s + (t.plannedCost || t.duration || 1), 0);
+        const weightedProgress = leafTasks.reduce(
+          (s, t) => s + (t.percentComplete || 0) * (t.plannedCost || t.duration || 1),
+          0
+        );
+        project.progress = totalWeight > 0 ? Math.round(weightedProgress / totalWeight) : 0;
+      }
+    } else {
+      project.supplies = await Supply.find({ projectId: project._id }).sort({ createdAt: 1 }).lean();
+    }
+
+    project.tasks = tasks;
     
     res.json(project);
   } catch (error) {
@@ -276,14 +563,192 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// GET /api/projects/:id/supplies - Get only supplies for a project
+// GET /api/projects/:id/supplies - Get only supplies for a project (derived from ProjectTask WBS)
 router.get('/:id/supplies', auth, async (req, res) => {
   try {
+    const tasks = await ProjectTask.find({ projectId: req.params.id, itemType: 'supply' }).sort({ sortOrder: 1 }).lean();
+    if (tasks.length > 0) {
+      const mappedSupplies = tasks.map(t => ({
+        _id: t._id,
+        projectId: t.projectId,
+        item: t.name,
+        qty: t.quantity || 1,
+        unit: t.unit || 'pcs',
+        cost: t.plannedCost || ((t.quantity || 1) * (t.unitRate || 0)),
+        actualCost: t.actualCost || 0,
+        totalQtyUsed: t.realizedQuantity || 0,
+        status: t.supplyStatus || (t.percentComplete === 100 ? 'Delivered' : t.percentComplete > 0 ? 'Ordered' : 'Pending'),
+        startDate: t.startDate,
+        endDate: t.finishDate,
+        deliveryDate: t.deliveryDate,
+        wbsCode: t.wbsCode,
+      }));
+      return res.json(mappedSupplies);
+    }
     const supplies = await Supply.find({ projectId: req.params.id }).sort({ createdAt: 1 }).lean();
     res.json(supplies);
   } catch (error) {
     console.error('Get project supplies error:', error);
     res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// POST /api/projects/:id/supplies - Add a supply/material to project
+router.post('/:id/supplies', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const project = await Project.findById(id);
+    if (!project) return res.status(404).json({ msg: 'Project not found' });
+
+    const { item, qty, unit, cost, status, startDate, endDate, deadline, deliveryDate } = req.body;
+    const numQty = Number(qty) || 1;
+    const numCost = Number(cost) || 0;
+
+    const newSupply = new Supply({
+      projectId: id,
+      item: item || 'Material Item',
+      qty: numQty,
+      unit: unit || 'pcs',
+      cost: numCost,
+      status: status || 'Pending',
+      startDate: startDate || project.startDate,
+      endDate: endDate || deadline || project.endDate,
+      deliveryDate: deliveryDate || null,
+    });
+    await newSupply.save();
+
+    // Sync to unified ProjectTask under Pengadaan summary package
+    try {
+      await ensureProjectTasksFromLegacy(id);
+      let supplySummary = await ProjectTask.findOne({ projectId: id, itemType: 'summary', category: 'material' });
+      if (!supplySummary) {
+        supplySummary = await ProjectTask.findOne({ projectId: id, isSummary: true });
+      }
+
+      const tasksCount = await ProjectTask.countDocuments({ projectId: id });
+      const parentWbs = supplySummary ? supplySummary.wbsCode : '2';
+      const childTasks = supplySummary ? await ProjectTask.find({ parentTaskId: supplySummary._id }) : [];
+
+      const newTask = new ProjectTask({
+        projectId: id,
+        wbsCode: `${parentWbs}.${childTasks.length + 1}`,
+        outlineLevel: supplySummary ? supplySummary.outlineLevel + 1 : 2,
+        parentTaskId: supplySummary ? supplySummary._id : null,
+        sortOrder: tasksCount,
+        name: item || 'Material Item',
+        itemType: 'supply',
+        category: 'material',
+        duration: 1,
+        startDate: startDate || project.startDate || new Date(),
+        finishDate: endDate || deadline || project.endDate || new Date(),
+        quantity: numQty,
+        unit: unit || 'pcs',
+        unitRate: numQty > 0 ? Math.round(numCost / numQty) : numCost,
+        totalBudget: numCost,
+        plannedCost: numCost,
+        actualCost: 0,
+        supplyStatus: status || 'Pending',
+        percentComplete: status === 'Delivered' ? 100 : status === 'Ordered' ? 50 : 0,
+        legacySupplyId: newSupply._id.toString(),
+      });
+      await newTask.save();
+      await syncProjectTasksToProjectEntities(id);
+    } catch (taskErr) {
+      console.error('Error syncing new supply to ProjectTask:', taskErr);
+    }
+
+    res.status(201).json(newSupply);
+  } catch (error) {
+    console.error('Add project supply error:', error);
+    res.status(500).json({ msg: error.message || 'Server error adding supply' });
+  }
+});
+
+// PUT /api/projects/:id/supplies/:supplyId - Update project supply
+router.put('/:id/supplies/:supplyId', auth, async (req, res) => {
+  try {
+    const { id, supplyId } = req.params;
+    const supply = await Supply.findOne({ _id: supplyId, projectId: id });
+    if (!supply) return res.status(404).json({ msg: 'Supply item not found' });
+
+    const { item, qty, unit, cost, status, startDate, endDate, deadline, deliveryDate, actualCost } = req.body;
+    if (item !== undefined) supply.item = item;
+    if (qty !== undefined) supply.qty = Number(qty);
+    if (unit !== undefined) supply.unit = unit;
+    if (cost !== undefined) supply.cost = Number(cost);
+    if (status !== undefined) supply.status = status;
+    if (actualCost !== undefined) supply.actualCost = Number(actualCost);
+    if (startDate !== undefined) supply.startDate = startDate;
+    if (endDate !== undefined) supply.endDate = endDate;
+    if (deadline !== undefined) supply.deadline = deadline;
+    if (deliveryDate !== undefined) supply.deliveryDate = deliveryDate;
+
+    await supply.save();
+
+    // Sync to corresponding ProjectTask
+    try {
+      const numQty = Number(supply.qty) || 1;
+      const numCost = Number(supply.cost) || 0;
+      await ProjectTask.updateOne(
+        {
+          projectId: id,
+          $or: [
+            { legacySupplyId: supplyId },
+            { _id: mongoose.Types.ObjectId.isValid(supplyId) ? supplyId : null }
+          ]
+        },
+        {
+          $set: {
+            name: supply.item,
+            quantity: numQty,
+            unit: supply.unit,
+            unitRate: numQty > 0 ? Math.round(numCost / numQty) : numCost,
+            totalBudget: numCost,
+            plannedCost: numCost,
+            ...(supply.actualCost !== undefined && { actualCost: supply.actualCost }),
+            supplyStatus: supply.status,
+            percentComplete: supply.status === 'Delivered' ? 100 : supply.status === 'Ordered' ? 50 : 0,
+            deliveryDate: supply.deliveryDate,
+          }
+        }
+      );
+      await syncProjectTasksToProjectEntities(id);
+    } catch (taskErr) {
+      console.error('Error syncing supply update to ProjectTask:', taskErr);
+    }
+
+    res.json(supply);
+  } catch (error) {
+    console.error('Update project supply error:', error);
+    res.status(500).json({ msg: error.message || 'Server error updating supply' });
+  }
+});
+
+// DELETE /api/projects/:id/supplies/:supplyId - Delete project supply
+router.delete('/:id/supplies/:supplyId', auth, async (req, res) => {
+  try {
+    const { id, supplyId } = req.params;
+    const supply = await Supply.findOneAndDelete({ _id: supplyId, projectId: id });
+    if (!supply) return res.status(404).json({ msg: 'Supply item not found' });
+
+    // Remove corresponding ProjectTask
+    try {
+      await ProjectTask.deleteOne({
+        projectId: id,
+        $or: [
+          { legacySupplyId: supplyId },
+          { _id: mongoose.Types.ObjectId.isValid(supplyId) ? supplyId : null }
+        ]
+      });
+      await syncProjectTasksToProjectEntities(id);
+    } catch (taskErr) {
+      console.error('Error syncing supply deletion to ProjectTask:', taskErr);
+    }
+
+    res.json({ msg: 'Supply deleted successfully' });
+  } catch (error) {
+    console.error('Delete project supply error:', error);
+    res.status(500).json({ msg: error.message || 'Server error deleting supply' });
   }
 });
 
@@ -311,7 +776,7 @@ router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
   ]),
   async (req, res) => {
     try {
-      const { nama, lokasi, description, totalBudget, startDate, endDate, supplies, workItems } = req.body;
+      const { nama, lokasi, description, totalBudget, startDate, endDate, supplies, workItems, tasks } = req.body;
       
       const documents = {};
       if (req.files) {
@@ -321,24 +786,196 @@ router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
           }
         });
       }
-      
+
+      let parsedTasks = [];
+      if (tasks) {
+        try {
+          parsedTasks = typeof tasks === 'string' ? JSON.parse(tasks) : tasks;
+        } catch (e) {
+          console.warn('Failed to parse tasks in create project:', e.message);
+        }
+      }
+
+      let parsedWorkItems = [];
+      if (workItems) {
+        try {
+          parsedWorkItems = typeof workItems === 'string' ? JSON.parse(workItems) : workItems;
+        } catch (e) {
+          console.warn('Failed to parse workItems in create project:', e.message);
+        }
+      }
+
+      let parsedSupplies = [];
+      if (supplies) {
+        try {
+          parsedSupplies = typeof supplies === 'string' ? JSON.parse(supplies) : supplies;
+        } catch (e) {
+          console.warn('Failed to parse supplies in create project:', e.message);
+        }
+      }
+
+      const pStart = parseWIBDate(startDate) || undefined;
+      const pEnd = parseWIBDate(endDate) || undefined;
+
       const project = new Project({
         nama,
         lokasi,
         description,
         totalBudget: Number(totalBudget) || 0,
-        startDate: parseWIBDate(startDate) || undefined,
-        endDate: parseWIBDate(endDate) || undefined,
+        startDate: pStart,
+        endDate: pEnd,
         documents,
-        workItems: workItems ? JSON.parse(workItems) : [],
+        workItems: parsedWorkItems,
         createdBy: req.user._id,
       });
-      
+
       await project.save();
 
-      // Create supplies in separate collection
-      if (supplies) {
-        const parsedSupplies = JSON.parse(supplies);
+      // If unified WBS tasks are provided from the ERP WBS Wizard:
+      if (Array.isArray(parsedTasks) && parsedTasks.length > 0) {
+        const taskDocs = [];
+        const stack = []; // for parent tracking [{ level, id }]
+        let sortOrder = 0;
+        const defaultStart = pStart || new Date();
+        const defaultEnd = pEnd || new Date(defaultStart.getTime() + 30 * 86400000);
+
+        for (let i = 0; i < parsedTasks.length; i++) {
+          const t = parsedTasks[i];
+          const level = Math.max(1, Number(t.outlineLevel) || 1);
+          const taskId = new mongoose.Types.ObjectId();
+
+          // Stack tracking for parent-child relationship
+          while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+            stack.pop();
+          }
+          const parentTaskId = stack.length > 0 ? stack[stack.length - 1].id : null;
+          stack.push({ level, id: taskId });
+
+          const isMilestone = t.itemType === 'milestone' || t.duration === 0;
+          const qty = isMilestone ? 0 : (Number(t.quantity || t.qty) || 1);
+          const unitRate = Number(t.unitRate) || 0;
+          const cost = Number(t.cost || t.plannedCost || t.totalBudget) || Math.round(qty * unitRate);
+          const duration = isMilestone ? 0 : Math.max(1, Number(t.duration) || 1);
+          const tStart = parseWIBDate(t.startDate) || defaultStart;
+          const tEnd = parseWIBDate(t.endDate) || new Date(tStart.getTime() + duration * 86400000);
+
+          taskDocs.push({
+            _id: taskId,
+            projectId: project._id,
+            wbsCode: t.wbsCode || String(i + 1),
+            outlineLevel: level,
+            parentTaskId,
+            sortOrder: sortOrder++,
+            isSummary: t.itemType === 'summary',
+            isMilestone,
+            name: t.name || `Item ${i + 1}`,
+            itemType: t.itemType || 'work',
+            category: t.category || (t.itemType === 'supply' ? 'material' : 'general'),
+            duration,
+            startDate: tStart,
+            finishDate: tEnd,
+            quantity: qty,
+            unit: t.unit || (t.itemType === 'supply' ? 'pcs' : 'ls'),
+            unitRate,
+            totalBudget: cost,
+            plannedCost: cost,
+            actualCost: 0,
+            percentComplete: 0,
+            supplyStatus: 'Pending',
+            deliveryDate: t.deliveryDate ? parseWIBDate(t.deliveryDate) : tEnd,
+            createdBy: req.user._id,
+          });
+        }
+
+        // Mark tasks with children as isSummary
+        const parentIds = new Set(taskDocs.map(d => d.parentTaskId?.toString()).filter(Boolean));
+        taskDocs.forEach(d => {
+          if (parentIds.has(d._id.toString())) {
+            d.isSummary = true;
+            if (d.itemType !== 'milestone') {
+              d.itemType = 'summary';
+            }
+          }
+        });
+
+        // Ensure default calendar
+        let calendar = await ProjectCalendar.findOne({ projectId: project._id, isDefault: true });
+        if (!calendar) {
+          calendar = await ProjectCalendar.create({
+            projectId: project._id,
+            name: 'Standard Construction Indonesia (Mon-Sat)',
+            isDefault: true,
+            workingDays: [1, 2, 3, 4, 5, 6],
+            hoursPerDay: 8,
+            workingHours: [{ start: '08:00', end: '17:00' }],
+            exceptions: [],
+          });
+        }
+
+        await ProjectTask.insertMany(taskDocs);
+
+        // Recalculate CPM scheduling and dates
+        try {
+          const calObj = calendar.toObject ? calendar.toObject() : calendar;
+          recalculateProjectSchedule(taskDocs, project.startDate, calObj);
+          for (const td of taskDocs) {
+            await ProjectTask.findByIdAndUpdate(td._id, {
+              wbsCode: td.wbsCode,
+              startDate: td.startDate,
+              finishDate: td.finishDate,
+              duration: td.duration,
+              earlyStart: td.earlyStart,
+              earlyFinish: td.earlyFinish,
+              lateStart: td.lateStart,
+              lateFinish: td.lateFinish,
+              totalFloat: td.totalFloat,
+              freeFloat: td.freeFloat,
+              isCritical: td.isCritical,
+              baselineStart: td.startDate,
+              baselineFinish: td.finishDate,
+              baselineDuration: td.duration,
+              baselineCost: td.plannedCost,
+            });
+          }
+        } catch (schedErr) {
+          console.warn('CPM schedule calculation warning:', schedErr.message);
+        }
+
+        // Populate matching RABItem records
+        try {
+          const rabDocs = taskDocs.map(td => ({
+            _id: td._id,
+            projectId: project._id,
+            wbsCode: td.wbsCode,
+            description: td.name,
+            category: td.itemType === 'supply' ? 'Material' : (td.category === 'labor' ? 'Upah' : (td.category === 'equipment' ? 'Alat' : 'Subkon')),
+            unitOfMeasure: ['M3', 'CUM'].includes((td.unit || '').toUpperCase()) ? 'CUM' : (['M2', 'SQM'].includes((td.unit || '').toUpperCase()) ? 'SQM' : (['TON', 'MT'].includes((td.unit || '').toUpperCase()) ? 'MT' : (['SAK', 'ZAK'].includes((td.unit || '').toUpperCase()) ? 'ZAK' : 'PCS'))),
+            budgetedQuantity: td.quantity || 1,
+            unitRate: td.unitRate || 0,
+            totalBudget: td.plannedCost || 0,
+            committedQuantity: 0,
+            realizedQuantity: 0,
+            realizedAmount: 0,
+          }));
+          await RABItem.insertMany(rabDocs);
+        } catch (rabErr) {
+          console.warn('RAB sync warning in create project:', rabErr.message);
+        }
+
+        // Sync to Project.workItems and Supply collection
+        await syncProjectTasksToProjectEntities(project._id);
+
+        // Auto-rollup totalBudget if 0
+        if (!project.totalBudget || project.totalBudget === 0) {
+          const rootTasks = taskDocs.filter(td => td.outlineLevel === 1);
+          const computedBudget = rootTasks.reduce((s, td) => s + (td.plannedCost || 0), 0);
+          if (computedBudget > 0) {
+            project.totalBudget = computedBudget;
+            await project.save();
+          }
+        }
+      } else {
+        // Fallback for legacy requests without tasks
         if (parsedSupplies.length > 0) {
           const supplyDocs = parsedSupplies.map(s => ({
             ...s,
@@ -346,24 +983,32 @@ router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
           }));
           await Supply.insertMany(supplyDocs);
         }
+        await ensureProjectTasksFromLegacy(project._id);
       }
 
-      res.status(201).json(project);
-
       // Notify managers about new project (fire-and-forget)
-      notifyByRole(
-        ['owner', 'director', 'supervisor'],
-        {
-          type: 'project_created',
-          title: 'New Project',
-          message: `Project "${nama}" has been created at ${lokasi || 'N/A'}`,
-          data: { projectId: project._id },
-        },
-        req.user._id.toString()
-      ).catch(console.error);
+      try {
+        const actorId = req.user ? String(req.user._id || req.user.id || 'system') : 'system';
+        notifyByRole(
+          ['owner', 'director', 'supervisor'],
+          {
+            type: 'project_created',
+            title: 'New Project',
+            message: `Project "${nama}" has been created at ${lokasi || 'N/A'}`,
+            data: { projectId: project._id },
+          },
+          actorId
+        ).catch(console.error);
+      } catch (notifyErr) {
+        console.warn('Notify error:', notifyErr.message);
+      }
+
+      return res.status(201).json(project);
     } catch (error) {
       console.error('Create project error:', error);
-      res.status(500).json({ msg: 'Server error' });
+      if (!res.headersSent) {
+        return res.status(500).json({ msg: 'Server error' });
+      }
     }
   }
 );
@@ -417,7 +1062,7 @@ router.put('/:id/progress', auth, authorize('owner', 'director', 'supervisor'), 
   }
 });
 
-// POST /api/projects/:id/duplicate - Clone a project
+// POST /api/projects/:id/duplicate - Clone a project (aligned to unified Single Source of Truth)
 router.post('/:id/duplicate', auth, authorize('owner', 'director'), async (req, res) => {
   try {
     const { newName, options = {} } = req.body;
@@ -425,6 +1070,10 @@ router.post('/:id/duplicate', auth, authorize('owner', 'director'), async (req, 
     if (!source) {
       return res.status(404).json({ msg: 'Source project not found' });
     }
+
+    const includeTasks = options.includeTasks !== undefined ? Boolean(options.includeTasks) : (options.includeWBS !== undefined ? Boolean(options.includeWBS) : true);
+    const includeCalendar = options.includeCalendar !== undefined ? Boolean(options.includeCalendar) : true;
+    const includeResources = options.includeResources !== undefined ? Boolean(options.includeResources) : true;
 
     // Build new project data
     const newProject = new Project({
@@ -437,48 +1086,209 @@ router.post('/:id/duplicate', auth, authorize('owner', 'director'), async (req, 
       progress: 0,
       status: 'Planning',
       documents: options.includeDocuments ? source.documents : {},
-      workItems: options.includeWorkItems
-        ? (source.workItems || []).map(w => ({
-            ...w,
-            _id: undefined,
-            progress: 0,
-            actualCost: 0,
-          }))
-        : [],
+      documentFiles: options.includeDocuments ? (source.documentFiles || []) : [],
+      workItems: [],
       assignedTo: options.includeAssignedUsers ? source.assignedTo : [],
       createdBy: req.user._id,
     });
 
     await newProject.save();
 
-    // Clone supplies if requested
-    if (options.includeSupplies) {
-      const sourceSupplies = await Supply.find({ projectId: source._id }).lean();
-      if (sourceSupplies.length > 0) {
-        const clonedSupplies = sourceSupplies.map(s => ({
+    // 1. Clone Calendar
+    let newCalendar = null;
+    if (includeCalendar) {
+      const sourceCal = await ProjectCalendar.findOne({ projectId: source._id, isDefault: true }).lean();
+      if (sourceCal) {
+        newCalendar = await ProjectCalendar.create({
           projectId: newProject._id,
-          item: s.item,
-          qty: s.qty,
-          unit: s.unit,
-          cost: s.cost,
-          actualCost: 0,
-          totalQtyUsed: 0,
-          status: 'Pending',
-          startDate: s.startDate,
-          endDate: s.endDate,
+          name: sourceCal.name,
+          isDefault: true,
+          workingDays: sourceCal.workingDays || [1, 2, 3, 4, 5, 6],
+          hoursPerDay: sourceCal.hoursPerDay || 8,
+          workingHours: sourceCal.workingHours || [{ start: '08:00', end: '17:00' }],
+          exceptions: sourceCal.exceptions || [],
+        });
+      }
+    }
+    if (!newCalendar) {
+      newCalendar = await ProjectCalendar.create({
+        projectId: newProject._id,
+        name: 'Standard Construction Indonesia (Mon-Sat)',
+        isDefault: true,
+        workingDays: [1, 2, 3, 4, 5, 6],
+        hoursPerDay: 8,
+        workingHours: [{ start: '08:00', end: '17:00' }],
+        exceptions: [],
+      });
+    }
+
+    // 2. Clone Resources
+    if (includeResources) {
+      const sourceResources = await ProjectResource.find({ projectId: source._id }).lean();
+      if (sourceResources.length > 0) {
+        const clonedResources = sourceResources.map(r => ({
+          ...r,
+          _id: new mongoose.Types.ObjectId(),
+          projectId: newProject._id,
         }));
-        await Supply.insertMany(clonedSupplies);
+        await ProjectResource.insertMany(clonedResources);
       }
     }
 
-    res.status(201).json(newProject);
+    // 3. Clone Unified WBS Tasks (Single Source of Truth)
+    const sourceTasks = await ProjectTask.find({ projectId: source._id }).sort({ sortOrder: 1 }).lean();
+    if (includeTasks && sourceTasks.length > 0) {
+      // Create mapping from old task ObjectIds to new ObjectIds
+      const oldIdToNewId = new Map();
+      sourceTasks.forEach(st => {
+        oldIdToNewId.set(st._id.toString(), new mongoose.Types.ObjectId());
+      });
+
+      const clonedTasks = sourceTasks.map(st => {
+        const newId = oldIdToNewId.get(st._id.toString());
+        const newParentId = st.parentTaskId && oldIdToNewId.has(st.parentTaskId.toString())
+          ? oldIdToNewId.get(st.parentTaskId.toString())
+          : null;
+
+        const remappedPredecessors = (st.predecessors || [])
+          .map(p => {
+            const remappedTaskId = p.taskId ? (oldIdToNewId.get(p.taskId.toString()) || p.taskId) : null;
+            return remappedTaskId ? { taskId: remappedTaskId, type: p.type || 'FS', lagDays: p.lagDays || 0 } : null;
+          })
+          .filter(Boolean);
+
+        return {
+          _id: newId,
+          projectId: newProject._id,
+          wbsCode: st.wbsCode,
+          outlineLevel: st.outlineLevel,
+          parentTaskId: newParentId,
+          sortOrder: st.sortOrder,
+          isSummary: st.isSummary,
+          isMilestone: st.isMilestone,
+          name: st.name,
+          duration: st.duration,
+          durationUnit: st.durationUnit || 'days',
+          startDate: st.startDate,
+          finishDate: st.finishDate,
+          percentComplete: 0,
+          plannedCost: st.plannedCost || 0,
+          actualCost: 0,
+          plannedWork: st.plannedWork || 0,
+          actualWork: 0,
+          remainingWork: st.plannedWork || 0,
+          taskType: st.taskType || 'FixedUnits',
+          isEffortDriven: st.isEffortDriven !== undefined ? st.isEffortDriven : true,
+          levelingDelay: 0,
+          constraintType: st.constraintType || 'ASAP',
+          constraintDate: st.constraintDate,
+          deadlineDate: st.deadlineDate,
+          assignedResources: st.assignedResources || [],
+          predecessors: remappedPredecessors,
+          itemType: st.itemType || 'work',
+          category: st.category || 'general',
+          quantity: st.quantity || 1,
+          unit: st.unit || 'ls',
+          unitRate: st.unitRate || 0,
+          totalBudget: st.plannedCost || ((st.quantity || 1) * (st.unitRate || 0)),
+          realizedQuantity: 0,
+          realizedAmount: 0,
+          physicalWeight: st.physicalWeight || 0,
+          supplyStatus: 'Pending',
+          deliveryDate: st.deliveryDate,
+          createdBy: req.user._id,
+        };
+      });
+
+      await ProjectTask.insertMany(clonedTasks);
+
+      // Recalculate CPM scheduling on the cloned tasks
+      try {
+        const calObj = newCalendar.toObject ? newCalendar.toObject() : newCalendar;
+        recalculateProjectSchedule(clonedTasks, newProject.startDate, calObj);
+        for (const ct of clonedTasks) {
+          await ProjectTask.findByIdAndUpdate(ct._id, {
+            wbsCode: ct.wbsCode,
+            startDate: ct.startDate,
+            finishDate: ct.finishDate,
+            earlyStart: ct.earlyStart,
+            earlyFinish: ct.earlyFinish,
+            lateStart: ct.lateStart,
+            lateFinish: ct.lateFinish,
+            totalFloat: ct.totalFloat,
+            freeFloat: ct.freeFloat,
+            isCritical: ct.isCritical,
+            baselineStart: ct.startDate,
+            baselineFinish: ct.finishDate,
+            baselineDuration: ct.duration,
+            baselineCost: ct.plannedCost,
+          });
+        }
+      } catch (cpmErr) {
+        console.warn('Warning: CPM scheduling error during duplication:', cpmErr.message);
+      }
+
+      // Synchronize Project.workItems and Supply collection
+      await syncProjectTasksToProjectEntities(newProject._id);
+
+      // Populate matching RABItem collection for instant Swakelola SCM readiness
+      const rabDocs = clonedTasks.map(t => ({
+        _id: t._id,
+        projectId: newProject._id,
+        wbsCode: t.wbsCode,
+        description: t.name,
+        category: t.itemType === 'supply' ? 'Material' : (t.category === 'labor' ? 'Upah' : 'Subkon'),
+        unitOfMeasure: ['M3', 'CUM'].includes((t.unit || '').toUpperCase()) ? 'CUM' : (['M2', 'SQM'].includes((t.unit || '').toUpperCase()) ? 'SQM' : 'PCS'),
+        budgetedQuantity: t.quantity || 1,
+        unitRate: t.unitRate || 0,
+        totalBudget: t.plannedCost || ((t.quantity || 1) * (t.unitRate || 0)),
+        committedQuantity: 0,
+        realizedQuantity: 0,
+        realizedAmount: 0,
+      }));
+      await RABItem.insertMany(rabDocs);
+
+    } else {
+      // Fallback: If source had no tasks, clone supplies & workItems and ensure tasks
+      if (options.includeSupplies) {
+        const sourceSupplies = await Supply.find({ projectId: source._id }).lean();
+        if (sourceSupplies.length > 0) {
+          const clonedSupplies = sourceSupplies.map(s => ({
+            projectId: newProject._id,
+            item: s.item,
+            qty: s.qty,
+            unit: s.unit,
+            cost: s.cost,
+            actualCost: 0,
+            totalQtyUsed: 0,
+            status: 'Pending',
+            startDate: s.startDate,
+            endDate: s.endDate,
+          }));
+          await Supply.insertMany(clonedSupplies);
+        }
+      }
+      if (options.includeWorkItems && source.workItems?.length > 0) {
+        newProject.workItems = source.workItems.map(w => ({
+          ...w,
+          _id: new mongoose.Types.ObjectId(),
+          progress: 0,
+          actualCost: 0,
+        }));
+        await newProject.save();
+      }
+      await ensureProjectTasksFromLegacy(newProject._id);
+    }
+
+    const finalProject = await Project.findById(newProject._id).lean();
+    res.status(201).json(finalProject);
   } catch (error) {
     console.error('Duplicate project error:', error);
-    res.status(500).json({ msg: 'Server error' });
+    res.status(500).json({ msg: 'Server error duplicating project: ' + error.message });
   }
 });
 
-// POST /api/projects/:id/material-logs - Log material usage
+// POST /api/projects/:id/material-logs - Log material usage with ACID Transaction Safety
 router.post('/:id/material-logs', auth, async (req, res) => {
   try {
     const { supplyId, qtyUsed, notes, date } = req.body;
@@ -487,43 +1297,95 @@ router.post('/:id/material-logs', auth, async (req, res) => {
       return res.status(400).json({ msg: 'supplyId and a positive qtyUsed are required' });
     }
 
-    // Find the supply and validate
-    const supply = await Supply.findOne({ _id: supplyId, projectId: req.params.id });
-    if (!supply) {
-      return res.status(404).json({ msg: 'Supply not found for this project' });
-    }
+    const numericQty = Number(qtyUsed);
 
-    const remaining = supply.qty - (supply.totalQtyUsed || 0);
-    if (Number(qtyUsed) > remaining) {
-      return res.status(400).json({ msg: `Insufficient stock. Only ${remaining} ${supply.unit} remaining.` });
-    }
+    const log = await withTransaction(async (session) => {
+      // Find the supply and validate within transaction session
+      const query = { _id: supplyId, projectId: req.params.id };
+      const supply = session
+        ? await Supply.findOne(query).session(session)
+        : await Supply.findOne(query);
 
-    // Update supply's totalQtyUsed
-    supply.totalQtyUsed = (supply.totalQtyUsed || 0) + Number(qtyUsed);
-    await supply.save();
+      if (!supply) {
+        const err = new Error('Supply not found for this project');
+        err.statusCode = 404;
+        throw err;
+      }
 
-    const qtyLeft = supply.qty - supply.totalQtyUsed;
+      const remaining = supply.qty - (supply.totalQtyUsed || 0);
+      if (numericQty > remaining) {
+        const err = new Error(`Insufficient stock. Only ${remaining} ${supply.unit} remaining.`);
+        err.statusCode = 400;
+        throw err;
+      }
 
-    // Create the material log
-    const log = new MaterialLog({
-      projectId: req.params.id,
-      supplyId,
-      date: parseWIBDate(date) || nowWIB(),
-      qtyUsed: Number(qtyUsed),
-      qtyLeft,
-      notes: notes || '',
-      recordedBy: req.user._id,
+      // Atomically increment totalQtyUsed on supply with concurrency protection
+      if (session) {
+        await Supply.updateOne(
+          { _id: supplyId },
+          { $inc: { totalQtyUsed: numericQty } },
+          { session }
+        );
+        await ProjectTask.updateOne(
+          {
+            projectId: req.params.id,
+            $or: [
+              { legacySupplyId: supplyId.toString() },
+              { name: supply.item, itemType: 'supply' },
+            ],
+          },
+          { $inc: { realizedQuantity: numericQty } },
+          { session }
+        );
+      } else {
+        await Supply.updateOne(
+          { _id: supplyId },
+          { $inc: { totalQtyUsed: numericQty } }
+        );
+        await ProjectTask.updateOne(
+          {
+            projectId: req.params.id,
+            $or: [
+              { legacySupplyId: supplyId.toString() },
+              { name: supply.item, itemType: 'supply' },
+            ],
+          },
+          { $inc: { realizedQuantity: numericQty } }
+        );
+      }
+
+      const qtyLeft = remaining - numericQty;
+
+      // Create the material log within the session
+      const newLog = new MaterialLog({
+        projectId: req.params.id,
+        supplyId,
+        date: parseWIBDate(date) || nowWIB(),
+        qtyUsed: numericQty,
+        qtyLeft,
+        notes: notes || '',
+        recordedBy: req.user._id,
+      });
+
+      if (session) {
+        await newLog.save({ session });
+      } else {
+        await newLog.save();
+      }
+
+      return newLog;
     });
 
-    await log.save();
-
-    // Populate for response
+    // Populate for response outside transaction
     await log.populate('supplyId', 'item unit qty totalQtyUsed');
     await log.populate('recordedBy', 'fullName');
 
     res.status(201).json(log);
   } catch (error) {
     console.error('Log material usage error:', error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ msg: error.message });
+    }
     res.status(500).json({ msg: 'Server error' });
   }
 });
@@ -629,6 +1491,27 @@ router.post('/:id/daily-report', auth, uploadLimiter,
         if (existing) {
           existing.progress = wu.newProgress;
           if (wu.actualCost !== undefined) existing.actualCost = wu.actualCost;
+
+          // Sync to unified ProjectTask
+          try {
+            await ProjectTask.updateOne(
+              {
+                projectId: project._id,
+                $or: [
+                  { legacyWorkItemId: wu.workItemId },
+                  { _id: mongoose.Types.ObjectId.isValid(wu.workItemId) ? wu.workItemId : null }
+                ]
+              },
+              {
+                $set: {
+                  percentComplete: wu.newProgress,
+                  ...(wu.actualCost !== undefined && { actualCost: wu.actualCost })
+                }
+              }
+            );
+          } catch (taskErr) {
+            console.error('Error syncing workItem to ProjectTask:', taskErr);
+          }
         }
       }
 
@@ -650,6 +1533,29 @@ router.post('/:id/daily-report', auth, uploadLimiter,
           supply.status = su.newStatus;
           if (su.actualCost !== undefined) supply.actualCost = su.actualCost;
           await supply.save();
+
+          // Sync to unified ProjectTask
+          try {
+            const pct = STATUS_PROGRESS[su.newStatus] || 0;
+            await ProjectTask.updateOne(
+              {
+                projectId: project._id,
+                $or: [
+                  { legacySupplyId: su.supplyId },
+                  { _id: mongoose.Types.ObjectId.isValid(su.supplyId) ? su.supplyId : null }
+                ]
+              },
+              {
+                $set: {
+                  supplyStatus: su.newStatus,
+                  percentComplete: pct,
+                  ...(su.actualCost !== undefined && { actualCost: su.actualCost })
+                }
+              }
+            );
+          } catch (taskErr) {
+            console.error('Error syncing supply to ProjectTask:', taskErr);
+          }
         }
       }
 

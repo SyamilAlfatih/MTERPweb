@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import { AuthProvider } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { SidebarProvider } from './contexts/SidebarContext';
+import { SwakelolaProvider } from './contexts/SwakelolaContext';
+import { initOfflineSyncListeners } from './services/syncEngine';
 import AppLayout from './components/layout/AppLayout';
 
 // Pages
@@ -34,6 +36,7 @@ import ProjectAssign from './pages/ProjectAssign';
 import ProjectDocuments from './pages/ProjectDocuments';
 import Notifications from './pages/Notifications';
 import ProjectPlan from './pages/ProjectPlan';
+import ProjectSwakelola from './pages/ProjectSwakelola';
 
 function AuthRedirectHandler() {
   const navigate = useNavigate();
@@ -51,12 +54,18 @@ function AuthRedirectHandler() {
 }
 
 function App() {
+  useEffect(() => {
+    const cleanup = initOfflineSyncListeners();
+    return cleanup;
+  }, []);
+
   return (
     <AuthProvider>
       <NotificationProvider>
         <SidebarProvider>
-          <BrowserRouter>
-            <AuthRedirectHandler />
+          <SwakelolaProvider>
+            <BrowserRouter>
+              <AuthRedirectHandler />
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<Login />} />
@@ -91,12 +100,16 @@ function App() {
                 <Route path="/users" element={<Users />} />
                 <Route path="/project-assign" element={<ProjectAssign />} />
                 <Route path="/notifications" element={<Notifications />} />
+                <Route path="/swakelola" element={<ProjectSwakelola />} />
+                <Route path="/project-swakelola/:id" element={<ProjectSwakelola />} />
+                <Route path="/project/:id/swakelola" element={<ProjectSwakelola />} />
               </Route>
 
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </BrowserRouter>
+          </SwakelolaProvider>
         </SidebarProvider>
       </NotificationProvider>
     </AuthProvider>

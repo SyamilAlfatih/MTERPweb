@@ -5,7 +5,7 @@ import {
   TrendingUp, Package, BarChart3, Layers,
   AlertTriangle, CheckCircle2, Clock, Target, FolderOpen,
   Trash2, Edit3, Eye, Image as ImageIcon, ChevronDown, ChevronUp, Download, X,
-  CalendarRange
+  CalendarRange, Receipt,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -252,6 +252,8 @@ export default function ProjectDetail() {
   const [tableDensity, setTableDensity] = useState<'compact' | 'normal' | 'comfortable'>('normal');
   const [reportSearch, setReportSearch] = useState('');
   const [reportDensity, setReportDensity] = useState<'compact' | 'normal'>('normal');
+  const [itemTableTab, setItemTableTab] = useState<'all' | 'work' | 'supplies'>('all');
+  const [itemSearch, setItemSearch] = useState('');
 
   const chartRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
@@ -423,6 +425,71 @@ export default function ProjectDetail() {
   const progress = project.progress || 0;
   const workItems = project.workItems || [];
   const supplies = project.supplies || [];
+
+  // Unified tasks from canonical ProjectTask or fallback synthesis
+  const unifiedTasks: any[] = (() => {
+    if (!project) return [];
+    const tList: any[] = (project as any).tasks || [];
+    if (tList.length > 0) return tList;
+
+    // Fallback if tasks not yet populated
+    const synthesized: any[] = [];
+    (project.workItems || []).forEach((w: any, i: number) => {
+      synthesized.push({
+        _id: w._id || `w-${i}`,
+        wbsCode: `1.${i + 1}`,
+        outlineLevel: 2,
+        name: w.name,
+        itemType: 'work',
+        category: 'labor',
+        quantity: w.qty || 1,
+        unit: w.unit || w.volume || 'M2',
+        unitRate: (w.qty && w.qty > 0) ? Math.round((w.cost || 0) / w.qty) : (w.cost || 0),
+        plannedCost: w.cost || 0,
+        actualCost: w.actualCost || 0,
+        percentComplete: w.progress || 0,
+        isSummary: false,
+      });
+    });
+    ((project as any).supplies || []).forEach((s: any, i: number) => {
+      synthesized.push({
+        _id: s._id || `s-${i}`,
+        wbsCode: `2.${i + 1}`,
+        outlineLevel: 2,
+        name: s.item || s.name,
+        itemType: 'supply',
+        category: 'material',
+        quantity: s.qty || 1,
+        unit: s.unit || 'pcs',
+        unitRate: (s.qty && s.qty > 0) ? Math.round((s.cost || 0) / s.qty) : (s.cost || 0),
+        plannedCost: s.cost || 0,
+        actualCost: s.actualCost || 0,
+        percentComplete: s.status === 'Delivered' ? 100 : s.status === 'Ordered' ? 50 : 0,
+        supplyStatus: s.status || 'Pending',
+        isSummary: false,
+      });
+    });
+    return synthesized;
+  })();
+
+  const filteredTasks: any[] = (() => {
+    let list = unifiedTasks;
+    if (itemTableTab === 'work') {
+      list = list.filter(t => t.itemType === 'work' || (t.isSummary && t.category === 'labor'));
+    } else if (itemTableTab === 'supplies') {
+      list = list.filter(t => t.itemType === 'supply' || (t.isSummary && t.category === 'material'));
+    }
+
+    if (itemSearch.trim()) {
+      const q = itemSearch.toLowerCase();
+      list = list.filter(t =>
+        (t.name || '').toLowerCase().includes(q) ||
+        (t.wbsCode || '').toLowerCase().includes(q) ||
+        (t.unit || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  })();
 
   /* ─── S-Curve Data: Time-based ─── */
 
@@ -765,13 +832,22 @@ export default function ProjectDetail() {
             <p className="text-sm text-text-muted mt-[2px]">{project.lokasi || project.location}</p>
           </div>
         </div>
-        <button
-          onClick={() => navigate(`/project-plan/${id}`)}
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white rounded-lg text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer max-sm:w-full justify-center"
-        >
-          <CalendarRange size={18} />
-          <span>📊 MS Project Plan</span>
-        </button>
+        <div className="flex items-center gap-2 max-sm:w-full max-sm:flex-col">
+          <button
+            onClick={() => navigate(`/project-swakelola/${id}`)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-lg text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer max-sm:w-full justify-center"
+          >
+            <Receipt size={18} />
+            <span>🏗️ Swakelola SCM</span>
+          </button>
+          <button
+            onClick={() => navigate(`/project-plan/${id}`)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white rounded-lg text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer max-sm:w-full justify-center"
+          >
+            <CalendarRange size={18} />
+            <span>📊 MS Project Plan</span>
+          </button>
+        </div>
       </div>
 
       <div ref={statsRef}>
@@ -1236,6 +1312,240 @@ export default function ProjectDetail() {
                 </div>
               );
             })()}
+          </Card>
+        </div>
+      )}
+
+      {/* Unified WBS Work Items & Supplies Table (Single Source of Truth) */}
+      {unifiedTasks.length > 0 && (
+        <div ref={tableRef} className="mb-4">
+          <Card className="overflow-hidden border border-border-light shadow-xs p-0">
+            {/* Table Header with Tabs, Search, and Density */}
+            <div className="p-4 border-b border-border bg-bg-secondary/40 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-text-primary m-0">Rincian Pekerjaan & Pengadaan (WBS Plan)</h3>
+                  <p className="text-xs text-text-muted m-0">Tersinkronisasi otomatis dengan Master Project Plan & SCM</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Search Input */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={itemSearch}
+                    onChange={(e) => setItemSearch(e.target.value)}
+                    placeholder="Cari item WBS..."
+                    className="py-1.5 pl-8 pr-3 text-xs border border-border rounded-lg bg-bg-white text-text-primary focus:outline-none focus:border-primary w-48 max-sm:w-36"
+                  />
+                  <Layers size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                </div>
+
+                {/* Filter Tabs */}
+                <div className="flex bg-bg-secondary rounded-lg p-0.5 border border-border-light">
+                  <button
+                    type="button"
+                    onClick={() => setItemTableTab('all')}
+                    className={`px-3 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
+                      itemTableTab === 'all' ? 'bg-bg-white text-primary shadow-xs font-bold' : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    Semua ({unifiedTasks.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setItemTableTab('work')}
+                    className={`px-3 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
+                      itemTableTab === 'work' ? 'bg-bg-white text-primary shadow-xs font-bold' : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    Pekerjaan ({unifiedTasks.filter(t => t.itemType === 'work').length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setItemTableTab('supplies')}
+                    className={`px-3 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
+                      itemTableTab === 'supplies' ? 'bg-bg-white text-primary shadow-xs font-bold' : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    Material ({unifiedTasks.filter(t => t.itemType === 'supply').length})
+                  </button>
+                </div>
+
+                {/* Density Switcher */}
+                <div className="flex items-center bg-bg-secondary rounded-lg p-0.5 border border-border-light max-sm:hidden">
+                  {(['compact', 'normal'] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setTableDensity(d)}
+                      className={`px-2 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                        tableDensity === d ? 'bg-bg-white text-text-primary shadow-xs' : 'text-text-muted hover:text-text-primary'
+                      }`}
+                    >
+                      {d === 'compact' ? 'Rapat' : 'Normal'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Table Scrollable Container */}
+            <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-bg-secondary/70 border-b border-border text-text-muted font-bold uppercase tracking-wider text-[10px]">
+                    <th className="py-2.5 px-3 w-16 text-center">WBS</th>
+                    <th className="py-2.5 px-3 min-w-[220px]">Uraian Item / Pekerjaan</th>
+                    <th className="py-2.5 px-3 text-center">Tipe</th>
+                    <th className="py-2.5 px-3 text-right">Vol</th>
+                    <th className="py-2.5 px-3 text-center">Satuan</th>
+                    {canSeeFinancials && <th className="py-2.5 px-3 text-right">Harga Satuan</th>}
+                    {canSeeFinancials && <th className="py-2.5 px-3 text-right">Total Anggaran</th>}
+                    {canSeeFinancials && <th className="py-2.5 px-3 text-center">Bobot</th>}
+                    <th className="py-2.5 px-3 min-w-[130px]">Progress Fisik</th>
+                    {canSeeFinancials && <th className="py-2.5 px-3 text-right">Realisasi (Rp)</th>}
+                    <th className="py-2.5 px-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredTasks.map((t, idx) => {
+                    const isSummary = t.isSummary || t.itemType === 'summary';
+                    const indentPx = Math.max(0, ((t.outlineLevel || 1) - 1) * 16);
+                    const cost = t.plannedCost || ((t.quantity || 1) * (t.unitRate || 0));
+                    const actual = t.actualCost || 0;
+                    const weight = (budget > 0 && cost > 0)
+                      ? ((cost / budget) * 100).toFixed(1)
+                      : '0';
+
+                    const rowPad = tableDensity === 'compact' ? 'py-1.5 px-3' : 'py-2.5 px-3';
+
+                    return (
+                      <tr
+                        key={t._id || idx}
+                        className={`table-row transition-colors hover:bg-bg-secondary/50 ${
+                          isSummary ? 'bg-slate-50/80 dark:bg-slate-800/40 font-bold text-text-primary' : 'text-text-secondary'
+                        }`}
+                      >
+                        {/* WBS Code */}
+                        <td className={`${rowPad} text-center font-mono text-[11px] text-text-muted font-bold`}>
+                          {t.wbsCode || idx + 1}
+                        </td>
+
+                        {/* Name with indentation and icon */}
+                        <td className={`${rowPad}`}>
+                          <div className="flex items-center gap-2" style={{ paddingLeft: `${indentPx}px` }}>
+                            {isSummary ? (
+                              <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                            ) : t.itemType === 'supply' ? (
+                              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                            ) : (
+                              <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
+                            )}
+                            <span className={isSummary ? 'font-bold text-text-primary' : 'font-medium text-text-primary'}>
+                              {t.name}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Type Badge */}
+                        <td className={`${rowPad} text-center`}>
+                          {isSummary ? (
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                              WBS Group
+                            </span>
+                          ) : t.itemType === 'supply' ? (
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                              Material
+                            </span>
+                          ) : (
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                              Pekerjaan
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Volume */}
+                        <td className={`${rowPad} text-right font-mono tabular-nums`}>
+                          {isSummary ? '-' : (t.quantity || 1)}
+                        </td>
+
+                        {/* Unit */}
+                        <td className={`${rowPad} text-center uppercase text-[10px]`}>
+                          {isSummary ? '-' : (t.unit || 'pcs')}
+                        </td>
+
+                        {/* Unit Rate */}
+                        {canSeeFinancials && (
+                          <td className={`${rowPad} text-right font-mono tabular-nums`}>
+                            {isSummary ? '-' : (t.unitRate ? formatRupiah(t.unitRate) : '-')}
+                          </td>
+                        )}
+
+                        {/* Total Budget */}
+                        {canSeeFinancials && (
+                          <td className={`${rowPad} text-right font-mono tabular-nums font-semibold ${isSummary ? 'text-primary' : 'text-text-primary'}`}>
+                            {formatRupiah(cost)}
+                          </td>
+                        )}
+
+                        {/* Weight */}
+                        {canSeeFinancials && (
+                          <td className={`${rowPad} text-center`}>
+                            <span className="text-[10px] font-mono font-bold text-text-muted bg-bg-secondary px-1.5 py-0.5 rounded">
+                              {weight}%
+                            </span>
+                          </td>
+                        )}
+
+                        {/* Progress Bar */}
+                        <td className={`${rowPad}`}>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-300 ${
+                                  (t.percentComplete || 0) === 100
+                                    ? 'bg-emerald-500'
+                                    : (t.percentComplete || 0) > 0
+                                    ? 'bg-blue-600'
+                                    : 'bg-slate-300 dark:bg-slate-600'
+                                }`}
+                                style={{ width: `${Math.min(100, Math.max(0, t.percentComplete || 0))}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-bold font-mono tabular-nums w-8 text-right text-text-primary">
+                              {t.percentComplete || 0}%
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Actual Cost */}
+                        {canSeeFinancials && (
+                          <td className={`${rowPad} text-right font-mono tabular-nums font-semibold ${actual > cost && cost > 0 ? 'text-rose-600' : 'text-text-primary'}`}>
+                            {actual > 0 ? formatRupiah(actual) : '-'}
+                          </td>
+                        )}
+
+                        {/* Status */}
+                        <td className={`${rowPad} text-center`}>
+                          {(t.percentComplete || 0) === 100 ? (
+                            <Badge label="Selesai" variant="success" size="small" />
+                          ) : (t.percentComplete || 0) > 0 ? (
+                            <Badge label="Berjalan" variant="primary" size="small" />
+                          ) : (
+                            <Badge label={t.supplyStatus || 'Belum Mulai'} variant="neutral" size="small" />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </Card>
         </div>
       )}

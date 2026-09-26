@@ -76,6 +76,13 @@ const NAV_ITEMS: NavItem[] = [
     roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin'],
   },
   {
+    id: 'swakelola',
+    label: 'Swakelola SCM',
+    icon: Receipt,
+    route: '/swakelola',
+    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin'],
+  },
+  {
     id: 'attendance',
     label: 'sidebar.attendance',
     icon: Clock,

@@ -20,6 +20,10 @@ const {
   generateSCurveData,
   calculateTaskEV,
 } = require('../utils/earnedValue');
+const {
+  ensureProjectTasksFromLegacy,
+  syncProjectTasksToProjectEntities,
+} = require('../utils/projectSync');
 
 // Memory storage for Excel and XML imports
 const planUpload = multer({
@@ -102,6 +106,9 @@ async function loadAndRecalculateSchedule(projectId) {
   recalculateProjectSchedule(plainTasks, project ? project.startDate : null, calendar);
   await bulkSaveTasks(plainTasks);
 
+  // Synchronize to Project.workItems and Supply collection
+  await syncProjectTasksToProjectEntities(projectId);
+
   // Return fresh populated tasks
   return await ProjectTask.find({ projectId })
     .sort({ sortOrder: 1 })
@@ -119,6 +126,9 @@ router.get('/tasks', auth, async (req, res) => {
     if (!project) {
       return res.status(404).json({ msg: 'Project not found' });
     }
+
+    // Auto-migrate legacy work items & supplies if not yet present
+    await ensureProjectTasksFromLegacy(projectId);
 
     const tasks = await ProjectTask.find({ projectId })
       .sort({ sortOrder: 1 })
@@ -172,6 +182,14 @@ router.post('/tasks', auth, async (req, res) => {
       plannedCost = 0,
       actualCost = 0,
       plannedWork = 0,
+      itemType = 'work',
+      category = 'general',
+      quantity = 1,
+      unit = 'ls',
+      unitRate = 0,
+      supplyStatus = 'Pending',
+      deliveryDate,
+      physicalWeight = 0,
     } = req.body;
 
     if (!name || name.trim() === '') {
@@ -195,6 +213,8 @@ router.post('/tasks', auth, async (req, res) => {
     const dur = isMilestone ? 0 : Math.max(0, Number(duration) || 1);
     const finish = calculateFinishDate(initialStart, dur);
 
+    const computedPlannedCost = Number(plannedCost) || (Number(quantity || 1) * Number(unitRate || 0));
+
     const newTask = new ProjectTask({
       projectId,
       name: name.trim(),
@@ -213,9 +233,18 @@ router.post('/tasks', auth, async (req, res) => {
       constraintType,
       constraintDate: constraintDate ? new Date(constraintDate) : null,
       deadlineDate: deadlineDate ? new Date(deadlineDate) : null,
-      plannedCost: Number(plannedCost) || 0,
+      plannedCost: computedPlannedCost,
       actualCost: Number(actualCost) || 0,
       plannedWork: Number(plannedWork) || 0,
+      itemType,
+      category,
+      quantity: Number(quantity) || 1,
+      unit: unit || 'ls',
+      unitRate: Number(unitRate) || 0,
+      totalBudget: computedPlannedCost,
+      supplyStatus,
+      deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+      physicalWeight: Number(physicalWeight) || 0,
       createdBy: req.user._id,
     });
 
@@ -273,11 +302,21 @@ router.put('/tasks/:taskId', auth, async (req, res) => {
       'isEffortDriven',
       'levelingDelay',
       'calendarId',
+      'itemType',
+      'category',
+      'quantity',
+      'unit',
+      'unitRate',
+      'supplyStatus',
+      'deliveryDate',
+      'realizedQuantity',
+      'realizedAmount',
+      'physicalWeight',
     ];
 
     updatable.forEach(field => {
       if (req.body[field] !== undefined) {
-        if (field === 'startDate' || field === 'finishDate' || field === 'constraintDate' || field === 'deadlineDate') {
+        if (field === 'startDate' || field === 'finishDate' || field === 'constraintDate' || field === 'deadlineDate' || field === 'deliveryDate') {
           task[field] = req.body[field] ? new Date(req.body[field]) : null;
         } else if (field === 'isMilestone') {
           task.isMilestone = Boolean(req.body.isMilestone);
@@ -287,6 +326,13 @@ router.put('/tasks/:taskId', auth, async (req, res) => {
         }
       }
     });
+
+    if (req.body.quantity !== undefined || req.body.unitRate !== undefined) {
+      if (req.body.plannedCost === undefined) {
+        task.plannedCost = (Number(task.quantity) || 1) * (Number(task.unitRate) || 0);
+      }
+      task.totalBudget = task.plannedCost;
+    }
 
     await task.save();
 

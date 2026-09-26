@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ChevronRight, Briefcase, Copy, Check, ChevronLeft, AlertCircle, Users, FileText, Package, ListChecks, Key, X, ChevronDown, ChevronUp, Code } from 'lucide-react';
+import { Plus, Trash2, ChevronRight, Briefcase, Copy, Check, ChevronLeft, AlertCircle, Users, FileText, Package, ListChecks, Key, X, ChevronDown, ChevronUp, Code, Layers, Calendar } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AxiosError } from 'axios';
 import api, { getApiKeys, createApiKey, updateApiKey, deleteApiKey } from '../api/api';
@@ -29,8 +29,11 @@ export default function Projects() {
   const [wizardStep, setWizardStep] = useState(0);
   const [duplicateName, setDuplicateName] = useState('');
   const [cloneOptions, setCloneOptions] = useState({
+    includeTasks: true,
     includeWorkItems: true,
     includeSupplies: true,
+    includeCalendar: true,
+    includeResources: true,
     includeDocuments: false,
     includeAssignedUsers: false,
   });
@@ -114,8 +117,11 @@ export default function Projects() {
     setDuplicateName(`Copy of ${project.nama || project.name}`);
     setWizardStep(0);
     setCloneOptions({
+      includeTasks: true,
       includeWorkItems: true,
       includeSupplies: true,
+      includeCalendar: true,
+      includeResources: true,
       includeDocuments: false,
       includeAssignedUsers: false,
     });
@@ -539,10 +545,13 @@ export default function Projects() {
                   </h4>
                   <div className="space-y-3">
                     {[
-                      { id: 'includeWorkItems', label: 'Work Items', icon: ListChecks, desc: 'Pekerjaan list (reset to 0% progress)' },
-                      { id: 'includeSupplies', label: 'Supply Plan', icon: Package, desc: 'Planning material list' },
-                      { id: 'includeDocuments', label: 'Documents', icon: FileText, desc: 'Keep existing file upload references' },
-                      { id: 'includeAssignedUsers', label: 'Team Assignments', icon: Users, desc: 'Copy supervisors and workers' },
+                      { id: 'includeTasks', label: 'Jadwal & Struktur WBS', icon: Layers, desc: 'Hierarki WBS, durasi, dependensi CPM, dan baseline (Single Source of Truth)' },
+                      { id: 'includeWorkItems', label: 'Item Pekerjaan Konstruksi', icon: ListChecks, desc: 'Daftar item pekerjaan lapangan (progres di-reset ke 0%)' },
+                      { id: 'includeSupplies', label: 'Rencana Pengadaan Material', icon: Package, desc: 'Daftar pengadaan material & status pengadaan logistik' },
+                      { id: 'includeCalendar', label: 'Kalender Kerja Proyek', icon: Calendar, desc: 'Hari kerja standar konstruksi dan libur nasional' },
+                      { id: 'includeResources', label: 'Sumber Daya & Tenaga Kerja', icon: Users, desc: 'Alokasi staf pengawas, alat berat, dan tarif tenaga kerja' },
+                      { id: 'includeDocuments', label: 'Dokumen Teknis & Gambar', icon: FileText, desc: 'Salin referensi file shop drawing dan izin proyek' },
+                      { id: 'includeAssignedUsers', label: 'Penugasan Anggota Tim', icon: Users, desc: 'Salin penugasan site manager dan staf ke proyek baru' },
                     ].map(opt => (
                       <label 
                         key={opt.id} 
@@ -578,14 +587,19 @@ export default function Projects() {
                   </div>
                   <h4 className="text-lg font-bold text-text-primary mb-2">Ready to Clone</h4>
                   <p className="text-sm text-text-muted px-4 mb-6">
-                    Creating <span className="font-bold text-text-primary">"{duplicateName}"</span>.
-                    You can still adjust these settings in project details later.
+                    Menduplikasi proyek <span className="font-bold text-text-primary">"{selectedProject?.nama || selectedProject?.name}"</span> menjadi <span className="font-bold text-text-primary">"{duplicateName}"</span>.
+                    Struktur WBS, kalender, dan RAB akan otomatis disinkronkan ke sumber data tunggal.
                   </p>
                   
                   <div className="inline-flex flex-wrap justify-center gap-2 max-w-sm px-4">
                     {Object.entries(cloneOptions).map(([key, val]) => val && (
                       <div key={key} className="px-3 py-1 bg-bg-secondary rounded-full text-[10px] font-bold text-text-muted border border-border">
-                        {key.replace('include', '').split(/(?=[A-Z])/).join(' ')}
+                        {key === 'includeTasks' ? 'Struktur WBS' :
+                         key === 'includeWorkItems' ? 'Pekerjaan' :
+                         key === 'includeSupplies' ? 'Material' :
+                         key === 'includeCalendar' ? 'Kalender' :
+                         key === 'includeResources' ? 'Sumber Daya' :
+                         key === 'includeDocuments' ? 'Dokumen' : 'Anggota Tim'}
                       </div>
                     ))}
                   </div>

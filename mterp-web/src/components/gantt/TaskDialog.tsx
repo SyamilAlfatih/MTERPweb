@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ProjectTask, TaskPredecessor, DependencyType } from '../../types';
+import CostInput from '../shared/CostInput';
 import {
   X,
   Plus,
@@ -59,6 +60,13 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
   const [actualWork, setActualWork] = useState(0);
   const [notes, setNotes] = useState('');
 
+  // Unified WBS / RAB fields
+  const [itemType, setItemType] = useState<'summary' | 'work' | 'supply' | 'milestone'>('work');
+  const [category, setCategory] = useState<'general' | 'material' | 'labor' | 'equipment' | 'subcontractor' | 'overhead'>('general');
+  const [quantity, setQuantity] = useState<number>(1);
+  const [unit, setUnit] = useState<string>('ls');
+  const [unitRate, setUnitRate] = useState<number>(0);
+
   useEffect(() => {
     if (task) {
       setName(task.name || '');
@@ -94,6 +102,11 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       setPlannedWork(task.plannedWork || 0);
       setActualWork(task.actualWork || 0);
       setNotes(task.notes || '');
+      setItemType(task.itemType || (task.isSummary ? 'summary' : 'work'));
+      setCategory(task.category || (task.itemType === 'supply' ? 'material' : 'general'));
+      setQuantity(task.quantity || 1);
+      setUnit(task.unit || 'ls');
+      setUnitRate(task.unitRate || 0);
       setActiveTab('general');
     }
   }, [task]);
@@ -118,10 +131,17 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       taskType,
       isEffortDriven,
       levelingDelay: Number(levelingDelay) || 0,
-      plannedCost: Number(plannedCost),
+      plannedCost: Number(plannedCost) || (Number(quantity) * Number(unitRate)),
       actualCost: Number(actualCost),
       plannedWork: Number(plannedWork),
       actualWork: Number(actualWork),
+      itemType,
+      category,
+      quantity: Number(quantity) || 1,
+      unit: unit || 'ls',
+      unitRate: Number(unitRate) || 0,
+      totalBudget: Number(quantity) * Number(unitRate),
+      isSummary: itemType === 'summary' || task.isSummary,
       notes,
     });
     onClose();
@@ -226,11 +246,99 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
+                  <label className="block font-medium text-slate-700 mb-1">Tipe Item WBS / RAB:</label>
+                  <select
+                    value={itemType}
+                    onChange={e => {
+                      const val = e.target.value as any;
+                      setItemType(val);
+                      if (val === 'supply') setCategory('material');
+                      if (val === 'work') setCategory('labor');
+                    }}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:ring-2 focus:ring-blue-500 font-semibold"
+                  >
+                    <option value="summary">📁 Paket Pekerjaan (Summary Task)</option>
+                    <option value="work">🔨 Item Pekerjaan (Upah / Jasa / Alat)</option>
+                    <option value="supply">📦 Item Pengadaan (Material / Bahan)</option>
+                    <option value="milestone">💎 Milestone</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1">Kategori RAB:</label>
+                  <select
+                    value={category}
+                    onChange={e => setCategory(e.target.value as any)}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="labor">Tenaga / Upah HOK</option>
+                    <option value="material">Bahan / Material</option>
+                    <option value="equipment">Peralatan</option>
+                    <option value="subcontractor">Subkontraktor</option>
+                    <option value="overhead">Overhead / Umum</option>
+                    <option value="general">Umum</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Physical Quantities & Unit Rates */}
+              {itemType !== 'summary' && itemType !== 'milestone' && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                  <div className="font-semibold text-slate-700 text-xs flex items-center justify-between">
+                    <span>Kuantitas Volume & Tarif Satuan RAB</span>
+                    <span className="text-[11px] font-mono text-primary font-bold">
+                      Plafon: Rp {(Number(quantity || 0) * Number(unitRate || 0)).toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-600 mb-1">Kuantitas / Volume:</label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={quantity}
+                        onChange={e => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setQuantity(val);
+                          setPlannedCost(val * unitRate);
+                        }}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs font-mono text-right"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-600 mb-1">Satuan Ukur:</label>
+                      <input
+                        type="text"
+                        placeholder="m2, m3, zak, pcs"
+                        value={unit}
+                        onChange={e => setUnit(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs uppercase"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-600 mb-1">Tarif Satuan (Rp):</label>
+                      <CostInput
+                        compact
+                        prefix="Rp"
+                        value={unitRate}
+                        onChange={val => {
+                          setUnitRate(val);
+                          setPlannedCost(quantity * val);
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
                   <label className="block font-medium text-slate-700 mb-1">Duration (days):</label>
                   <input
                     type="number"
                     min="0"
-                    disabled={isMilestone || task.isSummary}
+                    disabled={isMilestone || task.isSummary || itemType === 'summary'}
                     value={duration}
                     onChange={e => setDuration(Math.max(0, parseInt(e.target.value, 10) || 0))}
                     className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs disabled:bg-slate-100"
@@ -474,12 +582,11 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
                             />
                           </td>
                           <td className="p-2">
-                            <input
-                              type="number"
-                              min="0"
+                            <CostInput
+                              compact
+                              prefix="Rp"
                               value={res.costRate}
-                              onChange={e => updateResource(idx, 'costRate', parseFloat(e.target.value) || 0)}
-                              className="w-full px-2 py-1 border border-slate-300 rounded text-xs font-mono"
+                              onChange={val => updateResource(idx, 'costRate', val)}
                             />
                           </td>
                           <td className="p-2 text-center">
@@ -589,24 +696,20 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
 
               <div className="border-t border-slate-200 pt-3 grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Planned Cost (Rp):</label>
-                  <input
-                    type="number"
-                    min="0"
+                  <CostInput
+                    label="Planned Cost (Rp)"
+                    prefix="Rp"
                     value={plannedCost}
-                    onChange={e => setPlannedCost(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs font-mono"
+                    onChange={val => setPlannedCost(val)}
                   />
                 </div>
 
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Actual Cost (Rp):</label>
-                  <input
-                    type="number"
-                    min="0"
+                  <CostInput
+                    label="Actual Cost (Rp)"
+                    prefix="Rp"
                     value={actualCost}
-                    onChange={e => setActualCost(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs font-mono"
+                    onChange={val => setActualCost(val)}
                   />
                 </div>
               </div>
