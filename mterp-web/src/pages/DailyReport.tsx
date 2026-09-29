@@ -379,15 +379,26 @@ export default function DailyReport() {
     setSupplyUpdates(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Calculate computed overall progress (work items + supplies, cost-weighted)
-  const allCosts = [
-    ...workItemUpdates.map(w => ({ cost: w.cost, progress: w.newProgress })),
-    ...supplyUpdates.map(s => ({ cost: s.cost, progress: STATUS_PROGRESS[s.newStatus] || 0 })),
+  // Calculate computed overall progress across ALL project work items & supplies (One True Calculation)
+  const allProjectItems = [
+    ...availableWorkItems.map(item => {
+      const update = workItemUpdates.find(u => u.workItemId === item.workItemId);
+      const progress = update ? update.newProgress : item.currentProgress;
+      return { cost: item.cost || 0, progress };
+    }),
+    ...availableSupplies.map(sup => {
+      const update = supplyUpdates.find(u => u.supplyId === sup.supplyId);
+      const status = update ? update.newStatus : sup.currentStatus;
+      const progress = STATUS_PROGRESS[status] !== undefined ? STATUS_PROGRESS[status] : 0;
+      return { cost: sup.cost || 0, progress };
+    }),
   ];
-  const totalCost = allCosts.reduce((s, i) => s + (i.cost || 0), 0);
+  const totalCost = allProjectItems.reduce((s, i) => s + (i.cost || 0), 0);
   const computedProgress = totalCost > 0
-    ? Math.round(allCosts.reduce((s, i) => s + ((i.cost || 0) / totalCost) * i.progress, 0))
-    : 0;
+    ? Math.round(allProjectItems.reduce((s, i) => s + ((i.cost || 0) * i.progress), 0) / totalCost)
+    : (allProjectItems.length > 0
+        ? Math.round(allProjectItems.reduce((s, i) => s + i.progress, 0) / allProjectItems.length)
+        : (selectedProjectData?.progress || 0));
 
   /* ─── Photo Handlers ─── */
 

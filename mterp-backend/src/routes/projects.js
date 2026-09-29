@@ -7,6 +7,7 @@ const { auth, authorize } = require('../middleware/auth');
 const apiKeyAuth = require('../middleware/apiKeyAuth');
 const { withTransaction } = require('../utils/transaction');
 const { ensureProjectTasksFromLegacy, syncProjectTasksToProjectEntities } = require('../utils/projectSync');
+const { calculateProjectProgress } = require('../utils/projectProgress');
 const { recalculateProjectSchedule } = require('../utils/scheduling');
 
 // Middleware toleran: terima JWT Bearer ATAU X-API-Key
@@ -532,7 +533,7 @@ router.get('/:id', auth, async (req, res) => {
         parentTaskId: t.parentTaskId,
       }));
 
-      // 3. Roll up totalBudget and progress directly from tasks
+      // 3. Roll up totalBudget directly from tasks
       const rootTasks = tasks.filter(t => t.outlineLevel === 1);
       const computedBudget = rootTasks.length > 0
         ? rootTasks.reduce((sum, t) => sum + (t.plannedCost || 0), 0)
@@ -541,17 +542,16 @@ router.get('/:id', auth, async (req, res) => {
         project.totalBudget = computedBudget;
       }
 
-      const leafTasks = tasks.filter(t => !t.isSummary);
-      if (leafTasks.length > 0) {
-        const totalWeight = leafTasks.reduce((s, t) => s + (t.plannedCost || t.duration || 1), 0);
-        const weightedProgress = leafTasks.reduce(
-          (s, t) => s + (t.percentComplete || 0) * (t.plannedCost || t.duration || 1),
-          0
-        );
-        project.progress = totalWeight > 0 ? Math.round(weightedProgress / totalWeight) : 0;
+      // Calculate canonical one true progress
+      const canonical = calculateProjectProgress(project, tasks);
+      project.progress = canonical.progress;
+      if (project._id && project.progress !== canonical.progress) {
+        Project.updateOne({ _id: project._id }, { $set: { progress: canonical.progress } }).catch(() => {});
       }
     } else {
       project.supplies = await Supply.find({ projectId: project._id }).sort({ createdAt: 1 }).lean();
+      const canonical = calculateProjectProgress(project, []);
+      project.progress = canonical.progress;
     }
 
     project.tasks = tasks;
@@ -1559,19 +1559,10 @@ router.post('/:id/daily-report', auth, uploadLimiter,
         }
       }
 
-      // Calculate overall progress (cost-weighted across work items + supplies)
-      const STATUS_PROGRESS = { 'Pending': 0, 'Ordered': 50, 'Delivered': 100 };
-      const allItems = [
-        ...project.workItems.map(w => ({ cost: w.cost || 0, progress: w.progress || 0 })),
-        ...(await Supply.find({ projectId: project._id }).lean()).map(s => ({
-          cost: s.cost || 0,
-          progress: STATUS_PROGRESS[s.status] || 0,
-        })),
-      ];
-      const totalCost = allItems.reduce((s, i) => s + i.cost, 0);
-      const computedProgress = totalCost > 0
-        ? Math.round(allItems.reduce((s, i) => s + (i.cost / totalCost) * i.progress, 0))
-        : 0;
+      // Calculate canonical overall progress (Single Source of Truth)
+      const latestTasks = await ProjectTask.find({ projectId: project._id }).lean();
+      const canonical = calculateProjectProgress(project, latestTasks);
+      const computedProgress = canonical.progress;
 
       // Update project progress
       project.progress = computedProgress;

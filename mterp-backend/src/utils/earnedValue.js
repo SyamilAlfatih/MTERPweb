@@ -8,6 +8,7 @@
  */
 
 const { normalizeDate, createCalendarContext, defaultCalendarContext } = require('./scheduling');
+const { calculateProjectProgress } = require('./projectProgress');
 
 /**
  * Resolves calendar context whether caller passes a Calendar document/object,
@@ -196,13 +197,9 @@ function calculateProjectEV(tasks = [], statusDate, projectStartDate, projectFin
     tcpi = 0.0;
   }
 
-  // Physical progress % (Bobot Fisik)
-  let overallProgress = 0;
-  if (totalBAC > 0) {
-    overallProgress = Number(((totalBCWP / totalBAC) * 100).toFixed(2));
-  } else if (totalDuration > 0) {
-    overallProgress = Number(((weightedProgressSum / totalDuration) * 100).toFixed(2));
-  }
+  // Canonical Physical progress % (Bobot Fisik)
+  const canonical = calculateProjectProgress(null, targetTasks);
+  const overallProgress = canonical.progressExact;
 
   return {
     statusDate: normStatus.toISOString().split('T')[0],

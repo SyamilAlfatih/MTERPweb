@@ -5,6 +5,7 @@ const {
   recalculateWBSCodes,
   rollUpSummaryTasks,
 } = require('./scheduling');
+const { calculateProjectProgress } = require('./projectProgress');
 
 /**
  * Ensures legacy projects with flat workItems and supplies have a unified WBS ProjectTask hierarchy.
@@ -270,16 +271,9 @@ async function syncProjectTasksToProjectEntities(projectId) {
       project.totalBudget = totalBudget;
     }
 
-    // Overall progress: weighted by duration or plannedCost
-    const leafTasks = tasks.filter(t => !t.isSummary);
-    if (leafTasks.length > 0) {
-      const totalWeight = leafTasks.reduce((s, t) => s + (t.plannedCost || t.duration || 1), 0);
-      const weightedProgress = leafTasks.reduce(
-        (s, t) => s + (t.percentComplete || 0) * (t.plannedCost || t.duration || 1),
-        0
-      );
-      project.progress = totalWeight > 0 ? Math.round(weightedProgress / totalWeight) : 0;
-    }
+    // Calculate canonical one true project progress
+    const { progress } = calculateProjectProgress(project, tasks);
+    project.progress = progress;
 
     await project.save();
 
@@ -331,4 +325,5 @@ async function syncProjectTasksToProjectEntities(projectId) {
 module.exports = {
   ensureProjectTasksFromLegacy,
   syncProjectTasksToProjectEntities,
+  calculateProjectProgress,
 };

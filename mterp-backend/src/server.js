@@ -152,6 +152,16 @@ mongoose.connect(MONGODB_URI)
     console.log('✅ Connected to MongoDB');
     console.log(`   Database: ${mongoose.connection.name}`);
 
+    // Audit & synchronize project progress across all projects (Single Source of Truth)
+    const { syncAllProjectsProgress } = require('./utils/projectProgress');
+    syncAllProjectsProgress()
+      .then(synced => {
+        if (synced && synced.length > 0) {
+          console.log(`📊 Synchronized progress for ${synced.length} projects`);
+        }
+      })
+      .catch(err => console.error('⚠️ Project progress sync warning:', err.message));
+
     // Socket.io setup
     const io = new Server(server, {
       cors: {

@@ -24,6 +24,7 @@ const {
   ensureProjectTasksFromLegacy,
   syncProjectTasksToProjectEntities,
 } = require('../utils/projectSync');
+const { calculateProjectProgress } = require('../utils/projectProgress');
 
 // Memory storage for Excel and XML imports
 const planUpload = multer({
@@ -941,16 +942,8 @@ router.get('/summary', auth, async (req, res) => {
       ? countWorkingDays(earliestStart, latestFinish)
       : 0;
 
-    // Overall progress weighted by leaf task duration
-    const leafTasks = tasks.filter(t => !t.isSummary);
-    let weightedProg = 0;
-    let totalWeight = 0;
-    leafTasks.forEach(t => {
-      const w = t.duration || 1;
-      weightedProg += (t.percentComplete || 0) * w;
-      totalWeight += w;
-    });
-    const overallPercentComplete = totalWeight > 0 ? Math.round(weightedProg / totalWeight) : 0;
+    // Overall canonical progress (Single Source of Truth)
+    const { progress: overallPercentComplete } = calculateProjectProgress(project, tasks);
 
     res.json({
       success: true,

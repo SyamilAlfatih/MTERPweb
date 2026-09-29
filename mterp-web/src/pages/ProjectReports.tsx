@@ -398,7 +398,7 @@ export default function ProjectReports() {
             const scheduleItems: ScheduleItem[] = (projectData.workItems || []).map((w: any) => {
               const sD = w.startDate ? wibDate(w.startDate) : pStart;
               const eD = w.endDate ? wibDate(w.endDate) : pEnd;
-              const plannedWeight = w.physicalWeight > 0 ? w.physicalWeight : (w.cost || 0);
+              const plannedWeight = (w.cost && w.cost > 0) ? w.cost : (w.physicalWeight > 0 ? w.physicalWeight : 1);
               const actualWeight = plannedWeight * ((w.progress || 0) / 100);
               return {
                 startDate: sD || pStart,

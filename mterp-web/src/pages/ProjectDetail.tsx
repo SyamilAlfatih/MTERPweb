@@ -563,14 +563,14 @@ export default function ProjectDetail() {
             actualCost: wiAny.actualCost || 0,
           });
         } else {
-          // Physical Progress
-          const plannedWeight = wiAny.physicalWeight > 0 ? wiAny.physicalWeight : (wi.cost || 0);
+          // Physical Progress (Cost-weighted earned value / bobot fisik)
+          const plannedWeight = (wi.cost && wi.cost > 0) ? wi.cost : (wiAny.physicalWeight > 0 ? wiAny.physicalWeight : 1);
           const actualProgressWeight = plannedWeight * ((wiAny.progress || 0) / 100);
           allItems.push({
             startDate: dS,
             endDate: dE,
-            plannedCost: plannedWeight, // Represents physical weight
-            actualCost: actualProgressWeight, // Represents actual physical completion
+            plannedCost: plannedWeight,
+            actualCost: actualProgressWeight,
           });
         }
       }
@@ -632,7 +632,7 @@ export default function ProjectDetail() {
                 actualState[wu.workItemId] = wu.actualCost || 0;
               } else {
                 const wi = workItems.find((w: any) => String(w._id) === String(wu.workItemId));
-                const plannedWeight = (wi as any)?.physicalWeight > 0 ? (wi as any).physicalWeight : (wi?.cost || 0);
+                const plannedWeight = (wi?.cost && wi.cost > 0) ? wi.cost : ((wi as any)?.physicalWeight > 0 ? (wi as any).physicalWeight : 1);
                 actualState[wu.workItemId] = plannedWeight * ((wu.newProgress || 0) / 100);
               }
             }
