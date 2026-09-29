@@ -1,10 +1,22 @@
 {
   "version": 1,
   "skills": {
+    "andrej-karpathy-skill": {
+      "source": "duolahypercho/andrej-karpathy-skills",
+      "sourceType": "github",
+      "skillPath": "skills/andrej-karpathy-skill/SKILL.md",
+      "computedHash": "6f27a28f86c8827472857395204a7aae7a8c45fbbafe91e4316b843908a9e8d8"
+    },
     "caveman": {
       "source": "JuliusBrussee/caveman",
       "sourceType": "github",
       "computedHash": "5e249dbda26f877a9b139f8f4559e8bf694774fc7f57ec93bb074cd5a3b4532f"
+    },
+    "graphify": {
+      "source": "graphify-labs/graphify",
+      "sourceType": "github",
+      "skillPath": "graphify/SKILL.md",
+      "computedHash": "2bb331fa53d2d9d3e3ef8626b7bfca7313db2627d0eba867680ae8dce3aec411"
     },
     "mongodb": {
       "source": "hoodini/ai-agents-skills",
