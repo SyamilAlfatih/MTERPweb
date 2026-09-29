@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import { 
   ClipboardList, Circle, Check, Plus, User, Calendar, 
   FolderKanban, AlertCircle, X, ChevronDown, List, LayoutGrid,
@@ -50,6 +51,9 @@ type PriorityFilter = 'all' | 'urgent' | 'high' | 'normal' | 'low';
 export default function Tasks() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlProjectId = searchParams.get('projectId') || '';
+
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -68,8 +72,15 @@ export default function Tasks() {
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [projectFilter, setProjectFilter] = useState<string>('');
+  const [projectFilter, setProjectFilter] = useState<string>(urlProjectId);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
+
+  useEffect(() => {
+    const pId = searchParams.get('projectId') || '';
+    if (pId) {
+      setProjectFilter(pId);
+    }
+  }, [searchParams]);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -81,7 +92,7 @@ export default function Tasks() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    projectId: '',
+    projectId: urlProjectId,
     assignedTo: '',
     priority: 'normal',
     dueDate: '',
@@ -98,7 +109,10 @@ export default function Tasks() {
     onEscape: () => setShowModal(false),
   });
 
-  const canManageTasks = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
+  const canManageTasks = user?.role && [
+    'owner', 'president_director', 'operational_director', 'director', 
+    'site_manager', 'supervisor', 'admin_project', 'asset_admin'
+  ].includes(user.role);
 
   useEffect(() => {
     fetchTasks();
@@ -168,10 +182,11 @@ export default function Tasks() {
   };
 
   const handleOpenCreate = () => {
+    const defaultProjId = projectFilter || projects[0]?._id || '';
     setFormData({
       title: '',
       description: '',
-      projectId: projects[0]?._id || '',
+      projectId: defaultProjId,
       assignedTo: '',
       priority: 'normal',
       dueDate: '',
@@ -180,6 +195,9 @@ export default function Tasks() {
     setModalMode('create');
     setTaskMode('custom');
     setProjectWorkItems([]);
+    if (defaultProjId) {
+      fetchProjectWorkItems(defaultProjId);
+    }
     setSelectedTask(null);
     setShowModal(true);
   };
@@ -338,9 +356,37 @@ export default function Tasks() {
   };
 
   return (
-    <div className="p-6 max-w-[1200px] mx-auto max-lg:p-4 max-sm:p-3">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Screen reader live region */}
       <AriaLiveRegion message={announcement} />
+
+      {/* Breadcrumb Navigation */}
+      <div className="flex items-center gap-2 text-xs text-text-muted">
+        <Link to="/home" className="hover:text-primary transition-colors flex items-center gap-1 font-medium">
+          <span>Beranda</span>
+        </Link>
+        <span>/</span>
+        <span className="text-text-primary font-semibold">
+          Manajemen Tugas & Disposisi
+        </span>
+        {projectFilter && (
+          <>
+            <span>/</span>
+            <span className="text-primary font-bold">
+              {projects.find(p => p._id === projectFilter)?.nama || 'Proyek Terpilih'}
+            </span>
+            <button
+              onClick={() => {
+                setProjectFilter('');
+                setSearchParams({});
+              }}
+              className="text-[11px] text-rose-500 hover:underline ml-1 cursor-pointer"
+            >
+              (Tampilkan Semua Proyek)
+            </button>
+          </>
+        )}
+      </div>
 
       {/* Header */}
       <div className="flex justify-between items-start mb-6 gap-4 flex-wrap max-sm:flex-col max-sm:gap-3">

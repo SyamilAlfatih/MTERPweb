@@ -101,7 +101,7 @@ const NAV_ITEMS: NavItem[] = [
     label: 'sidebar.tasks',
     icon: ClipboardList,
     route: '/tasks',
-    roles: ['worker', 'tukang', 'helper', 'foreman', 'site_manager', 'supervisor', 'asset_admin', 'admin_project'],
+    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin', 'foreman', 'worker', 'tukang', 'helper'],
   },
   {
     id: 'my-payments',

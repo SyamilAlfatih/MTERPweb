@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Calendar, DollarSign, FileText, Wrench, ArrowLeft,
   TrendingUp, Package, BarChart3, Layers,
   AlertTriangle, CheckCircle2, Clock, Target, FolderOpen,
   Trash2, Edit3, Eye, Image as ImageIcon, ChevronDown, ChevronUp, Download, X,
-  CalendarRange, Receipt,
+  CalendarRange, Receipt, MapPin, Building, Activity, PieChart,
+  ArrowUpRight, ArrowDownRight, ExternalLink, ShieldCheck, CheckCircle, Search, Filter,
+  CheckSquare, Plus, Check,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -240,6 +242,7 @@ export default function ProjectDetail() {
   const [filterStart, setFilterStart] = useState<string>('');
   const [filterEnd, setFilterEnd] = useState<string>('');
   const [dailyReports, setDailyReports] = useState<any[]>([]);
+  const [projectTasks, setProjectTasks] = useState<any[]>([]);
   
   // Daily Reports View State
   const [expandedReports, setExpandedReports] = useState<string[]>([]);
@@ -254,6 +257,7 @@ export default function ProjectDetail() {
   const [reportDensity, setReportDensity] = useState<'compact' | 'normal'>('normal');
   const [itemTableTab, setItemTableTab] = useState<'all' | 'work' | 'supplies'>('all');
   const [itemSearch, setItemSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'all' | 'scurve' | 'wbs' | 'tasks' | 'reports' | 'modules'>('all');
 
   const chartRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
@@ -280,19 +284,36 @@ export default function ProjectDetail() {
 
   const fetchProject = async () => {
     try {
-      const [projectRes, suppliesRes, reportsRes] = await Promise.all([
+      const [projectRes, suppliesRes, reportsRes, tasksRes] = await Promise.all([
         api.get(`/projects/${id}`),
         api.get(`/projects/${id}/supplies`),
         api.get(`/projects/${id}/daily-reports`).catch(() => ({ data: [] })),
+        api.get(`/tasks?projectId=${id}`).catch(() => ({ data: [] })),
       ]);
       const data = projectRes.data;
       data.supplies = suppliesRes.data || [];
       setProject(data);
       setDailyReports(reportsRes.data || []);
+      setProjectTasks(tasksRes.data || []);
     } catch (err) {
       console.error('Failed to fetch project', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTaskStatusToggle = async (taskId: string, currentStatus: string) => {
+    const statusFlow: Record<string, string> = {
+      pending: 'in_progress',
+      in_progress: 'completed',
+      completed: 'pending',
+    };
+    const nextStatus = statusFlow[currentStatus] || 'pending';
+    try {
+      await api.put(`/tasks/${taskId}/status`, { status: nextStatus });
+      setProjectTasks(prev => prev.map(t => t._id === taskId ? { ...t, status: nextStatus } : t));
+    } catch (err) {
+      console.error('Failed to update task status:', err);
     }
   };
 
@@ -819,110 +840,307 @@ export default function ProjectDetail() {
   const isAheadOfSchedule = scheduleDeviation >= 0;
   const isUnderBudget = costVariance <= 0;
 
+  // ─── Extra ERP Calculations ───
+  const gs = project.startDate || (project.globalDates as any)?.planned?.start;
+  const ge = project.endDate || (project.globalDates as any)?.planned?.end;
+  let elapsedPct = 0;
+  let remainingDays: number | null = null;
+  let totalDays: number | null = null;
+  if (gs && ge) {
+    const startMs = new Date(gs).getTime();
+    const endMs = new Date(ge).getTime();
+    const nowMs = Date.now();
+    const totalMs = endMs - startMs;
+    if (totalMs > 0) {
+      elapsedPct = Math.min(100, Math.max(0, Math.round(((nowMs - startMs) / totalMs) * 100)));
+      totalDays = Math.ceil(totalMs / (1000 * 60 * 60 * 24));
+      remainingDays = Math.ceil((endMs - nowMs) / (1000 * 60 * 60 * 24));
+    }
+  }
+
+  const budgetUtilizationPct = totalPlannedCost > 0
+    ? Math.min(100, (totalActualCost / totalPlannedCost) * 100).toFixed(1)
+    : '0';
+
+  const plannedProgressAtToday = todayDataPoint ? todayDataPoint.planned.toFixed(1) : `${progress}`;
+  const projStatus = (project.status || (progress >= 100 ? 'Selesai' : progress > 0 ? 'Sedang Berjalan' : 'Perencanaan'));
+
   return (
-    <div className="p-6 max-w-[900px] mx-auto max-lg:p-4 max-sm:p-3">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 mb-6 max-sm:flex-col max-sm:items-start max-sm:gap-3">
-        <div className="flex items-center gap-4">
-          <button className="w-10 h-10 rounded-full bg-bg-secondary flex items-center justify-center cursor-pointer transition-colors border-none text-text-primary hover:bg-border" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} />
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      {/* ── Breadcrumb Navigation ── */}
+      <div className="flex items-center gap-2 text-xs text-text-muted">
+        <Link to="/projects" className="hover:text-primary transition-colors flex items-center gap-1 font-medium">
+          <span>Portofolio Proyek</span>
+        </Link>
+        <span>/</span>
+        <span className="text-text-primary font-semibold truncate max-w-[200px] sm:max-w-md">
+          {project.nama || project.name}
+        </span>
+      </div>
+
+      {/* ── Executive ERP Header Banner ── */}
+      <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 sm:p-6 shadow-xs transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div className="flex items-start gap-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="w-10 h-10 rounded-xl bg-bg-secondary hover:bg-border/60 text-text-primary flex items-center justify-center transition-all cursor-pointer border border-border-light shrink-0 mt-0.5"
+            title="Kembali"
+          >
+            <ArrowLeft size={18} />
           </button>
-          <div>
-            <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{project.nama || project.name}</h1>
-            <p className="text-sm text-text-muted mt-[2px]">{project.lokasi || project.location}</p>
+          <div className="space-y-1.5 min-w-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-text-primary m-0">
+                {project.nama || project.name}
+              </h1>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                progress >= 100
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                  : progress > 0
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800'
+                  : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${progress >= 100 ? 'bg-emerald-500' : progress > 0 ? 'bg-blue-500 animate-pulse' : 'bg-amber-500'}`} />
+                {projStatus}
+              </span>
+              <span className="text-[11px] font-mono font-bold text-text-muted bg-bg-secondary px-2 py-0.5 rounded border border-border-light">
+                #PRJ-{(id || '').slice(-6).toUpperCase()}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-4 text-xs text-text-secondary flex-wrap">
+              {(project.lokasi || project.location) && (
+                <span className="flex items-center gap-1 text-text-muted">
+                  <MapPin size={13} className="text-rose-500 shrink-0" />
+                  <span>{project.lokasi || project.location}</span>
+                </span>
+              )}
+              {gs && ge && (
+                <span className="flex items-center gap-1 text-text-muted">
+                  <Calendar size={13} className="text-indigo-500 shrink-0" />
+                  <span>{fmtDate(gs)} - {fmtDate(ge)} ({totalDays || 0} hari kalender)</span>
+                </span>
+              )}
+            </div>
+            {project.description && (
+              <p className="text-xs text-text-muted line-clamp-2 mt-1 m-0 max-w-3xl">
+                {project.description}
+              </p>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2 max-sm:w-full max-sm:flex-col">
+
+        {/* Action Suite (ERP Controls) */}
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           <button
             onClick={() => navigate(`/project-swakelola/${id}`)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-lg text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer max-sm:w-full justify-center"
+            className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer"
+            title="Kelola Pengadaan Swakelola SCM"
           >
-            <Receipt size={18} />
+            <Receipt size={15} />
             <span>🏗️ Swakelola SCM</span>
           </button>
           <button
             onClick={() => navigate(`/project-plan/${id}`)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white rounded-lg text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer max-sm:w-full justify-center"
+            className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer"
+            title="Buka MS Project Gantt & WBS Plan"
           >
-            <CalendarRange size={18} />
+            <CalendarRange size={15} />
             <span>📊 MS Project Plan</span>
+          </button>
+          <button
+            onClick={() => navigate(`/daily-report?projectId=${id}`)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-bg-secondary hover:bg-border/60 text-text-primary border border-border rounded-xl text-xs font-semibold transition-all cursor-pointer"
+            title="Tambah Laporan Harian"
+          >
+            <FileText size={15} className="text-primary" />
+            <span>+ Laporan</span>
+          </button>
+          <button
+            onClick={() => navigate(`/tasks?projectId=${id}`)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-bg-secondary hover:bg-border/60 text-text-primary border border-border rounded-xl text-xs font-semibold transition-all cursor-pointer"
+            title="Daftar Tugas & Disposisi Proyek"
+          >
+            <CheckSquare size={15} className="text-violet-500" />
+            <span>Tugas ({projectTasks.length})</span>
+          </button>
+          <button
+            onClick={() => navigate(`/project-documents/${id}`)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-bg-secondary hover:bg-border/60 text-text-primary border border-border rounded-xl text-xs font-semibold transition-all cursor-pointer"
+            title="Berkas & Dokumen Teknis"
+          >
+            <FolderOpen size={15} className="text-amber-500" />
+            <span>Dokumen</span>
           </button>
         </div>
       </div>
 
-      <div ref={statsRef}>
-        {/* Progress Card */}
-        <Card className="p-6 mb-4 bg-gradient-to-br from-primary to-primary-light text-white border-none">
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-sm text-white/80 font-medium">{t('projectDetail.progress.overall')}</span>
-            <span className="text-2xl font-bold text-white">{progress}%</span>
+      {/* ── 4-Card Bento KPI Cockpit ── */}
+      <div ref={statsRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Physical Progress */}
+        <div className="card-component bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs flex flex-col justify-between relative overflow-hidden transition-all hover:border-primary/40 hover:shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Realisasi Fisik Proyek</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <Activity size={18} />
+            </div>
           </div>
-          <div className="h-2 bg-white/30 rounded-full overflow-hidden">
-            <div className="h-full bg-white rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+          <div>
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-3xl font-black text-text-primary tracking-tight font-mono">{progress}%</span>
+              <span className="text-xs text-text-muted">Rencana: {plannedProgressAtToday}%</span>
+            </div>
+            <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3">
+              <div
+                className="h-full bg-gradient-to-r from-teal-500 to-emerald-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className={`inline-flex items-center gap-1 font-bold ${isAheadOfSchedule ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {isAheadOfSchedule ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                {isAheadOfSchedule ? '+' : ''}{scheduleDeviation.toFixed(1)}% {isAheadOfSchedule ? 'Mendahului' : 'Terlambat'}
+              </span>
+              <span className="text-text-muted">Deviasi Jadwal</span>
+            </div>
           </div>
-        </Card>
+        </div>
 
-        {project.description && (
-          <Card className="mb-4">
-            <h3 className="text-base font-bold text-text-primary mb-3 mt-0">{t('projectDetail.description.title')}</h3>
-            <p className="text-base text-text-secondary leading-relaxed m-0">{project.description}</p>
-          </Card>
-        )}
+        {/* Card 2: Financial Contract & Spend */}
+        <div className="card-component bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs flex flex-col justify-between relative overflow-hidden transition-all hover:border-primary/40 hover:shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Pagu Kontrak & Finansial</span>
+            <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <DollarSign size={18} />
+            </div>
+          </div>
+          <div>
+            <div className="text-2xl font-black text-text-primary tracking-tight font-mono mb-1 truncate" title={formatRupiah(budget)}>
+              {formatRupiah(budget)}
+            </div>
+            <div className="text-xs text-text-secondary flex justify-between mb-2 font-mono">
+              <span className="text-text-muted">Realisasi:</span>
+              <span className="font-semibold text-text-primary">{formatRupiah(totalActualCost)} ({budgetUtilizationPct}%)</span>
+            </div>
+            <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${costVariance > 0 ? 'bg-rose-500' : 'bg-blue-600'}`}
+                style={{ width: `${Math.min(100, Math.max(0, Number(budgetUtilizationPct)))}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className={`font-bold ${isUnderBudget ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {costVariance >= 0 ? '+' : ''}{costVariance.toFixed(1)}% {isUnderBudget ? 'Hemat Biaya' : 'Over Budget'}
+              </span>
+              <span className="text-text-muted">Variansi Biaya</span>
+            </div>
+          </div>
+        </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-4 mb-4 max-sm:grid-cols-1">
-          <Card className="flex items-center gap-3 p-4">
-            <Calendar size={24} color="var(--primary)" />
-            <div className="flex flex-col">
-              <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.start')}</span>
-              <span className="text-base text-text-primary font-bold">
-                {fmtDate(project.startDate || (project.globalDates as any)?.planned?.start)}
+        {/* Card 3: Cost Performance Index (CPI) */}
+        <div className="card-component bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs flex flex-col justify-between relative overflow-hidden transition-all hover:border-primary/40 hover:shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Indeks Kinerja Biaya (CPI)</span>
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <Target size={18} />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-3xl font-black text-text-primary tracking-tight font-mono">
+                {cpi > 0 ? cpi.toFixed(2) : '1.00'}
+              </span>
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                cpi >= 1.0
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                  : cpi >= 0.9
+                  ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                  : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
+              }`}>
+                {cpi >= 1.0 ? 'Efisien' : cpi >= 0.9 ? 'Toleransi' : 'Waspada'}
               </span>
             </div>
-          </Card>
+            <p className="text-xs text-text-muted m-0 mb-3 leading-relaxed">
+              {cpi >= 1.0 ? 'Nilai fisik melebihi biaya riil yang dikeluarkan.' : 'Biaya aktual perlu dikendalikan agar sesuai rencana.'}
+            </p>
+            <div className="flex items-center justify-between text-[11px] pt-2 border-t border-border-light">
+              <span className="text-text-muted">Total Anggaran Rencana:</span>
+              <span className="font-mono font-bold text-text-primary">{formatRupiah(totalPlannedCost)}</span>
+            </div>
+          </div>
+        </div>
 
-          <Card className="flex items-center gap-3 p-4">
-            <Calendar size={24} color="var(--danger, #EF4444)" />
-            <div className="flex flex-col">
-              <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.end')}</span>
-              <span className="text-base text-text-primary font-bold">
-                {fmtDate(project.endDate || (project.globalDates as any)?.planned?.end)}
+        {/* Card 4: Timeline & Schedule */}
+        <div className="card-component bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs flex flex-col justify-between relative overflow-hidden transition-all hover:border-primary/40 hover:shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Jadwal & Periode Kontrak</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <Clock size={18} />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-2xl font-black text-text-primary tracking-tight font-mono">
+                {remainingDays !== null ? (remainingDays > 0 ? `${remainingDays} Hari` : 'Lewat Jadwal') : '-'}
+              </span>
+              <span className="text-xs text-text-muted">
+                {remainingDays !== null && remainingDays > 0 ? 'tersisa' : ''}
               </span>
             </div>
-          </Card>
-
-          <Card className="flex items-center gap-3 p-4">
-            <DollarSign size={24} color="var(--success)" />
-            <div className="flex flex-col">
-              <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.budget')}</span>
-              <span className="text-base text-text-primary font-bold font-mono tabular-nums">{formatRupiah(budget)}</span>
+            <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full transition-all duration-500"
+                style={{ width: `${elapsedPct}%` }}
+              />
             </div>
-          </Card>
-
-          {canSeeFinancials && (
-            <>
-              <Card className="flex items-center gap-3 p-4">
-                <TrendingUp size={24} color="var(--warning)" />
-                <div className="flex flex-col">
-                  <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.plannedCost')}</span>
-                  <span className="text-base text-text-primary font-bold font-mono tabular-nums">{formatRupiah(totalPlannedCost)}</span>
-                </div>
-              </Card>
-
-              <Card className="flex items-center gap-3 p-4">
-                <BarChart3 size={24} color="var(--info, #3B82F6)" />
-                <div className="flex flex-col">
-                  <span className="text-sm text-text-muted font-medium">{t('projectDetail.stats.actualCost')}</span>
-                  <span className="text-base text-text-primary font-bold font-mono tabular-nums">{formatRupiah(totalActualCost)}</span>
-                </div>
-              </Card>
-            </>
-          )}
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-text-primary font-semibold font-mono">
+                {fmtShort(gs)} → {fmtShort(ge)}
+              </span>
+              <span className="text-text-muted font-bold">{elapsedPct}% Terpakai</span>
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* ── ERP Workspace Navigation Tabs ── */}
+      <div className="flex items-center gap-1 sm:gap-2 border-b border-border pb-1 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+        {[
+          { id: 'all', label: 'Ringkasan Lengkap', icon: Layers, count: undefined },
+          { id: 'scurve', label: 'Kurva-S & CPM', icon: TrendingUp, count: undefined },
+          { id: 'wbs', label: 'Master WBS & Item', icon: BarChart3, count: unifiedTasks.length },
+          { id: 'tasks', label: 'Tugas Proyek', icon: CheckSquare, count: projectTasks.length },
+          { id: 'reports', label: 'Laporan Harian', icon: FileText, count: dailyReports.length },
+          { id: 'modules', label: 'Hub Modul & Logistik', icon: Package, count: 7 },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
+                isActive
+                  ? 'border-primary text-primary bg-primary/5 font-bold shadow-xs'
+                  : 'border-transparent text-text-muted hover:text-text-primary hover:bg-bg-secondary/60'
+              }`}
+            >
+              <Icon size={16} />
+              <span>{tab.label}</span>
+              {typeof tab.count === 'number' && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                  isActive ? 'bg-primary text-white' : 'bg-bg-secondary text-text-muted'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Data Visualization: S-Curve / Gantt Chart */}
-      {canSeeFinancials && (scurveData.length >= 1 || workItems.length > 0 || supplies.length > 0) && (
+      {(activeTab === 'all' || activeTab === 'scurve') && canSeeFinancials && (scurveData.length >= 1 || workItems.length > 0 || supplies.length > 0) && (
         <div ref={chartRef}>
           <Card className="mb-4 p-5 overflow-visible max-sm:p-3">
             {/* ── Viz Tab Switcher ── */}
@@ -1317,7 +1535,7 @@ export default function ProjectDetail() {
       )}
 
       {/* Unified WBS Work Items & Supplies Table (Single Source of Truth) */}
-      {unifiedTasks.length > 0 && (
+      {(activeTab === 'all' || activeTab === 'wbs') && unifiedTasks.length > 0 && (
         <div ref={tableRef} className="mb-4">
           <Card className="overflow-hidden border border-border-light shadow-xs p-0">
             {/* Table Header with Tabs, Search, and Density */}
@@ -1544,70 +1762,416 @@ export default function ProjectDetail() {
                     );
                   })}
                 </tbody>
+                {/* ERP Summary Footer */}
+                <tfoot>
+                  <tr className="bg-bg-secondary/80 font-bold border-t-2 border-border text-text-primary text-[11px]">
+                    <td colSpan={3} className="py-3 px-3 text-left font-bold uppercase tracking-wider">
+                      Total Akumulasi ({filteredTasks.length} Item Ditampilkan)
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono tabular-nums">
+                      {filteredTasks.reduce((s, t) => s + (t.quantity || 1), 0)}
+                    </td>
+                    <td className="py-3 px-3 text-center">-</td>
+                    {canSeeFinancials && <td className="py-3 px-3 text-right">-</td>}
+                    {canSeeFinancials && (
+                      <td className="py-3 px-3 text-right font-mono tabular-nums text-primary font-bold">
+                        {formatRupiah(totalPlannedCost)}
+                      </td>
+                    )}
+                    {canSeeFinancials && (
+                      <td className="py-3 px-3 text-center font-mono tabular-nums">
+                        100.0%
+                      </td>
+                    )}
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+                          />
+                        </div>
+                        <span className="font-mono tabular-nums text-right text-text-primary font-bold">{progress}%</span>
+                      </div>
+                    </td>
+                    {canSeeFinancials && (
+                      <td className="py-3 px-3 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400 font-bold">
+                        {formatRupiah(totalActualCost)}
+                      </td>
+                    )}
+                    <td className="py-3 px-3 text-center">
+                      <span className="text-[10px] font-bold text-text-muted">Master Sync</span>
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </Card>
         </div>
       )}
 
-      {/* Quick Actions */}
-      <Card className="mb-4">
-        <h3 className="text-base font-bold text-text-primary mb-4 mt-0">{t('projectDetail.actions.title')}</h3>
-        <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
-          <Button
-            title="MS Project Plan"
-            icon={CalendarRange}
-            onClick={() => navigate(`/project-plan/${id}`)}
-            variant="primary"
-            fullWidth
-          />
-          <Button
-            title={t('projectDetail.actions.dailyReport')}
-            icon={FileText}
-            onClick={() => navigate(`/daily-report?projectId=${id}`)}
-            variant="outline"
-            fullWidth
-          />
-          <Button
-            title={t('projectDetail.actions.toolInventory')}
-            icon={Wrench}
-            onClick={() => navigate(`/project-tools/${id}`)}
-            variant="outline"
-            fullWidth
-          />
-          <Button
-            title="Material Usage"
-            icon={BarChart3}
-            onClick={() => navigate(`/project-material-usage/${id}`)}
-            variant="outline"
-            fullWidth
-          />
-          <Button
-            title={t('projectDetail.actions.materialPlan')}
-            icon={Package}
-            onClick={() => navigate(`/project-materials/${id}`)}
-            variant="outline"
-            fullWidth
-          />
-          <Button
-            title={t('projectDetail.actions.projectReports')}
-            icon={FileText}
-            onClick={() => navigate(`/project-reports/${id}`)}
-            variant="outline"
-            fullWidth
-          />
-          <Button
-            title="Documents"
-            icon={FolderOpen}
-            onClick={() => navigate(`/project-documents/${id}`)}
-            variant="outline"
-            fullWidth
-          />
+      {/* ── Project Tasks & Operational Dispositions Section ── */}
+      {(activeTab === 'all' || activeTab === 'tasks') && (
+        <div className="space-y-4 mb-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-bg-white dark:bg-bg-secondary/40 border border-border p-4 rounded-2xl">
+            <div>
+              <div className="flex items-center gap-2">
+                <CheckSquare className="text-violet-500" size={20} />
+                <h3 className="text-base font-bold text-text-primary m-0">Tugas & Disposisi Operasional Proyek</h3>
+                <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                  {projectTasks.length} Tugas
+                </span>
+              </div>
+              <p className="text-xs text-text-muted m-0 mt-0.5">
+                Monitoring penugasan personil lapangan, disposisi checklist, dan koordinasi pekerjaan spesifik proyek ini.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate(`/tasks?projectId=${id}`)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                <Plus size={14} />
+                <span>+ Buat / Kelola Tugas</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-xl p-3">
+              <div className="text-[11px] font-semibold text-text-muted">Total Tugas</div>
+              <div className="text-xl font-bold font-mono text-text-primary">{projectTasks.length}</div>
+            </div>
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-xl p-3">
+              <div className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">Menunggu (Pending)</div>
+              <div className="text-xl font-bold font-mono text-amber-600 dark:text-amber-400">
+                {projectTasks.filter(t => t.status === 'pending').length}
+              </div>
+            </div>
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-xl p-3">
+              <div className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">Sedang Berjalan</div>
+              <div className="text-xl font-bold font-mono text-blue-600 dark:text-blue-400">
+                {projectTasks.filter(t => t.status === 'in_progress').length}
+              </div>
+            </div>
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-xl p-3">
+              <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">Selesai (Done)</div>
+              <div className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                {projectTasks.filter(t => t.status === 'completed').length}
+              </div>
+            </div>
+          </div>
+
+          {/* Task List or Empty State */}
+          <Card className="p-0 overflow-hidden border border-border shadow-xs">
+            {projectTasks.length === 0 ? (
+              <div className="p-8 text-center">
+                <CheckSquare size={36} className="mx-auto text-text-muted/50 mb-2" />
+                <p className="text-sm font-semibold text-text-primary mb-1">Belum Ada Tugas Khusus</p>
+                <p className="text-xs text-text-muted mb-4 max-w-sm mx-auto">
+                  Belum ada tugas atau disposisi operasional yang tercatat untuk proyek ini.
+                </p>
+                <button
+                  onClick={() => navigate(`/tasks?projectId=${id}`)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  <Plus size={14} />
+                  <span>Tambah Tugas Pertama</span>
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-border bg-bg-secondary/60 text-text-muted font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-2.5 px-3 w-10 text-center">Status</th>
+                      <th className="py-2.5 px-3">Judul Tugas</th>
+                      <th className="py-2.5 px-3">Prioritas</th>
+                      <th className="py-2.5 px-3">Penanggung Jawab</th>
+                      <th className="py-2.5 px-3">Batas Waktu</th>
+                      <th className="py-2.5 px-3 text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {projectTasks.map((t) => (
+                      <tr key={t._id} className="hover:bg-bg-secondary/30 transition-colors">
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            onClick={() => handleTaskStatusToggle(t._id, t.status)}
+                            title={`Status: ${t.status}. Klik untuk toggle`}
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center border transition-all cursor-pointer ${
+                              t.status === 'completed'
+                                ? 'bg-emerald-500 border-emerald-600 text-white'
+                                : t.status === 'in_progress'
+                                ? 'bg-blue-500/10 border-blue-500 text-blue-600'
+                                : 'bg-bg-secondary border-border text-text-muted hover:border-primary'
+                            }`}
+                          >
+                            {t.status === 'completed' ? <Check size={14} /> : t.status === 'in_progress' ? '●' : '○'}
+                          </button>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className={`font-semibold ${t.status === 'completed' ? 'line-through text-text-muted' : 'text-text-primary'}`}>
+                            {t.title}
+                          </div>
+                          {t.description && (
+                            <div className="text-[11px] text-text-muted line-clamp-1">{t.description}</div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            t.priority === 'urgent'
+                              ? 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
+                              : t.priority === 'high'
+                              ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                              : t.priority === 'medium'
+                              ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
+                              : 'bg-slate-500/10 text-slate-600 border border-slate-500/20'
+                          }`}>
+                            {t.priority || 'normal'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-text-secondary font-medium">
+                          {t.assignedTo?.name || 'Belum ditugaskan'}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-text-muted">
+                          {t.dueDate ? new Date(t.dueDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <button
+                            onClick={() => navigate(`/tasks?projectId=${id}`)}
+                            className="text-xs text-primary hover:underline font-semibold cursor-pointer"
+                          >
+                            Buka Detail →
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
         </div>
-      </Card>
+      )}
+
+      {/* ── Operational Modules & Logistics Hub ── */}
+      {(activeTab === 'all' || activeTab === 'modules') && (
+        <div className="space-y-3 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-text-primary m-0 flex items-center gap-2">
+                <Package size={18} className="text-primary" />
+                <span>Hub Operasional & Ekosistem Proyek</span>
+              </h3>
+              <p className="text-xs text-text-muted m-0 mt-0.5">Integrasi langsung ke modul pengadaan, jadwal, logistik, dan laporan</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Card 1: Swakelola SCM */}
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs transition-all hover:border-emerald-500/50 hover:shadow-md flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <Receipt size={20} />
+                  </div>
+                  <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    SCM Direct
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-text-primary m-0 mb-1 group-hover:text-emerald-600 transition-colors">
+                  Swakelola SCM & Belanja Mandiri
+                </h4>
+                <p className="text-xs text-text-muted m-0 leading-relaxed mb-4">
+                  Kelola belanja material mandiri, batch checkout pengadaan cepat, filter kategori otomatis, dan kas bon toko.
+                </p>
+              </div>
+              <button
+                onClick={() => navigate(`/project-swakelola/${id}`)}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                <span>Buka Swakelola SCM</span>
+                <ArrowUpRight size={14} />
+              </button>
+            </div>
+
+            {/* Card 2: MS Project Plan */}
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs transition-all hover:border-blue-500/50 hover:shadow-md flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <CalendarRange size={20} />
+                  </div>
+                  <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                    Jadwal Master
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-text-primary m-0 mb-1 group-hover:text-blue-600 transition-colors">
+                  MS Project Plan & Gantt
+                </h4>
+                <p className="text-xs text-text-muted m-0 leading-relaxed mb-4">
+                  Visualisasi jadwal interaktif, critical path (CPM), dependency predecessor/successor, dan import/export XLSX/XML.
+                </p>
+              </div>
+              <button
+                onClick={() => navigate(`/project-plan/${id}`)}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                <span>Buka Master Plan</span>
+                <ArrowUpRight size={14} />
+              </button>
+            </div>
+
+            {/* Card 3: Daily Reports */}
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs transition-all hover:border-primary/50 hover:shadow-md flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    <FileText size={20} />
+                  </div>
+                  <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                    {dailyReports.length} Laporan
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-text-primary m-0 mb-1 group-hover:text-primary transition-colors">
+                  Laporan Harian Lapangan
+                </h4>
+                <p className="text-xs text-text-muted m-0 leading-relaxed mb-4">
+                  Entri aktivitas harian site engineer, monitoring cuaca, rekap tenaga kerja lapangan, dan bukti foto proyek.
+                </p>
+              </div>
+              <button
+                onClick={() => navigate(`/daily-report?projectId=${id}`)}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                <span>Entri Laporan Harian</span>
+                <ArrowUpRight size={14} />
+              </button>
+            </div>
+
+            {/* Card 4: Material Usage & Plan */}
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs transition-all hover:border-amber-500/50 hover:shadow-md flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                    <Package size={20} />
+                  </div>
+                  <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    Logistik
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-text-primary m-0 mb-1 group-hover:text-amber-600 transition-colors">
+                  Rencana & Realisasi Material
+                </h4>
+                <p className="text-xs text-text-muted m-0 leading-relaxed mb-4">
+                  Bill of Materials (BOM), monitoring penerimaan logistik di gudang proyek, serta analisis sisa material terpakai.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => navigate(`/project-materials/${id}`)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 bg-bg-secondary hover:bg-border/60 text-text-primary border border-border rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                >
+                  <span>Rencana</span>
+                </button>
+                <button
+                  onClick={() => navigate(`/project-material-usage/${id}`)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+                >
+                  <span>Penggunaan</span>
+                  <ArrowUpRight size={14} />
+                </button>
+              </div>
+            </div>
+
+            {/* Card 5: Tools & Equipment */}
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs transition-all hover:border-slate-500/50 hover:shadow-md flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-slate-500/10 text-slate-600 dark:text-slate-400 flex items-center justify-center">
+                    <Wrench size={20} />
+                  </div>
+                  <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    Inventaris
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-text-primary m-0 mb-1 group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors">
+                  Inventaris Alat & Mesin
+                </h4>
+                <p className="text-xs text-text-muted m-0 leading-relaxed mb-4">
+                  Daftar peralatan kerja di lokasi, status operasional, tracking peminjaman tim lapangan, dan maintenance.
+                </p>
+              </div>
+              <button
+                onClick={() => navigate(`/project-tools/${id}`)}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-bg-secondary hover:bg-border/60 text-text-primary border border-border rounded-xl text-xs font-semibold transition-all cursor-pointer"
+              >
+                <span>Inventaris Alat</span>
+                <ArrowUpRight size={14} />
+              </button>
+            </div>
+
+            {/* Card 6: Documents & Technical Drawings */}
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs transition-all hover:border-indigo-500/50 hover:shadow-md flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                    <FolderOpen size={20} />
+                  </div>
+                  <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    Repository
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-text-primary m-0 mb-1 group-hover:text-indigo-600 transition-colors">
+                  Gambar Kerja & Dokumen Teknis
+                </h4>
+                <p className="text-xs text-text-muted m-0 leading-relaxed mb-4">
+                  Shop drawing, as-built drawing, dokumen keselamatan kerja (K3/HSE), kontrak tender, dan berita acara.
+                </p>
+              </div>
+              <button
+                onClick={() => navigate(`/project-documents/${id}`)}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-bg-secondary hover:bg-border/60 text-text-primary border border-border rounded-xl text-xs font-semibold transition-all cursor-pointer"
+              >
+                <span>Buka Dokumen Proyek</span>
+                <ArrowUpRight size={14} />
+              </button>
+            </div>
+
+            {/* Card 7: Tasks & Field Dispositions */}
+            <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 shadow-xs transition-all hover:border-violet-500/50 hover:shadow-md flex flex-col justify-between group">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center">
+                    <CheckSquare size={20} />
+                  </div>
+                  <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
+                    {projectTasks.length} Tugas
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-text-primary m-0 mb-1 group-hover:text-violet-600 transition-colors">
+                  Tugas & Disposisi Lapangan
+                </h4>
+                <p className="text-xs text-text-muted m-0 leading-relaxed mb-4">
+                  Kelola tugas, delegasi pekerjaan kepada pengawas atau mandor, dan pantau status penyelesaian tugas proyek.
+                </p>
+              </div>
+              <button
+                onClick={() => navigate(`/tasks?projectId=${id}`)}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                <span>Kelola Tugas Proyek</span>
+                <ArrowUpRight size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reported Daily Reports */}
-      {dailyReports.length > 0 && (
+      {(activeTab === 'all' || activeTab === 'reports') && dailyReports.length > 0 && (
         <Card className="mb-4 overflow-hidden border border-border-light shadow-xs">
           <div className="flex items-center justify-between gap-3 p-4 pb-3 max-sm:p-3 flex-wrap">
             <div className="flex items-center gap-2">
@@ -1845,214 +2409,6 @@ export default function ProjectDetail() {
           </div>
         </div>
       )}
-
-      {/* Work Items Table */}
-      {workItems.length > 0 && (
-        <div ref={tableRef}>
-          <Card className="mb-4 overflow-hidden border border-border-light shadow-xs">
-            <div className="flex items-center justify-between gap-3 p-4 pb-3 max-sm:p-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <Layers size={20} color="var(--primary)" />
-                <h3 className="text-base font-bold text-text-primary m-0">{t('projectDetail.workItems.title')}</h3>
-                <Badge label={`${workItems.length} ${t('projectDetail.workItems.items')}`} variant="neutral" size="small" />
-              </div>
-
-              {/* Sub-table Density Switcher */}
-              <div className="flex items-center bg-bg-secondary rounded-lg p-0.5 border border-border-light">
-                <button
-                  type="button"
-                  onClick={() => setTableDensity('compact')}
-                  className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
-                    tableDensity === 'compact' ? 'bg-primary text-white shadow-xs' : 'text-text-muted hover:text-text-primary'
-                  }`}
-                  title="Kepadatan Rapat (Compact)"
-                >
-                  Rapat
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTableDensity('normal')}
-                  className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
-                    tableDensity === 'normal' ? 'bg-primary text-white shadow-xs' : 'text-text-muted hover:text-text-primary'
-                  }`}
-                  title="Kepadatan Standar (Normal)"
-                >
-                  Standar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTableDensity('comfortable')}
-                  className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
-                    tableDensity === 'comfortable' ? 'bg-primary text-white shadow-xs' : 'text-text-muted hover:text-text-primary'
-                  }`}
-                  title="Kepadatan Lapang (Comfortable)"
-                >
-                  Lapang
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto max-h-[500px]">
-              <table className="w-full border-collapse text-sm">
-                <thead className="sticky top-0 bg-bg-secondary z-10 border-b border-border shadow-xs text-xs font-bold text-text-muted uppercase tracking-[0.5px]">
-                  <tr>
-                    <th className="py-2.5 px-3 text-center w-10">#</th>
-                    <th className="py-2.5 px-3 text-left min-w-[200px]">{t('projectDetail.workItems.headers.name')}</th>
-                    <th className="py-2.5 px-3 text-center min-w-[110px]">{t('projectDetail.workItems.headers.start')}</th>
-                    <th className="py-2.5 px-3 text-center min-w-[110px]">{t('projectDetail.workItems.headers.end')}</th>
-                    <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.workItems.headers.qty')}</th>
-                    <th className="py-2.5 px-3 text-center">{t('projectDetail.workItems.headers.unit')}</th>
-                    {canSeeFinancials && <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.workItems.headers.cost')}</th>}
-                    {canSeeFinancials && <th className="py-2.5 px-3 text-center">{t('projectDetail.workItems.headers.weight')}</th>}
-                    <th className="py-2.5 px-3 text-right font-mono tabular-nums min-w-[140px]">{t('projectDetail.workItems.headers.progress')}</th>
-                    {canSeeFinancials && <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.workItems.headers.actualCost')}</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border bg-bg-white text-text-secondary">
-                  {workItems.map((item, i) => {
-                    const weight = totalPlannedCost > 0
-                      ? ((item.cost || 0) / totalPlannedCost * 100).toFixed(1)
-                      : '0';
-                    const wiAny = item as any;
-                    const cellPad = {
-                      compact: 'py-1.5 px-3 text-xs',
-                      normal: 'py-2.5 px-3 text-sm',
-                      comfortable: 'py-3.5 px-3 text-sm',
-                    }[tableDensity];
-
-                    return (
-                      <tr key={wiAny._id || i} className="hover:bg-slate-50 transition-colors duration-150">
-                        <td className={`${cellPad} font-bold text-text-muted text-center font-mono tabular-nums text-xs`}>{i + 1}</td>
-                        <td className={`${cellPad} font-semibold text-text-primary max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap`}>
-                          {item.name}
-                        </td>
-                        <td className={`${cellPad} text-xs text-text-muted font-mono tabular-nums text-center whitespace-nowrap`}>
-                          {fmtDate(wiAny.startDate || wiAny.dates?.plannedStart)}
-                        </td>
-                        <td className={`${cellPad} text-xs text-text-muted font-mono tabular-nums text-center whitespace-nowrap`}>
-                          {fmtDate(wiAny.endDate || wiAny.dates?.plannedEnd)}
-                        </td>
-                        <td className={`${cellPad} text-right font-mono tabular-nums text-text-primary`}>{item.qty || 0}</td>
-                        <td className={`${cellPad} text-center text-text-secondary`}>{wiAny.unit || item.volume || '-'}</td>
-                        {canSeeFinancials && (
-                          <td className={`${cellPad} font-mono tabular-nums text-right font-semibold text-text-primary`}>
-                            {formatRupiah(item.cost || 0)}
-                          </td>
-                        )}
-                        {canSeeFinancials && (
-                          <td className={`${cellPad} text-center`}>
-                            <Badge label={`${weight}%`} variant="primary" size="small" />
-                          </td>
-                        )}
-                        <td className={`${cellPad} text-right`}>
-                          <div className="flex items-center gap-2 justify-end min-w-[120px]">
-                            <div className="w-16 h-[6px] bg-slate-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-gradient-to-r from-primary to-emerald-500 rounded-full transition-[width] duration-300"
-                                style={{ width: `${wiAny.progress || 0}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-bold font-mono tabular-nums text-text-primary min-w-[36px] text-right">
-                              {wiAny.progress || 0}%
-                            </span>
-                          </div>
-                        </td>
-                        {canSeeFinancials && (
-                          <td className={`${cellPad} font-mono tabular-nums text-right font-semibold text-text-primary`}>
-                            {formatRupiah(wiAny.actualCost || 0)}
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-
-          {/* Supply Plan Table */}
-          {canSeeFinancials && supplies.length > 0 && (
-            <Card className="mb-4 overflow-hidden border border-border-light shadow-xs">
-              <div className="flex items-center justify-between gap-3 p-4 pb-3 max-sm:p-3 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <Package size={20} color="var(--warning)" />
-                  <h3 className="text-base font-bold text-text-primary m-0">{t('projectDetail.supplyPlan.title')}</h3>
-                  <Badge label={`${supplies.length} ${t('projectDetail.supplyPlan.items')}`} variant="neutral" size="small" />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto max-h-[500px]">
-                <table className="w-full border-collapse text-sm">
-                  <thead className="sticky top-0 bg-bg-secondary z-10 border-b border-border shadow-xs text-xs font-bold text-text-muted uppercase tracking-[0.5px]">
-                    <tr>
-                      <th className="py-2.5 px-3 text-center w-10">#</th>
-                      <th className="py-2.5 px-3 text-left min-w-[200px]">{t('projectDetail.supplyPlan.headers.item')}</th>
-                      <th className="py-2.5 px-3 text-center min-w-[110px]">{t('projectDetail.supplyPlan.headers.start')}</th>
-                      <th className="py-2.5 px-3 text-center min-w-[110px]">{t('projectDetail.supplyPlan.headers.end')}</th>
-                      <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.supplyPlan.headers.qty')}</th>
-                      <th className="py-2.5 px-3 text-center">{t('projectDetail.supplyPlan.headers.unit')}</th>
-                      <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.supplyPlan.headers.cost')}</th>
-                      <th className="py-2.5 px-3 text-center">{t('projectDetail.supplyPlan.headers.weight')}</th>
-                      <th className="py-2.5 px-3 text-center">{t('projectDetail.supplyPlan.headers.status')}</th>
-                      <th className="py-2.5 px-3 text-right font-mono tabular-nums">{t('projectDetail.supplyPlan.headers.actualCost')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border bg-bg-white text-text-secondary">
-                    {supplies.map((s: any, i: number) => {
-                      const supplyWeight = totalPlannedCost > 0
-                        ? ((s.cost || 0) / totalPlannedCost * 100).toFixed(1)
-                        : '0';
-                      const cellPad = {
-                        compact: 'py-1.5 px-3 text-xs',
-                        normal: 'py-2.5 px-3 text-sm',
-                        comfortable: 'py-3.5 px-3 text-sm',
-                      }[tableDensity];
-
-                      return (
-                        <tr key={s._id || i} className="hover:bg-slate-50 transition-colors duration-150">
-                          <td className={`${cellPad} font-bold text-text-muted text-center font-mono tabular-nums text-xs`}>{i + 1}</td>
-                          <td className={`${cellPad} font-semibold text-text-primary max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap`}>
-                            {s.item}
-                          </td>
-                          <td className={`${cellPad} text-xs text-text-muted font-mono tabular-nums text-center whitespace-nowrap`}>
-                            {fmtDate(s.startDate)}
-                          </td>
-                          <td className={`${cellPad} text-xs text-text-muted font-mono tabular-nums text-center whitespace-nowrap`}>
-                            {fmtDate(s.endDate)}
-                          </td>
-                          <td className={`${cellPad} text-right font-mono tabular-nums text-text-primary`}>{s.qty || 0}</td>
-                          <td className={`${cellPad} text-center text-text-secondary`}>{s.unit || '-'}</td>
-                          <td className={`${cellPad} font-mono tabular-nums text-right font-semibold text-text-primary`}>
-                            {formatRupiah(s.cost || 0)}
-                          </td>
-                          <td className={`${cellPad} text-center`}>
-                            <Badge label={`${supplyWeight}%`} variant="warning" size="small" />
-                          </td>
-                          <td className={`${cellPad} text-center`}>
-                            <Badge
-                              label={s.status || 'Pending'}
-                              variant={
-                                s.status === 'Delivered' ? 'success'
-                                  : s.status === 'Ordered' ? 'primary'
-                                    : 'neutral'
-                              }
-                              size="small"
-                            />
-                          </td>
-                          <td className={`${cellPad} font-mono tabular-nums text-right font-semibold text-text-primary`}>
-                            {formatRupiah(s.actualCost || 0)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
-        </div>
-      )}
-
 
     </div>
   );

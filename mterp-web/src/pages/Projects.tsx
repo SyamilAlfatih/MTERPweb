@@ -1,22 +1,67 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ChevronRight, Briefcase, Copy, Check, ChevronLeft, AlertCircle, Users, FileText, Package, ListChecks, Key, X, ChevronDown, ChevronUp, Code, Layers, Calendar } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import {
+  Plus,
+  Trash2,
+  ChevronRight,
+  Briefcase,
+  Copy,
+  Check,
+  ChevronLeft,
+  AlertCircle,
+  Users,
+  FileText,
+  Package,
+  ListChecks,
+  Key,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Code,
+  Layers,
+  Calendar,
+  Search,
+  LayoutGrid,
+  List,
+  MapPin,
+  TrendingUp,
+  Wallet,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowUpRight,
+  Building2,
+  SlidersHorizontal,
+  ExternalLink,
+  ShoppingCart,
+  Eye,
+  Activity,
+  Sparkles,
+  ClipboardList,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AxiosError } from 'axios';
 import api, { getApiKeys, createApiKey, updateApiKey, deleteApiKey } from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, ProgressBar, Button, Input, EmptyState, LoadingOverlay, Alert } from '../components/shared';
 import { ProjectData, ApiKey } from '../types';
+import { formatDate } from '../utils/date';
 
 export default function Projects() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const userRole = user?.role?.toLowerCase() || 'worker';
-  const isOwnerOrDirector = ['owner', 'director'].includes(userRole);
+  const isOwnerOrDirector = ['owner', 'director', 'operational_director', 'president_director'].includes(userRole);
 
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Search, Filter, Sort & View Mode State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'IN_PROGRESS' | 'COMPLETED' | 'PENDING'>('ALL');
+  const [sortBy, setSortBy] = useState<'NEWEST' | 'NAME' | 'PROGRESS_HIGH' | 'PROGRESS_LOW' | 'BUDGET_HIGH'>('NEWEST');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   
   // Progress Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -66,12 +111,14 @@ export default function Projects() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(t('projects.actions.deleteConfirm'))) return;
+    if (!confirm(t('projects.actions.deleteConfirm') || 'Apakah Anda yakin ingin menghapus proyek ini?')) return;
     try {
       await api.delete(`/projects/${id}`);
       setProjects((prev) => prev.filter((p) => p._id !== id));
+      setAlertData({ visible: true, type: 'success', message: 'Proyek berhasil dihapus' });
     } catch (err) {
       console.error('Failed to delete project', err);
+      setAlertData({ visible: true, type: 'error', message: 'Gagal menghapus proyek' });
     }
   };
 
@@ -86,8 +133,10 @@ export default function Projects() {
       setModalOpen(false);
       setProgressInput('');
       setSelectedProject(null);
+      setAlertData({ visible: true, type: 'success', message: 'Progres fisik proyek berhasil diperbarui' });
     } catch (err) {
       console.error('Failed to update progress', err);
+      setAlertData({ visible: true, type: 'error', message: 'Gagal memperbarui progres' });
     } finally {
       setUpdating(false);
     }
@@ -187,14 +236,95 @@ export default function Projects() {
     setTimeout(() => setHasCopiedKey(false), 2500);
   };
 
-  const getStatusBadge = (progress: number) => {
-    if (progress >= 100) return <Badge label={t('projects.status.completed')} variant="success" />;
-    if (progress > 0) return <Badge label={t('projects.status.inProgress')} variant="primary" />;
-    return <Badge label={t('projects.status.pending')} variant="neutral" />;
+  // KPI Calculations
+  const totalProjects = projects.length;
+  const completedProjects = projects.filter((p) => (p.progress || 0) >= 100).length;
+  const inProgressProjects = projects.filter((p) => (p.progress || 0) > 0 && (p.progress || 0) < 100).length;
+  const pendingProjects = projects.filter((p) => (p.progress || 0) === 0).length;
+
+  const totalPortfolioBudget = projects.reduce(
+    (sum, p) => sum + (p.totalBudget || p.budget || (p as any).anggaran || 0),
+    0
+  );
+  const avgProgress =
+    totalProjects > 0
+      ? Math.round(projects.reduce((sum, p) => sum + (p.progress || 0), 0) / totalProjects)
+      : 0;
+
+  // Filtered & Sorted Projects
+  const filteredProjects = useMemo(() => {
+    return projects
+      .filter((project) => {
+        const prog = project.progress || 0;
+        if (statusFilter === 'COMPLETED' && prog < 100) return false;
+        if (statusFilter === 'IN_PROGRESS' && (prog <= 0 || prog >= 100)) return false;
+        if (statusFilter === 'PENDING' && prog > 0) return false;
+
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const name = (project.nama || project.name || '').toLowerCase();
+          const loc = (project.lokasi || project.location || '').toLowerCase();
+          const desc = (project.description || '').toLowerCase();
+          return name.includes(q) || loc.includes(q) || desc.includes(q);
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'NAME') {
+          return (a.nama || a.name || '').localeCompare(b.nama || b.name || '');
+        }
+        if (sortBy === 'PROGRESS_HIGH') {
+          return (b.progress || 0) - (a.progress || 0);
+        }
+        if (sortBy === 'PROGRESS_LOW') {
+          return (a.progress || 0) - (b.progress || 0);
+        }
+        if (sortBy === 'BUDGET_HIGH') {
+          const bA = a.totalBudget || a.budget || (a as any).anggaran || 0;
+          const bB = b.totalBudget || b.budget || (b as any).anggaran || 0;
+          return bB - bA;
+        }
+        return 0; // Default: latest
+      });
+  }, [projects, statusFilter, searchQuery, sortBy]);
+
+  // Helpers
+  const getProjectTargetDate = (p: ProjectData) => {
+    const dateVal = p.endDate || p.globalDates?.planned?.end || (p as any).tanggalSelesai;
+    if (!dateVal) return '-';
+    return formatDate(dateVal, { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const getProjectBudgetValue = (p: ProjectData) => {
+    return p.totalBudget || p.budget || (p as any).anggaran || 0;
+  };
+
+  const renderStatusBadge = (progress: number, status?: string) => {
+    if (progress >= 100 || status?.toLowerCase() === 'completed') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 whitespace-nowrap">
+          <CheckCircle2 size={12} />
+          <span>{t('projects.status.completed') || 'Selesai'}</span>
+        </span>
+      );
+    }
+    if (progress > 0 || status?.toLowerCase() === 'in_progress') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/10 text-blue-600 border border-blue-500/20 whitespace-nowrap">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
+          <span>{t('projects.status.inProgress') || 'Sedang Berjalan'}</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/10 text-slate-600 border border-slate-500/20 whitespace-nowrap">
+        <span>{t('projects.status.pending') || 'Belum Dimulai'}</span>
+      </span>
+    );
   };
 
   return (
-    <div className="p-6 max-w-[900px] max-lg:p-4 max-sm:p-3">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       <LoadingOverlay visible={loading} />
       
       {alertData.visible && (
@@ -202,118 +332,582 @@ export default function Projects() {
           <Alert
             visible={alertData.visible}
             type={alertData.type}
-            title={alertData.type === 'success' ? 'Success' : 'Error'}
+            title={alertData.type === 'success' ? 'Berhasil' : 'Error'}
             message={alertData.message}
             onClose={() => setAlertData({ ...alertData, visible: false })}
           />
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6 max-sm:flex-col max-sm:items-start max-sm:gap-3">
-        <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{t('projects.title')}</h1>
-        <div className="flex items-center gap-2.5 max-sm:w-full max-sm:flex-wrap">
+      {/* Header & Breadcrumb */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border-light pb-4">
+        <div>
+          <div className="flex items-center gap-2 text-xs text-text-muted mb-1">
+            <Link to="/home" className="hover:underline flex items-center gap-1">
+              <Briefcase size={13} /> Dashboard
+            </Link>
+            <span>/</span>
+            <span className="font-semibold text-text-primary">Portofolio Proyek</span>
+          </div>
+
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-text-primary tracking-tight flex items-center gap-2.5">
+            <Building2 className="text-primary" size={28} />
+            <span>{t('projects.title') || 'Manajemen Portofolio Proyek'}</span>
+          </h1>
+          <p className="text-xs sm:text-sm text-text-muted mt-0.5">
+            Pusat kendali operasional portofolio, monitoring jadwal WBS, dan realisasi anggaran statuter
+          </p>
+        </div>
+
+        {/* Header Action Buttons */}
+        <div className="flex items-center gap-2.5 flex-wrap">
           {/* API Keys Toggle */}
           <button 
-            className={`flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border-2 ${
+            className={`flex items-center justify-center gap-2 py-2 px-3.5 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all border ${
               isApiKeysOpen 
-                ? 'bg-primary text-white border-primary shadow-sm' 
-                : 'bg-bg-secondary hover:bg-border-light text-text-primary border-border-light'
+                ? 'bg-slate-900 text-amber-400 border-slate-900 shadow-sm' 
+                : 'bg-bg-white hover:bg-bg-secondary text-text-secondary border-border-light'
             }`}
             onClick={() => setIsApiKeysOpen(!isApiKeysOpen)}
             title="Buka panel API Key untuk integrasi aplikasi pihak ketiga"
           >
-            <Key size={16} strokeWidth={2.5} />
+            <Key size={15} />
             <span>API Keys</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/20 text-current font-bold">
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-400/20 text-amber-600 font-mono font-bold">
               {apiKeys.length}
             </span>
           </button>
+
           {userRole === 'owner' && (
-            <Button
-              title={t('projects.add')}
+            <button
               onClick={() => navigate('/add-project')}
-              variant="primary"
-              size="small"
-              icon={Plus}
-            />
+              className="px-4 py-2 bg-gradient-to-r from-primary to-primary-hover text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm hover:shadow-md flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+            >
+              <Plus size={16} />
+              <span>{t('projects.add') || 'Tambah Proyek Baru'}</span>
+            </button>
           )}
         </div>
       </div>
 
-      {/* Summary Card for Director/Owner */}
-      {['director', 'owner'].includes(userRole) && projects.length > 0 && (
-        <Card className="bg-gradient-to-br from-primary to-primary-light text-white mb-6">
-          <div className="flex justify-between items-center py-2 max-sm:flex-col max-sm:gap-2">
-            <span className="text-sm opacity-80">{t('projects.summary.totalProjects')}</span>
-            <span className="text-xl font-bold">{projects.length}</span>
+      {/* Executive ERP KPI Dashboard (Bento Grid) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Card 1: Total Projects */}
+        <div className="bg-bg-white border border-border-light rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between text-text-muted mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider">Total Portofolio</span>
+            <Building2 size={18} className="text-primary" />
           </div>
-          <div className="flex justify-between items-center py-2 max-sm:flex-col max-sm:gap-2">
-            <span className="text-sm opacity-80">{t('projects.summary.avgProgress')}</span>
-            <span className="text-xl font-bold">
-              {Math.round(projects.reduce((a, p) => a + (p.progress || 0), 0) / projects.length)}%
-            </span>
+          <div className="text-2xl sm:text-3xl font-mono font-bold text-text-primary tabular-nums">
+            {totalProjects} <span className="text-xs font-normal text-text-muted">Proyek</span>
           </div>
-        </Card>
-      )}
+          <div className="text-xs text-text-muted mt-1.5 flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+            <span>{inProgressProjects} Berjalan</span>
+            <span>•</span>
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+            <span>{completedProjects} Selesai</span>
+          </div>
+        </div>
 
-      {/* Project List */}
+        {/* Card 2: Average Physical Progress */}
+        <div className="bg-bg-white border border-border-light rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between text-text-muted mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider">Rata-Rata Progres</span>
+            <TrendingUp size={18} className="text-emerald-600" />
+          </div>
+          <div className="text-2xl sm:text-3xl font-mono font-bold text-emerald-600 tabular-nums">
+            {avgProgress}%
+          </div>
+          <div className="mt-2 w-full h-1.5 bg-bg-secondary rounded-full overflow-hidden border border-border-light">
+            <div
+              className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(100, Math.max(0, avgProgress))}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Card 3: Total Portfolio Budget */}
+        <div className="bg-bg-white border border-border-light rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between text-text-muted mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider">Pagu Anggaran Total</span>
+            <Wallet size={18} className="text-blue-600" />
+          </div>
+          <div className="text-lg sm:text-2xl font-mono font-bold text-blue-600 tabular-nums truncate" title={`Rp ${totalPortfolioBudget.toLocaleString('id-ID')}`}>
+            {totalPortfolioBudget > 0 ? `Rp ${totalPortfolioBudget.toLocaleString('id-ID')}` : 'Rp 0'}
+          </div>
+          <div className="text-xs text-text-muted mt-1.5">
+            <span>Akumulasi nilai kontrak aktif</span>
+          </div>
+        </div>
+
+        {/* Card 4: Operational Readiness */}
+        <div className="bg-bg-white border border-border-light rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between text-text-muted mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider">Status Pelaksanaan</span>
+            <Clock size={18} className="text-amber-500" />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xl sm:text-2xl font-mono font-bold text-text-primary">
+                {inProgressProjects}
+              </span>
+              <p className="text-[11px] text-text-muted mt-0.5">Sedang Berjalan</p>
+            </div>
+            {pendingProjects > 0 && (
+              <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 text-xs font-bold border border-amber-500/20">
+                {pendingProjects} Persiapan
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Interactive ERP Control Toolbar */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-bg-secondary/40 p-3 rounded-xl border border-border-light">
+        {/* Status Filter Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-thin">
+          {[
+            { id: 'ALL', label: 'Semua', count: totalProjects },
+            { id: 'IN_PROGRESS', label: 'Berjalan', count: inProgressProjects },
+            { id: 'COMPLETED', label: 'Selesai', count: completedProjects },
+            { id: 'PENDING', label: 'Persiapan', count: pendingProjects },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setStatusFilter(tab.id as any)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                statusFilter === tab.id
+                  ? 'bg-primary text-white shadow-xs font-bold'
+                  : 'bg-bg-white text-text-secondary hover:bg-bg-secondary border border-border-light'
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  statusFilter === tab.id ? 'bg-white/20 text-white' : 'bg-bg-secondary text-text-muted'
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Search, Sort & View Mode Switcher */}
+        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+          {/* Search Box */}
+          <div className="relative flex-1 sm:w-64">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+            <input
+              type="text"
+              placeholder="Cari proyek, lokasi..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-bg-white border border-border-light rounded-lg pl-9 pr-7 py-1.5 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Sort Dropdown */}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="bg-bg-white border border-border-light rounded-lg px-2.5 py-1.5 text-xs text-text-secondary font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
+          >
+            <option value="NEWEST">Terbaru</option>
+            <option value="NAME">Nama (A-Z)</option>
+            <option value="PROGRESS_HIGH">Progres Tertinggi</option>
+            <option value="PROGRESS_LOW">Progres Terendah</option>
+            <option value="BUDGET_HIGH">Pagu Terbesar</option>
+          </select>
+
+          {/* View Mode Switcher */}
+          <div className="flex items-center bg-bg-white rounded-lg border border-border-light p-0.5 shrink-0">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-primary text-white shadow-xs'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+              title="Tampilan Tabel ERP Matrix"
+            >
+              <List size={15} />
+              <span className="hidden xl:inline text-[11px]">Tabel</span>
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-primary text-white shadow-xs'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+              title="Tampilan Grid Kartu"
+            >
+              <LayoutGrid size={15} />
+              <span className="hidden xl:inline text-[11px]">Grid</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
       {projects.length === 0 && !loading ? (
         <EmptyState
           icon={Briefcase}
-          title={t('projects.empty.title')}
-          description={t('projects.empty.desc')}
+          title={t('projects.empty.title') || 'Belum Ada Proyek'}
+          description={t('projects.empty.desc') || 'Mulai dengan menambahkan proyek baru ke sistem ERP.'}
         />
+      ) : filteredProjects.length === 0 ? (
+        <div className="bg-bg-white border border-border-light rounded-xl p-12 text-center shadow-xs">
+          <Search size={36} className="mx-auto text-text-muted mb-3 opacity-60" />
+          <h4 className="text-sm font-bold text-text-primary mb-1">Tidak Ditemukan Proyek</h4>
+          <p className="text-xs text-text-muted max-w-md mx-auto mb-4">
+            Tidak ada proyek yang sesuai dengan kata kunci pencarian atau filter yang dipilih.
+          </p>
+          <button
+            onClick={() => {
+              setSearchQuery('');
+              setStatusFilter('ALL');
+            }}
+            className="px-4 py-2 bg-primary/10 text-primary text-xs font-bold rounded-lg hover:bg-primary hover:text-white transition-colors cursor-pointer"
+          >
+            Reset Filter & Pencarian
+          </button>
+        </div>
+      ) : viewMode === 'table' ? (
+        /* TABLE ERP MATRIX VIEW (Desktop Power-User Experience) */
+        <div className="bg-bg-white border border-border-light rounded-xl overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-bg-secondary/60 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold">
+                  <th className="py-3.5 px-4 text-left">Nama Proyek</th>
+                  <th className="py-3.5 px-4 text-left">Lokasi</th>
+                  <th className="py-3.5 px-4 text-center">Status</th>
+                  <th className="py-3.5 px-4 text-left min-w-[180px]">Progres Fisik</th>
+                  <th className="py-3.5 px-4 text-right">Pagu Anggaran</th>
+                  <th className="py-3.5 px-4 text-center">Target Selesai</th>
+                  <th className="py-3.5 px-4 text-center min-w-[160px]">Aksi Cepat</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-light/60">
+                {filteredProjects.map((project) => {
+                  const budget = getProjectBudgetValue(project);
+                  const prog = project.progress || 0;
+                  const targetDate = getProjectTargetDate(project);
+
+                  return (
+                    <tr
+                      key={project._id}
+                      onClick={() => navigate(`/project/${project._id}`)}
+                      className="hover:bg-bg-secondary/40 transition-colors cursor-pointer group"
+                    >
+                      {/* Name & Creator */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                            <Building2 size={18} />
+                          </div>
+                          <div>
+                            <span className="font-bold text-sm text-text-primary group-hover:text-primary transition-colors block">
+                              {project.nama || project.name}
+                            </span>
+                            <span className="text-[11px] text-text-muted block truncate max-w-xs">
+                              {project.description || 'Proyek Konstruksi MTERP'}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Location */}
+                      <td className="py-3.5 px-4 text-text-secondary whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <MapPin size={13} className="text-text-muted shrink-0" />
+                          <span className="truncate max-w-[140px]">{project.lokasi || project.location || '-'}</span>
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        {renderStatusBadge(prog, project.status)}
+                      </td>
+
+                      {/* Physical Progress */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-text-muted font-medium">Realisasi</span>
+                            <span className="font-mono font-bold text-text-primary">{prog}%</span>
+                          </div>
+                          <div className="w-full h-2 bg-bg-secondary rounded-full overflow-hidden border border-border-light">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                prog >= 100 ? 'bg-emerald-500' : prog >= 50 ? 'bg-primary' : 'bg-amber-500'
+                              }`}
+                              style={{ width: `${Math.min(100, Math.max(0, prog))}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Budget */}
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-text-primary whitespace-nowrap tabular-nums">
+                        {budget > 0 ? `Rp ${budget.toLocaleString('id-ID')}` : '-'}
+                      </td>
+
+                      {/* Target Date */}
+                      <td className="py-3.5 px-4 text-center text-text-secondary whitespace-nowrap font-medium">
+                        {targetDate}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/project/${project._id}`);
+                            }}
+                            className="p-1.5 rounded-lg bg-bg-secondary hover:bg-primary hover:text-white text-text-secondary transition-all cursor-pointer"
+                            title="Buka Detail Proyek"
+                          >
+                            <ArrowUpRight size={15} />
+                          </button>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/project/${project._id}/swakelola`);
+                            }}
+                            className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-600 transition-all cursor-pointer"
+                            title="Buka Supply Chain Swakelola (RAB & UMK)"
+                          >
+                            <ShoppingCart size={15} />
+                          </button>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/tasks?projectId=${project._id}`);
+                            }}
+                            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-600 transition-all cursor-pointer"
+                            title="Lihat Tugas Proyek"
+                          >
+                            <ClipboardList size={15} />
+                          </button>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProject(project);
+                              setProgressInput(String(project.progress || 0));
+                              setModalOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-600 transition-all cursor-pointer"
+                            title="Perbarui Progres Fisik"
+                          >
+                            <TrendingUp size={15} />
+                          </button>
+
+                          {isOwnerOrDirector && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openDuplicateWizard(project);
+                              }}
+                              className="p-1.5 rounded-lg bg-bg-secondary hover:bg-border-light text-text-secondary transition-all cursor-pointer"
+                              title="Duplikasi Proyek"
+                            >
+                              <Copy size={15} />
+                            </button>
+                          )}
+
+                          {userRole === 'owner' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(project._id!);
+                              }}
+                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-600 transition-all cursor-pointer"
+                              title="Hapus Proyek"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
-        <div className="flex flex-col gap-4">
-          {projects.map((project) => (
-            <Card key={project._id} className="cursor-pointer transition-all hover:shadow-md hover:border-primary/20" onClick={() => navigate(`/project/${project._id}`)}>
-              <div className="flex justify-between items-start max-sm:flex-col max-sm:gap-2">
+        /* GRID KARTU VIEW (Visual Modern Card Dashboard) */
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+          {filteredProjects.map((project) => {
+            const budget = getProjectBudgetValue(project);
+            const prog = project.progress || 0;
+            const targetDate = getProjectTargetDate(project);
+
+            return (
+              <div
+                key={project._id}
+                onClick={() => navigate(`/project/${project._id}`)}
+                className="bg-bg-white border border-border-light hover:border-primary/40 rounded-xl p-5 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between group space-y-4"
+              >
+                {/* Card Header */}
                 <div>
-                  <h3 className="text-base font-bold text-text-primary m-0">{project.nama || project.name}</h3>
-                  <p className="text-sm text-text-muted mt-0.5 mb-0 mx-0">{project.lokasi || project.location}</p>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                        <Building2 size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-text-primary group-hover:text-primary transition-colors line-clamp-1">
+                          {project.nama || project.name}
+                        </h3>
+                        <div className="flex items-center gap-1 text-xs text-text-muted mt-0.5">
+                          <MapPin size={12} className="shrink-0 text-text-muted" />
+                          <span className="truncate max-w-[180px]">{project.lokasi || project.location || 'Lokasi tidak diset'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    {renderStatusBadge(prog, project.status)}
+                  </div>
+
+                  {project.description && (
+                    <p className="text-xs text-text-muted line-clamp-2 mt-2 leading-relaxed">
+                      {project.description}
+                    </p>
+                  )}
                 </div>
-                <div className="flex gap-2">
-                  {getStatusBadge(project.progress || 0)}
+
+                {/* Card Progress */}
+                <div className="space-y-1.5 bg-bg-secondary/30 p-3 rounded-lg border border-border-light/60">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-text-muted font-medium flex items-center gap-1">
+                      <TrendingUp size={13} className="text-primary" />
+                      <span>Realisasi Fisik</span>
+                    </span>
+                    <span className="font-mono font-bold text-text-primary text-sm">{prog}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-bg-secondary rounded-full overflow-hidden border border-border-light/60">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        prog >= 100 ? 'bg-emerald-500' : prog >= 50 ? 'bg-primary' : 'bg-amber-500'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(0, prog))}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 2x2 ERP Stats Matrix */}
+                <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                  <div className="bg-bg-secondary/40 p-2.5 rounded-lg border border-border-light/50">
+                    <span className="text-[10px] uppercase font-bold text-text-muted block">Pagu Anggaran</span>
+                    <span className="font-mono font-bold text-text-primary block truncate">
+                      {budget > 0 ? `Rp ${budget.toLocaleString('id-ID')}` : 'Tidak diset'}
+                    </span>
+                  </div>
+
+                  <div className="bg-bg-secondary/40 p-2.5 rounded-lg border border-border-light/50">
+                    <span className="text-[10px] uppercase font-bold text-text-muted block">Target Selesai</span>
+                    <span className="font-medium text-text-primary block truncate">
+                      {targetDate}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Card Footer Toolbar */}
+                <div className="flex items-center justify-between pt-3 border-t border-border-light/70 gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/project/${project._id}`);
+                    }}
+                    className="flex-1 py-1.5 px-3 bg-primary/10 hover:bg-primary text-primary hover:text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Detail Proyek</span>
+                    <ArrowUpRight size={14} />
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/project/${project._id}/swakelola`);
+                      }}
+                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors cursor-pointer"
+                      title="Supply Chain Swakelola (RAB & UMK)"
+                    >
+                      <ShoppingCart size={15} />
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/tasks?projectId=${project._id}`);
+                      }}
+                      className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors cursor-pointer"
+                      title="Lihat Tugas Proyek"
+                    >
+                      <ClipboardList size={15} />
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedProject(project);
+                        setProgressInput(String(project.progress || 0));
+                        setModalOpen(true);
+                      }}
+                      className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors cursor-pointer"
+                      title="Perbarui Progres"
+                    >
+                      <TrendingUp size={15} />
+                    </button>
+
+                    {isOwnerOrDirector && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDuplicateWizard(project);
+                        }}
+                        className="p-1.5 rounded-lg bg-bg-secondary text-text-secondary hover:bg-border-light transition-colors cursor-pointer"
+                        title="Duplikasi Proyek"
+                      >
+                        <Copy size={15} />
+                      </button>
+                    )}
+
+                    {userRole === 'owner' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(project._id!);
+                        }}
+                        className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
+                        title="Hapus Proyek"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-
-              <ProgressBar
-                progress={project.progress || 0}
-                showLabel={false}
-                style={{ marginTop: 12 }}
-              />
-              <span className="text-sm text-text-muted font-medium">{project.progress || 0}% {t('projects.status.complete')}</span>
-
-              <div className="flex items-center justify-end gap-3 mt-4 pt-3 border-t border-border-light max-sm:flex-wrap">
-                {isOwnerOrDirector && (
-                  <Button
-                    title=""
-                    icon={Copy}
-                    onClick={(e: any) => {
-                      e.stopPropagation();
-                      openDuplicateWizard(project);
-                    }}
-                    variant="outline"
-                    size="small"
-                  />
-                )}
-                {userRole === 'owner' && (
-                  <Button
-                    title=""
-                    icon={Trash2}
-                    onClick={(e: any) => {
-                      e.stopPropagation();
-                      handleDelete(project._id!);
-                    }}
-                    variant="danger"
-                    size="small"
-                  />
-                )}
-                <ChevronRight size={20} color="var(--text-muted)" />
-              </div>
-            </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
