@@ -629,6 +629,16 @@ export const createLocalPurchase = async (
   return response.data;
 };
 
+export const createBatchLocalPurchase = async (
+  projectId: string,
+  formData: FormData
+): Promise<{ success: boolean; count: number; purchases: LocalPurchase[]; totalAmount: number; msg: string }> => {
+  const response = await api.post(`/projects/${projectId}/local-purchases/batch`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
 export const verifyLocalPurchase = async (
   projectId: string,
   purchaseId: string,

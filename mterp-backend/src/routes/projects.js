@@ -96,20 +96,70 @@ function addSheetData(ws, headers, rows, colWidth) {
   ws.columns = headers.map(() => ({ width: colWidth || 22 }));
 }
 
-// Helper: convert ExcelJS worksheet to array-of-objects using row 1 as headers
+// Helper: extract raw scalar or string value from ExcelJS cell value
+function getCellValue(val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'object') {
+    if (val instanceof Date) return val;
+    if (val.text !== undefined) return val.text;
+    if (val.result !== undefined) return val.result;
+    if (Array.isArray(val.richText)) return val.richText.map(r => (r && r.text) || '').join('');
+  }
+  return val;
+}
+
+// Helper: convert ExcelJS worksheet to array-of-objects with flexible header row detection
 function sheetToJson(ws) {
   const rows = [];
-  const headers = [];
-  ws.eachRow((row, rowNum) => {
-    const values = row.values; // 1-indexed
-    if (rowNum === 1) {
-      for (let i = 1; i < values.length; i++) headers.push(String(values[i] || ''));
-    } else {
-      const obj = {};
-      for (let i = 0; i < headers.length; i++) obj[headers[i]] = values[i + 1] ?? '';
-      rows.push(obj);
+  if (!ws || !ws.rowCount) return rows;
+
+  const norm = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+
+  let headerRowIndex = 1;
+  let headers = [];
+
+  // Inspect up to the first 5 rows to identify the actual header row
+  for (let r = 1; r <= Math.min(5, ws.rowCount); r++) {
+    const row = ws.getRow(r);
+    const values = row.values;
+    if (!values || values.length <= 1) continue;
+
+    let matchCount = 0;
+    for (let i = 1; i < values.length; i++) {
+      const v = norm(getCellValue(values[i]));
+      if (['wbs', 'kode', 'nama', 'task', 'item', 'tipe', 'type', 'kategori', 'category', 'volume', 'qty', 'satuan', 'unit', 'harga', 'rate', 'biaya', 'durasi', 'mulai', 'selesai', 'pekerjaan', 'barang', 'deskripsi', 'uraian', 'proyek', 'project'].some(k => v.includes(k))) {
+        matchCount++;
+      }
     }
-  });
+    if (matchCount >= 2) {
+      headerRowIndex = r;
+      break;
+    }
+  }
+
+  const headerRow = ws.getRow(headerRowIndex);
+  const hVals = headerRow.values;
+  if (!hVals) return rows;
+
+  for (let i = 1; i < hVals.length; i++) {
+    headers.push(String(getCellValue(hVals[i]) || '').trim());
+  }
+
+  for (let r = headerRowIndex + 1; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const values = row.values;
+    if (!values || values.length <= 1) continue;
+    const obj = {};
+    let hasAnyValue = false;
+    for (let i = 0; i < headers.length; i++) {
+      if (!headers[i]) continue;
+      const v = getCellValue(values[i + 1]);
+      if (v !== '' && v !== null && v !== undefined) hasAnyValue = true;
+      obj[headers[i]] = v ?? '';
+    }
+    if (hasAnyValue) rows.push(obj);
+  }
+
   return rows;
 }
 
@@ -173,8 +223,20 @@ router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(fileData);
 
-      // Helper to normalise header names for flexible matching
+      // Helper to normalise string for flexible header matching
       const norm = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+
+      // Helper to find column header using exact match first, then substring
+      const findCol = (keys, targets) => {
+        if (!keys || !targets) return '';
+        const exact = keys.find(k => targets.includes(norm(k)));
+        if (exact) return exact;
+        const sub = keys.find(k => {
+          const nk = norm(k);
+          return targets.some(t => nk.includes(t) || t.includes(nk));
+        });
+        return sub || '';
+      };
 
       const parseDate = (v) => {
         if (!v) return '';
@@ -186,50 +248,93 @@ router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
 
       const sheets = wb.worksheets;
 
-      // ---- Sheet 1: Project Info ----
-      let projectData = { nama: '', lokasi: '', description: '', totalBudget: 0, startDate: '', endDate: '' };
-      if (sheets.length > 0) {
-        const projectRows = sheetToJson(sheets[0]);
-        if (projectRows.length > 0) {
-          const row = projectRows[0];
-          const keys = Object.keys(row);
-          const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
-
-          projectData = {
-            nama: String(row[find(['namaproyek', 'projectname', 'nama'])] || ''),
-            lokasi: String(row[find(['lokasi', 'location'])] || ''),
-            description: String(row[find(['deskripsi', 'description', 'desc'])] || ''),
-            totalBudget: Number(row[find(['totalanggaran', 'totalbudget', 'anggaran', 'budget'])]) || 0,
-            startDate: parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
-            endDate: parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
-          };
-        }
-      }
-
-      // Check for unified WBS sheet (Sheet 2 or named WBS)
+      // Determine WBS sheet
       let wbsSheet = null;
       let legacySuppliesSheet = null;
       let legacyWorkSheet = null;
+      let infoSheet = null;
 
       for (const s of sheets) {
         const nameNorm = norm(s.name);
-        if (nameNorm.includes('wbs') || nameNorm.includes('task')) {
+        if (/wbs|task|jadwal|schedule|rencana|rab|item/i.test(nameNorm)) {
           wbsSheet = s;
-        } else if (nameNorm.includes('supply') || nameNorm.includes('material') || nameNorm.includes('barang')) {
+        } else if (/supply|material|barang|pengadaan/i.test(nameNorm)) {
           legacySuppliesSheet = s;
-        } else if (nameNorm.includes('work') || nameNorm.includes('pekerjaan')) {
+        } else if (/work|pekerjaan/i.test(nameNorm)) {
           legacyWorkSheet = s;
+        } else if (/info|proyek|project/i.test(nameNorm)) {
+          infoSheet = s;
         }
       }
 
-      // Default fallback by inspecting row 1 headers of sheet 2
-      if (!wbsSheet && sheets.length >= 2 && !legacySuppliesSheet && !legacyWorkSheet) {
-        const s2Rows = sheetToJson(sheets[1]);
-        if (s2Rows.length > 0) {
-          const s2Keys = Object.keys(s2Rows[0]).map(norm);
-          if (s2Keys.some(k => k.includes('wbs') || k.includes('tipe') || k.includes('type') || k.includes('level'))) {
-            wbsSheet = sheets[1];
+      // If no explicit WBS sheet found, inspect each sheet's headers
+      if (!wbsSheet && !legacySuppliesSheet && !legacyWorkSheet) {
+        if (sheets.length === 1) {
+          // Single sheet workbook: check if it contains task rows
+          const rows = sheetToJson(sheets[0]);
+          if (rows.length > 0) {
+            const keys = Object.keys(rows[0]).map(norm);
+            const taskHeaderMatches = keys.filter(k =>
+              ['wbs', 'kodewbs', 'tipe', 'type', 'kategori', 'category', 'volume', 'qty', 'satuan', 'unit', 'harga', 'hargasatuan', 'biaya', 'totalbiaya', 'pekerjaan', 'task', 'nama'].some(t => k.includes(t))
+            ).length;
+            if (taskHeaderMatches >= 2) {
+              wbsSheet = sheets[0];
+            } else {
+              infoSheet = sheets[0];
+            }
           }
+        } else if (sheets.length >= 2) {
+          // Multi-sheet: check sheet 2 first (standard MTERP template), else check any sheet with task columns
+          const s2Rows = sheetToJson(sheets[1]);
+          if (s2Rows.length > 0) {
+            const s2Keys = Object.keys(s2Rows[0]).map(norm);
+            if (s2Keys.some(k => ['wbs', 'tipe', 'type', 'level', 'kategori', 'volume', 'harga', 'biaya'].some(t => k.includes(t)))) {
+              wbsSheet = sheets[1];
+              infoSheet = sheets[0];
+            }
+          }
+          if (!wbsSheet) {
+            for (let i = 0; i < sheets.length; i++) {
+              const rows = sheetToJson(sheets[i]);
+              if (rows.length > 0) {
+                const keys = Object.keys(rows[0]).map(norm);
+                const matches = keys.filter(k => ['wbs', 'tipe', 'type', 'kategori', 'volume', 'satuan', 'harga', 'biaya', 'task', 'pekerjaan'].some(t => k.includes(t))).length;
+                if (matches >= 2) {
+                  wbsSheet = sheets[i];
+                  if (i !== 0 && !infoSheet) infoSheet = sheets[0];
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Parse Project Info
+      let projectData = {
+        nama: req.file.originalname ? req.file.originalname.replace(/\.(xlsx|xls|csv)$/i, '') : '',
+        lokasi: '',
+        description: '',
+        totalBudget: 0,
+        startDate: '',
+        endDate: ''
+      };
+
+      if (infoSheet && infoSheet !== wbsSheet) {
+        const projectRows = sheetToJson(infoSheet);
+        if (projectRows.length > 0) {
+          const row = projectRows[0];
+          const keys = Object.keys(row);
+          const f = (targets) => findCol(keys, targets);
+
+          projectData = {
+            nama: String(row[f(['namaproyek', 'projectname', 'nama'])] || projectData.nama),
+            lokasi: String(row[f(['lokasi', 'location'])] || ''),
+            description: String(row[f(['deskripsi', 'description', 'desc'])] || ''),
+            totalBudget: Number(row[f(['totalanggaran', 'totalbudget', 'anggaran', 'budget'])]) || 0,
+            startDate: parseDate(row[f(['tanggalmulai', 'startdate', 'mulai', 'start', 'tglmulai'])]),
+            endDate: parseDate(row[f(['tanggalselesai', 'enddate', 'selesai', 'end', 'tglselesai'])]),
+          };
         }
       }
 
@@ -242,47 +347,78 @@ router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
         for (let i = 0; i < rows.length; i++) {
           const row = rows[i];
           const keys = Object.keys(row);
-          const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
+          const f = (targets) => findCol(keys, targets);
 
-          const name = String(row[find(['namataskitem', 'namatask', 'namabarang', 'namapekerjaan', 'name', 'nama', 'item', 'task'])] || '').trim();
+          const name = String(row[f(['namataskitem', 'namatask', 'namabarang', 'namapekerjaan', 'uraianpekerjaan', 'itempekerjaan', 'deskripsi', 'uraian', 'pekerjaan', 'item', 'task', 'name', 'nama'])] || '').trim();
           if (!name) continue;
 
-          const rawWbs = String(row[find(['kodewbs', 'wbs', 'kode', 'code'])] || '').trim();
-          const rawLevel = Number(row[find(['level', 'outlinelevel', 'tingkat'])]);
+          const rawWbs = String(row[f(['kodewbs', 'wbs', 'kode', 'code', 'no', 'nomor', 'wbsid'])] || '').trim();
+          const rawLevel = Number(row[f(['outlinelevel', 'level', 'tingkat', 'hierarki', 'kedalaman'])]);
           const outlineLevel = rawLevel >= 1 ? rawLevel : (rawWbs ? rawWbs.split('.').length : 1);
 
-          let rawType = String(row[find(['tipe', 'type', 'itemtype', 'jenis'])] || '').toLowerCase().trim();
+          const rawType = String(row[f(['tipe', 'type', 'itemtype', 'jenis', 'tipetask', 'tipeitem', 'jenisitem', 'jenispekerjaan', 'tipepekerjaan', 'tasktype', 'tipejenis'])] || '').toLowerCase().trim();
+          const rawCat = String(row[f(['kategori', 'category', 'kategoriitem', 'kategoritask', 'klasifikasi', 'kelompok', 'tipekategori'])] || '').toLowerCase().trim();
+          const rawUnit = String(row[f(['satuan', 'unit', 'uom', 'sat'])] || '').toLowerCase().trim();
+          const rawName = name.toLowerCase().trim();
+
+          const isSummary =
+            /summary|grup|group|paket|induk|header/i.test(rawType) ||
+            /summary|grup|group|paket/i.test(rawCat);
+
+          const isMilestone =
+            /milestone|target|serah terima|pho|fho|selesai proyek/i.test(rawType) ||
+            /milestone/i.test(rawCat);
+
+          // Supply / Material detection:
+          // Explicit supply/material keyword in type or category,
+          // OR material-specific unit when type doesn't say work/labor,
+          // OR supply/procurement phrasing in name.
+          const isSupply =
+            !isSummary &&
+            !isMilestone &&
+            (
+              /supply|material|barang|bahan|pengadaan|logistik|suplai|mat\b/i.test(rawType) ||
+              /supply|material|barang|bahan|pengadaan|logistik|suplai|mat\b/i.test(rawCat) ||
+              (/sak|zak|btg|batang|pail|kaleng|dus|box|roll|rol|lembar|lbr/i.test(rawUnit) && !/work|pekerjaan|jasa|upah|labor/i.test(rawType)) ||
+              (/^(pengadaan|pembelian|pasokan|supply)\b/i.test(rawName) && !/work|pekerjaan|jasa/i.test(rawType))
+            );
+
           let itemType = 'work';
-          if (['summary', 'grup', 'group', 'paket'].includes(rawType)) {
+          let category = 'labor';
+
+          if (isSummary) {
             itemType = 'summary';
-          } else if (['supply', 'material', 'barang', 'pengadaan'].includes(rawType)) {
-            itemType = 'supply';
-          } else if (['milestone', 'target'].includes(rawType)) {
+            category = 'general';
+          } else if (isMilestone) {
             itemType = 'milestone';
-          } else if (['work', 'pekerjaan', 'jasa'].includes(rawType)) {
+            category = 'general';
+          } else if (isSupply) {
+            itemType = 'supply';
+            category = 'material';
+          } else {
             itemType = 'work';
+            if (/alat|equip|heavy/i.test(rawCat) || /alat|equip/i.test(rawType)) {
+              category = 'equipment';
+            } else if (/sub|subkon|vendor/i.test(rawCat) || /sub/i.test(rawType)) {
+              category = 'subcontractor';
+            } else if (/over|overhead/i.test(rawCat)) {
+              category = 'overhead';
+            } else {
+              category = 'labor';
+            }
           }
 
-          let rawCat = String(row[find(['kategori', 'category'])] || '').toLowerCase().trim();
-          let category = 'general';
-          if (rawCat.includes('mat')) category = 'material';
-          else if (rawCat.includes('upah') || rawCat.includes('labor') || rawCat.includes('tukang')) category = 'labor';
-          else if (rawCat.includes('alat') || rawCat.includes('equip')) category = 'equipment';
-          else if (rawCat.includes('sub')) category = 'subcontractor';
-          else if (rawCat.includes('over')) category = 'overhead';
-          else category = itemType === 'supply' ? 'material' : (itemType === 'work' ? 'labor' : 'general');
-
-          const quantity = itemType === 'milestone' ? 0 : (Number(row[find(['volume', 'qty', 'jumlah', 'vol', 'kuantitas'])]) || 1);
-          const unit = String(row[find(['satuan', 'unit'])] || (itemType === 'supply' ? 'pcs' : 'ls')).trim();
-          const unitRate = Number(row[find(['hargasatuan', 'rate', 'unitrate', 'harga', 'satuanharga'])]) || 0;
-          let cost = Number(row[find(['totalbiaya', 'biaya', 'cost', 'totalharga'])]);
+          const quantity = itemType === 'milestone' ? 0 : (Number(row[f(['volume', 'qty', 'jumlah', 'vol', 'kuantitas', 'quantity', 'banyak'])]) || 1);
+          const unit = String(row[f(['satuan', 'unit', 'uom', 'sat'])] || (itemType === 'supply' ? 'pcs' : 'ls')).trim();
+          const unitRate = Number(row[f(['hargasatuan', 'rate', 'unitrate', 'harga', 'satuanharga', 'price', 'unitprice', 'tarif'])]) || 0;
+          let cost = Number(row[f(['totalbiaya', 'biaya', 'cost', 'totalharga', 'total', 'amount', 'jumlahbiaya', 'subtotal'])]);
           if (isNaN(cost) || cost === 0) {
             cost = Math.round(quantity * unitRate);
           }
 
-          const duration = itemType === 'milestone' ? 0 : (Number(row[find(['durasi', 'duration', 'hari'])]) || 7);
-          const startDate = parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]) || projectData.startDate || '';
-          const endDate = parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]) || projectData.endDate || '';
+          const duration = itemType === 'milestone' ? 0 : (Number(row[f(['durasi', 'duration', 'hari', 'days', 'jangkawaktu', 'waktu'])]) || 7);
+          const startDate = parseDate(row[f(['tanggalmulai', 'startdate', 'mulai', 'start', 'tglmulai'])]) || projectData.startDate || '';
+          const endDate = parseDate(row[f(['tanggalselesai', 'enddate', 'selesai', 'end', 'tglselesai', 'deadline', 'target'])]) || projectData.endDate || '';
 
           const taskObj = {
             id: String(Date.now() + i),
@@ -338,22 +474,22 @@ router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
           const supplyRows = sheetToJson(legacySuppliesSheet || sheets[1]);
           for (const row of supplyRows) {
             const keys = Object.keys(row);
-            const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
-            const item = String(row[find(['namabarang', 'itemname', 'item', 'nama'])] || '').trim();
+            const f = (targets) => findCol(keys, targets);
+            const item = String(row[f(['namabarang', 'itemname', 'item', 'nama'])] || '').trim();
             if (!item) continue;
-            const qty = Number(row[find(['jumlah', 'qty', 'quantity'])]) || 1;
-            const cost = Number(row[find(['biaya', 'cost', 'harga'])]) || 0;
+            const qty = Number(row[f(['jumlah', 'qty', 'quantity'])]) || 1;
+            const cost = Number(row[f(['biaya', 'cost', 'harga'])]) || 0;
             const unitRate = qty > 0 ? Math.round(cost / qty) : cost;
             supplies.push({
               id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
               item,
               qty,
-              unit: String(row[find(['satuan', 'unit'])] || 'pcs'),
+              unit: String(row[f(['satuan', 'unit'])] || 'pcs'),
               unitRate,
               cost,
               status: 'Pending',
-              startDate: parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
-              endDate: parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
+              startDate: parseDate(row[f(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
+              endDate: parseDate(row[f(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
             });
           }
         }
@@ -362,12 +498,12 @@ router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
           const workRows = sheetToJson(legacyWorkSheet || sheets[2]);
           for (const row of workRows) {
             const keys = Object.keys(row);
-            const find = (targets) => keys.find(k => targets.includes(norm(k))) || '';
-            const name = String(row[find(['namapekerjaan', 'workitemname', 'name', 'nama', 'pekerjaan'])] || '').trim();
+            const f = (targets) => findCol(keys, targets);
+            const name = String(row[f(['namapekerjaan', 'workitemname', 'name', 'nama', 'pekerjaan'])] || '').trim();
             if (!name) continue;
-            const unitVal = String(row[find(['satuan', 'unit'])] || 'M2');
-            const qty = Number(row[find(['jumlah', 'qty', 'quantity', 'volume'])]) || 1;
-            const cost = Number(row[find(['biaya', 'cost', 'harga'])]) || 0;
+            const unitVal = String(row[f(['satuan', 'unit'])] || 'M2');
+            const qty = Number(row[f(['jumlah', 'qty', 'quantity', 'volume'])]) || 1;
+            const cost = Number(row[f(['biaya', 'cost', 'harga'])]) || 0;
             const unitRate = qty > 0 ? Math.round(cost / qty) : cost;
             workItems.push({
               id: Date.now() + Math.floor(Math.random() * 10000),
@@ -378,8 +514,8 @@ router.post('/import', auth, authorize('owner', 'director'), uploadLimiter,
               unitRate,
               cost,
               category: 'labor',
-              startDate: parseDate(row[find(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
-              endDate: parseDate(row[find(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
+              startDate: parseDate(row[f(['tanggalmulai', 'startdate', 'mulai', 'start'])]),
+              endDate: parseDate(row[f(['tanggalselesai', 'enddate', 'selesai', 'end'])]),
             });
           }
         }
@@ -859,6 +995,22 @@ router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
           const tStart = parseWIBDate(t.startDate) || defaultStart;
           const tEnd = parseWIBDate(t.endDate) || new Date(tStart.getTime() + duration * 86400000);
 
+          let itemType = t.itemType || 'work';
+          let category = t.category || (itemType === 'supply' ? 'material' : 'general');
+          if (/summary/i.test(itemType)) {
+            itemType = 'summary';
+            category = 'general';
+          } else if (isMilestone || /milestone/i.test(itemType)) {
+            itemType = 'milestone';
+            category = 'general';
+          } else if (/supply|material/i.test(itemType) || category === 'material' || /material|bahan|barang/i.test(category)) {
+            itemType = 'supply';
+            category = 'material';
+          } else {
+            itemType = 'work';
+            if (category === 'material') category = 'labor';
+          }
+
           taskDocs.push({
             _id: taskId,
             projectId: project._id,
@@ -866,11 +1018,11 @@ router.post('/', auth, authorize('owner', 'director'), uploadLimiter,
             outlineLevel: level,
             parentTaskId,
             sortOrder: sortOrder++,
-            isSummary: t.itemType === 'summary',
+            isSummary: itemType === 'summary',
             isMilestone,
             name: t.name || `Item ${i + 1}`,
-            itemType: t.itemType || 'work',
-            category: t.category || (t.itemType === 'supply' ? 'material' : 'general'),
+            itemType,
+            category,
             duration,
             startDate: tStart,
             finishDate: tEnd,

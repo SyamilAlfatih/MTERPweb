@@ -244,6 +244,193 @@ router.post(
   }
 );
 
+// POST /api/projects/:projectId/local-purchases/batch - Record multiple items purchased together in one trip/voucher (ACID transaction)
+router.post(
+  '/batch',
+  auth,
+  uploadLimiter,
+  upload.single('receiptPhoto'),
+  async (req, res) => {
+    try {
+      const projectId = req.params.projectId || req.body.projectId || req.query.projectId;
+      const {
+        voucherNumber,
+        purchaserName,
+        supplierName,
+        supplierContact,
+        lat,
+        lng,
+        addressText,
+        notes,
+      } = req.body;
+
+      let items = req.body.items;
+      if (typeof items === 'string') {
+        try {
+          items = JSON.parse(items);
+        } catch (e) {
+          return res.status(400).json({ msg: 'Format data items tidak valid' });
+        }
+      }
+
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ msg: 'Pilih setidaknya satu item material untuk belanja sekaligus' });
+      }
+
+      if (!voucherNumber || !purchaserName || !supplierName) {
+        return res.status(400).json({ msg: 'Nomor voucher, nama pembeli, dan nama toko wajib diisi' });
+      }
+
+      const photoPath = req.file ? req.file.path : req.body.receiptPhotoUrl;
+      if (!photoPath) {
+        return res.status(400).json({ msg: 'Foto bukti kuitansi/nota pembelian lokal wajib diunggah' });
+      }
+
+      const createdPurchases = await withTransaction(async (session) => {
+        const results = [];
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const rabItemId = item.rabItemId || item._id;
+          const numQuantity = Number(item.quantity);
+          const numUnitPrice = Number(item.unitPrice);
+          const calculatedTotal = numQuantity * numUnitPrice;
+          const subVoucher = items.length === 1 ? voucherNumber : `${voucherNumber}/${i + 1}`;
+
+          if (!rabItemId || numQuantity <= 0 || isNaN(numUnitPrice)) {
+            const err = new Error(`Item baris ke-${i + 1} (${item.itemDescription || 'Material'}) memiliki kuantitas atau harga tidak valid`);
+            err.statusCode = 400;
+            throw err;
+          }
+
+          // 1. Verify existence of RAB Line Item or ProjectTask and check remaining cap
+          let rabItem = session
+            ? await RABItem.findOne({ _id: rabItemId, projectId }).session(session)
+            : await RABItem.findOne({ _id: rabItemId, projectId });
+
+          let taskItem = null;
+          if (!rabItem) {
+            taskItem = session
+              ? await ProjectTask.findOne({ _id: rabItemId, projectId }).session(session)
+              : await ProjectTask.findOne({ _id: rabItemId, projectId });
+
+            if (taskItem) {
+              rabItem = {
+                _id: taskItem._id,
+                wbsCode: taskItem.wbsCode,
+                description: taskItem.name,
+                unitOfMeasure: taskItem.unit || 'pcs',
+                budgetedQuantity: taskItem.quantity || 1,
+                realizedQuantity: taskItem.realizedQuantity || 0,
+              };
+            }
+          }
+
+          if (!rabItem) {
+            const err = new Error(`Mata anggaran ${item.itemDescription || rabItemId} tidak ditemukan`);
+            err.statusCode = 404;
+            throw err;
+          }
+
+          const remainingQuota = rabItem.budgetedQuantity - rabItem.realizedQuantity;
+          if (numQuantity > remainingQuota) {
+            const err = new Error(
+              `Kuantitas melebihi batas anggaran untuk ${rabItem.description}! Sisa kuota hanya ${remainingQuota} ${rabItem.unitOfMeasure}`
+            );
+            err.statusCode = 422;
+            throw err;
+          }
+
+          // 2. Check for duplicate voucher number
+          const existingVoucher = session
+            ? await LocalPurchase.findOne({ voucherNumber: subVoucher }).session(session)
+            : await LocalPurchase.findOne({ voucherNumber: subVoucher });
+
+          if (existingVoucher) {
+            const err = new Error(`Nomor kuitansi "${subVoucher}" sudah pernah dicatat dalam sistem`);
+            err.statusCode = 400;
+            throw err;
+          }
+
+          // 3. Create the Local Purchase Voucher Record
+          const newPurchase = new LocalPurchase({
+            projectId,
+            rabItemId,
+            voucherNumber: subVoucher,
+            purchaserName,
+            supplierName,
+            itemDescription: item.itemDescription || rabItem.description,
+            quantity: numQuantity,
+            unitOfMeasure: item.unitOfMeasure || rabItem.unitOfMeasure,
+            unitPrice: numUnitPrice,
+            totalPrice: calculatedTotal,
+            receiptPhotoUrl: photoPath,
+            geotagLocation: {
+              lat: lat ? Number(lat) : undefined,
+              lng: lng ? Number(lng) : undefined,
+              addressText: addressText || undefined,
+            },
+            status: 'SUBMITTED',
+            createdBy: req.user._id,
+          });
+
+          if (session) {
+            await newPurchase.save({ session });
+          } else {
+            await newPurchase.save();
+          }
+
+          // 4. Update RAB Realization Ledger & ProjectTask atomically
+          const updateDoc = {
+            $inc: {
+              realizedQuantity: numQuantity,
+              realizedAmount: calculatedTotal,
+              actualCost: calculatedTotal,
+            },
+          };
+
+          if (session) {
+            await RABItem.updateOne({ _id: rabItemId }, updateDoc, { session });
+            await ProjectTask.updateOne({ _id: rabItemId }, updateDoc, { session });
+            if (taskItem && taskItem.itemType === 'supply') {
+              await Supply.updateOne(
+                { projectId, item: taskItem.name },
+                { $inc: { totalQtyUsed: numQuantity, actualCost: calculatedTotal } },
+                { session }
+              );
+            }
+          } else {
+            await RABItem.updateOne({ _id: rabItemId }, updateDoc);
+            await ProjectTask.updateOne({ _id: rabItemId }, updateDoc);
+            if (taskItem && taskItem.itemType === 'supply') {
+              await Supply.updateOne(
+                { projectId, item: taskItem.name },
+                { $inc: { totalQtyUsed: numQuantity, actualCost: calculatedTotal } }
+              );
+            }
+          }
+
+          results.push(newPurchase);
+        }
+        return results;
+      });
+
+      return res.status(201).json({
+        success: true,
+        count: createdPurchases.length,
+        purchases: createdPurchases,
+        totalAmount: createdPurchases.reduce((s, p) => s + (p.totalPrice || 0), 0),
+        msg: `Berhasil mencatat ${createdPurchases.length} item belanja sekaligus secara terintegrasi`,
+      });
+    } catch (error) {
+      console.error('Batch local purchase error:', error);
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({ msg: error.message });
+      }
+      res.status(500).json({ msg: error.message || 'Server error recording batch local purchase' });
+    }
+  }
+);
+
 // PUT / PATCH /api/projects/:projectId/local-purchases/:purchaseId/verify - Verify or Reject Voucher
 const handleVerifyPurchase = async (req, res) => {
   try {

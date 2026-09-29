@@ -414,8 +414,20 @@ export default function AddProject() {
           item.category = 'material';
           item.unit = item.unit === 'ls' ? 'sak' : item.unit;
         } else if (value === 'work') {
-          item.category = 'labor';
+          item.category = item.category === 'material' ? 'labor' : item.category;
           item.unit = item.unit === 'sak' ? 'm2' : item.unit;
+        }
+      }
+
+      if (field === 'category') {
+        if (value === 'material') {
+          item.itemType = 'supply';
+          item.unit = item.unit === 'ls' ? 'sak' : item.unit;
+        } else if (['labor', 'equipment', 'subcontractor', 'overhead'].includes(value)) {
+          if (item.itemType === 'supply') {
+            item.itemType = 'work';
+            item.unit = item.unit === 'sak' ? 'm2' : item.unit;
+          }
         }
       }
 
@@ -497,7 +509,44 @@ export default function AddProject() {
     });
   };
 
-  const handleAddSubtask = (parentIndex: number) => {
+  const handleAddMaterialRow = (index?: number) => {
+    setTasks((prev) => {
+      const defaultStart = projectData.startDate || new Date().toISOString().split('T')[0];
+      const defaultEnd = projectData.endDate || defaultStart;
+
+      let targetLevel = 2;
+      let insertIndex = prev.length;
+
+      if (typeof index === 'number' && index >= 0 && index < prev.length) {
+        targetLevel = prev[index].outlineLevel;
+        insertIndex = index + 1;
+      } else if (prev.length > 0 && prev[prev.length - 1].outlineLevel > 1) {
+        targetLevel = prev[prev.length - 1].outlineLevel;
+      }
+
+      const newTask: WizardTaskItem = {
+        id: String(Date.now() + Math.random().toString(36).slice(2, 6)),
+        wbsCode: '',
+        outlineLevel: targetLevel,
+        itemType: 'supply',
+        name: '',
+        category: 'material',
+        quantity: 1,
+        unit: 'sak',
+        unitRate: 0,
+        cost: 0,
+        duration: 7,
+        startDate: defaultStart,
+        endDate: defaultEnd,
+      };
+
+      const updated = [...prev];
+      updated.splice(insertIndex, 0, newTask);
+      return recomputeWbsCodes(updated);
+    });
+  };
+
+  const handleAddSubtask = (parentIndex: number, isSupply = false) => {
     setTasks((prev) => {
       const parent = prev[parentIndex];
       const targetLevel = (parent.outlineLevel || 1) + 1;
@@ -508,11 +557,11 @@ export default function AddProject() {
         id: String(Date.now() + Math.random().toString(36).slice(2, 6)),
         wbsCode: '',
         outlineLevel: targetLevel,
-        itemType: 'work',
+        itemType: isSupply ? 'supply' : 'work',
         name: '',
-        category: 'labor',
+        category: isSupply ? 'material' : 'labor',
         quantity: 1,
-        unit: 'm2',
+        unit: isSupply ? 'sak' : 'm2',
         unitRate: 0,
         cost: 0,
         duration: 7,
@@ -627,10 +676,18 @@ export default function AddProject() {
         if (!selectedTaskIds.includes(t.id)) return t;
         const isNowSummary = newType === 'summary';
         const isNowMilestone = newType === 'milestone';
+        const isNowSupply = newType === 'supply';
+        let newCat = t.category;
+        if (isNowSupply) newCat = 'material';
+        else if (isNowSummary || isNowMilestone) newCat = 'general';
+        else if (t.category === 'material') newCat = 'labor';
+
         return {
           ...t,
           itemType: newType,
+          category: newCat,
           quantity: isNowMilestone ? 0 : t.quantity || 1,
+          unit: isNowSupply ? (t.unit === 'ls' ? 'sak' : t.unit) : t.unit,
           unitRate: isNowSummary || isNowMilestone ? 0 : t.unitRate,
           cost: isNowSummary || isNowMilestone ? 0 : (t.quantity || 1) * t.unitRate,
           duration: isNowMilestone ? 0 : t.duration || 1,
@@ -645,7 +702,13 @@ export default function AddProject() {
     setTasks((prev) => {
       return prev.map((t) => {
         if (!selectedTaskIds.includes(t.id)) return t;
-        return { ...t, category: newCategory };
+        const nextItemType = newCategory === 'material' ? 'supply' : (t.itemType === 'supply' ? 'work' : t.itemType);
+        return {
+          ...t,
+          category: newCategory,
+          itemType: nextItemType,
+          unit: nextItemType === 'supply' && t.unit === 'ls' ? 'sak' : t.unit,
+        };
       });
     });
   };
@@ -890,18 +953,54 @@ export default function AddProject() {
       const mappedTasks: WizardTaskItem[] = importData.tasks.map((t, idx) => {
         const qty = Number(t.quantity || t.qty) || (t.itemType === 'milestone' ? 0 : 1);
         const cost = Number(t.cost) || 0;
+
+        const rawType = String(t.itemType || '').toLowerCase().trim();
+        const rawCat = String(t.category || '').toLowerCase().trim();
+        const rawUnit = String(t.unit || '').toLowerCase().trim();
+
+        let itemType: WizardTaskItem['itemType'] = 'work';
+        let category: WizardTaskItem['category'] = 'labor';
+
+        if (/summary|grup|group|paket/i.test(rawType) || /summary|grup|group/i.test(rawCat)) {
+          itemType = 'summary';
+          category = 'general';
+        } else if (/milestone|target/i.test(rawType) || /milestone/i.test(rawCat)) {
+          itemType = 'milestone';
+          category = 'general';
+        } else if (
+          /supply|material|barang|bahan|pengadaan|logistik|suplai|mat\b/i.test(rawType) ||
+          /supply|material|barang|bahan|pengadaan|logistik|suplai|mat\b/i.test(rawCat) ||
+          rawType === 'supply' ||
+          rawCat === 'material' ||
+          (/sak|zak|btg|batang|pail|kaleng|dus|box|roll|rol|lembar|lbr/i.test(rawUnit) && !/work|pekerjaan|jasa|upah|labor/i.test(rawType))
+        ) {
+          itemType = 'supply';
+          category = 'material';
+        } else {
+          itemType = 'work';
+          if (/alat|equip/i.test(rawCat) || /alat|equip/i.test(rawType)) {
+            category = 'equipment';
+          } else if (/sub/i.test(rawCat) || /sub/i.test(rawType)) {
+            category = 'subcontractor';
+          } else if (/over/i.test(rawCat)) {
+            category = 'overhead';
+          } else {
+            category = 'labor';
+          }
+        }
+
         return {
           id: t.id || String(Date.now() + idx),
           wbsCode: t.wbsCode || String(idx + 1),
           outlineLevel: Number(t.outlineLevel) || 1,
-          itemType: t.itemType || 'work',
+          itemType,
           name: t.name || `Task ${idx + 1}`,
-          category: t.category || (t.itemType === 'supply' ? 'material' : 'general'),
+          category,
           quantity: qty,
-          unit: t.unit || 'ls',
+          unit: t.unit || (itemType === 'supply' ? 'pcs' : 'ls'),
           unitRate: Number(t.unitRate) || (qty > 0 ? Math.round(cost / qty) : cost),
           cost,
-          duration: Number(t.duration) || (t.itemType === 'milestone' ? 0 : 7),
+          duration: Number(t.duration) || (itemType === 'milestone' ? 0 : 7),
           startDate: t.startDate || d.startDate || '',
           endDate: t.endDate || d.endDate || '',
         };
@@ -1198,9 +1297,19 @@ export default function AddProject() {
                   type="button"
                   onClick={() => handleAddRow()}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-primary bg-primary/10 border border-primary/20 rounded-lg hover:bg-primary/20 transition-colors cursor-pointer"
+                  title="Tambah item pekerjaan fisik baru"
                 >
                   <Plus size={14} />
-                  <span>+ Tambah Baris</span>
+                  <span>+ Tambah Pekerjaan</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddMaterialRow()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-lg hover:bg-amber-500/20 transition-colors cursor-pointer"
+                  title="Tambah item pengadaan material / supply baru"
+                >
+                  <Plus size={14} />
+                  <span>+ Tambah Material (Supply)</span>
                 </button>
                 <button
                   type="button"
@@ -2020,7 +2129,7 @@ export default function AddProject() {
                               : 'bg-purple-500/10 text-purple-600'
                           }`}
                         >
-                          {String(t.itemType || 'work').toUpperCase()}
+                          {t.itemType === 'supply' ? '📦 MATERIAL' : t.itemType === 'work' ? '🔨 PEKERJAAN' : t.itemType === 'milestone' ? '🏁 MILESTONE' : '📁 GRUP WBS'}
                         </span>
                         <div>
                           <span className="font-bold text-text-primary block">{t.name}</span>
