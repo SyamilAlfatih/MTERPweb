@@ -40,12 +40,15 @@ interface ActiveSession {
   _id: string;
   projectId: { _id: string; nama: string; lokasi?: string } | string;
   date: string;
-  workerIds: (string | { _id: string; fullName: string })[];
-  lateWorkerIds: { workerId: string | { _id: string; fullName: string }; addedAt?: string }[];
-  leaveRecords?: { workerId: string | { _id: string; fullName: string }; leaveHour: string; reason?: string }[];
+  workerIds: (string | { _id: string; fullName: string; role?: string; position?: string })[];
+  lateWorkerIds: { workerId: string | { _id: string; fullName: string; role?: string; position?: string }; addedAt?: string }[];
+  leaveRecords?: { workerId: string | { _id: string; fullName: string; role?: string; position?: string }; leaveHour: string; reason?: string; recordedAt?: string }[];
   photoUrl: string;
   notes?: string;
   supervisorId: { _id?: string; fullName: string; role?: string } | string;
+  status?: 'active' | 'closed';
+  closedAt?: string;
+  closedBy?: { _id: string; fullName: string } | string;
   createdAt?: string;
 }
 
@@ -143,8 +146,15 @@ export default function GroupAttendance() {
   const [loadingTodaySessions, setLoadingTodaySessions] = useState(true);
   const [resumingSessionId, setResumingSessionId] = useState<string | null>(null);
   const [sessionFilter, setSessionFilter] = useState<'all' | 'mine'>('all');
+  const [sessionStatusFilter, setSessionStatusFilter] = useState<'all' | 'active' | 'closed'>('all');
   const [currentActiveSession, setCurrentActiveSession] = useState<ActiveSession | null>(null);
   const skipProjectFetchRef = useRef(false);
+
+  // ── Close Session (1-Click Bulk Clock-out & Close) Modal ──
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closeLeaveHour, setCloseLeaveHour] = useState('');
+  const [closeReason, setCloseReason] = useState('');
+  const [closingSession, setClosingSession] = useState(false);
 
   // ── Self Attendance for Supervisor (moved from deprecated Attendance.tsx) ──
   const [selfRecord, setSelfRecord] = useState<AttendanceRecord | null>(null);
@@ -208,16 +218,145 @@ export default function GroupAttendance() {
     return String(supId) === String(user._id);
   }, [user?._id]);
 
+  const isSessionClosed = useCallback((s: ActiveSession): boolean => {
+    if (s.status === 'closed') return true;
+    const allWorkerIds = [
+      ...(s.workerIds || []).map((w: any) => (typeof w === 'string' ? w : w?._id)),
+      ...(s.lateWorkerIds || []).map((lw: any) => (typeof lw?.workerId === 'string' ? lw.workerId : lw?.workerId?._id)),
+    ].filter(Boolean);
+    if (allWorkerIds.length === 0) return false;
+    const leaveWorkerIds = new Set(
+      (s.leaveRecords || []).map((lr: any) => (typeof lr?.workerId === 'string' ? lr.workerId : lr?.workerId?._id)).filter(Boolean)
+    );
+    return allWorkerIds.every(id => leaveWorkerIds.has(id));
+  }, []);
+
+  const getSessionWorkerCounts = useCallback((s: ActiveSession) => {
+    const allWorkerIds = [
+      ...(s.workerIds || []).map((w: any) => (typeof w === 'string' ? w : w?._id)),
+      ...(s.lateWorkerIds || []).map((lw: any) => (typeof lw?.workerId === 'string' ? lw.workerId : lw?.workerId?._id)),
+    ].filter(Boolean);
+    const total = allWorkerIds.length;
+    const leaveWorkerIds = new Set(
+      (s.leaveRecords || []).map((lr: any) => (typeof lr?.workerId === 'string' ? lr.workerId : lr?.workerId?._id)).filter(Boolean)
+    );
+    const left = allWorkerIds.filter(id => leaveWorkerIds.has(id)).length;
+    const remaining = Math.max(0, total - left);
+    const isClosed = s.status === 'closed' || (total > 0 && remaining === 0);
+    return { total, left, remaining, isClosed };
+  }, []);
+
   const mySessionsCount = useMemo(() => {
     return todaySessions.filter(isMySession).length;
   }, [todaySessions, isMySession]);
 
+  const activeSessionsCount = useMemo(() => {
+    return todaySessions.filter(s => !isSessionClosed(s)).length;
+  }, [todaySessions, isSessionClosed]);
+
+  const closedSessionsCount = useMemo(() => {
+    return todaySessions.filter(s => isSessionClosed(s)).length;
+  }, [todaySessions, isSessionClosed]);
+
+  const myActiveSessionsCount = useMemo(() => {
+    return todaySessions.filter(s => isMySession(s) && !isSessionClosed(s)).length;
+  }, [todaySessions, isMySession, isSessionClosed]);
+
   const displayedSessions = useMemo(() => {
+    let list = todaySessions;
     if (sessionFilter === 'mine') {
-      return todaySessions.filter(isMySession);
+      list = list.filter(isMySession);
     }
-    return todaySessions;
-  }, [todaySessions, sessionFilter, isMySession]);
+    if (sessionStatusFilter === 'active') {
+      list = list.filter(s => !isSessionClosed(s));
+    } else if (sessionStatusFilter === 'closed') {
+      list = list.filter(s => isSessionClosed(s));
+    }
+    return list;
+  }, [todaySessions, sessionFilter, sessionStatusFilter, isMySession, isSessionClosed]);
+
+  // Comprehensive workers breakdown for the current active / resumed session
+  const sessionAllWorkers = useMemo(() => {
+    if (!currentActiveSession) return [];
+
+    const leaveMap = new Map<string, { leaveHour: string; reason?: string; recordedAt?: string }>();
+    (currentActiveSession.leaveRecords || []).forEach((lr: any) => {
+      const id = typeof lr.workerId === 'string' ? lr.workerId : lr.workerId?._id;
+      if (id) {
+        leaveMap.set(String(id), { leaveHour: lr.leaveHour, reason: lr.reason, recordedAt: lr.recordedAt });
+      }
+    });
+
+    const list: {
+      _id: string;
+      fullName: string;
+      role?: string;
+      isLate: boolean;
+      addedAt?: string;
+      hasLeft: boolean;
+      leaveHour?: string;
+      leaveReason?: string;
+      recordedAt?: string;
+    }[] = [];
+    const seenIds = new Set<string>();
+
+    // Tagged initial workers
+    (currentActiveSession.workerIds || []).forEach((w: any) => {
+      const id = typeof w === 'string' ? w : w?._id;
+      if (!id || seenIds.has(String(id))) return;
+      seenIds.add(String(id));
+      const fullName = typeof w === 'object' && w?.fullName ? w.fullName : (workers.find(wk => wk._id === id)?.fullName || 'Pekerja');
+      const role = typeof w === 'object' ? (w?.position || w?.role) : (workers.find(wk => wk._id === id)?.position || workers.find(wk => wk._id === id)?.role);
+      const leaveInfo = leaveMap.get(String(id));
+      list.push({
+        _id: String(id),
+        fullName,
+        role,
+        isLate: false,
+        hasLeft: !!leaveInfo,
+        leaveHour: leaveInfo?.leaveHour,
+        leaveReason: leaveInfo?.reason,
+        recordedAt: leaveInfo?.recordedAt,
+      });
+    });
+
+    // Late added workers
+    (currentActiveSession.lateWorkerIds || []).forEach((lw: any) => {
+      const w = lw.workerId;
+      const id = typeof w === 'string' ? w : w?._id;
+      if (!id || seenIds.has(String(id))) return;
+      seenIds.add(String(id));
+      const fullName = typeof w === 'object' && w?.fullName ? w.fullName : (workers.find(wk => wk._id === id)?.fullName || 'Pekerja');
+      const role = typeof w === 'object' ? (w?.position || w?.role) : (workers.find(wk => wk._id === id)?.position || workers.find(wk => wk._id === id)?.role);
+      const leaveInfo = leaveMap.get(String(id));
+      list.push({
+        _id: String(id),
+        fullName,
+        role,
+        isLate: true,
+        addedAt: lw.addedAt,
+        hasLeft: !!leaveInfo,
+        leaveHour: leaveInfo?.leaveHour,
+        leaveReason: leaveInfo?.reason,
+        recordedAt: leaveInfo?.recordedAt,
+      });
+    });
+
+    return list;
+  }, [currentActiveSession, workers]);
+
+  const workersStillPresent = useMemo(() => {
+    return sessionAllWorkers.filter(w => !w.hasLeft);
+  }, [sessionAllWorkers]);
+
+  const workersAlreadyLeft = useMemo(() => {
+    return sessionAllWorkers.filter(w => w.hasLeft);
+  }, [sessionAllWorkers]);
+
+  const isCurrentSessionClosed = useMemo(() => {
+    if (!currentActiveSession) return false;
+    return isSessionClosed(currentActiveSession);
+  }, [currentActiveSession, isSessionClosed]);
 
   // Total workers present across all sessions today
   const totalWorkersToday = useMemo(() => {
@@ -488,14 +627,35 @@ export default function GroupAttendance() {
         `/attendance-session/${result.session._id}/leave-hour`,
         { workers: workersPayload }
       );
-      setAlertData({ visible: true, type: 'success', title: 'Berhasil', message: response.data.msg });
+
+      // Refresh current session from server to update status & leave records
+      try {
+        const sessionRes = await api.get(`/attendance-session/${result.session._id}`);
+        setCurrentActiveSession(sessionRes.data);
+      } catch (e) {
+        if (response.data.session) {
+          setCurrentActiveSession(response.data.session);
+        }
+      }
+
+      if (response.data.isClosed) {
+        setAlertData({
+          visible: true,
+          type: 'success',
+          title: 'Sesi Selesai & Ditutup',
+          message: 'Semua pekerja dalam sesi ini telah clock-out. Sesi ini telah resmi ditutup dan menjadi read-only.',
+        });
+      } else {
+        setAlertData({ visible: true, type: 'success', title: 'Berhasil', message: response.data.msg });
+      }
+
       setLeaveWorkerId('');
       setLeaveHour('');
       setLeaveReason('');
       setBulkLeaveWorkerIds(new Set());
       setBulkLeaveHour('');
       setBulkLeaveReason('');
-      fetchTodaySessions();
+      await fetchTodaySessions();
     } catch (err: any) {
       setAlertData({
         visible: true, type: 'error', title: 'Gagal',
@@ -506,12 +666,58 @@ export default function GroupAttendance() {
     }
   };
 
+  const handleCloseAllAndFinishSession = async () => {
+    if (!result?.session?._id) return;
+    setClosingSession(true);
+    try {
+      const finalHour = closeLeaveHour || formatWIBTime(new Date());
+
+      const response = await api.post(`/attendance-session/${result.session._id}/close`, {
+        defaultLeaveHour: finalHour,
+        reason: closeReason || 'Clock-out serentak & penutupan sesi oleh supervisor',
+      });
+
+      // Refresh current session from server
+      const sessionRes = await api.get(`/attendance-session/${result.session._id}`);
+      setCurrentActiveSession(sessionRes.data);
+
+      setAlertData({
+        visible: true,
+        type: 'success',
+        title: 'Sesi Resmi Ditutup',
+        message: response.data.msg || 'Semua sisa pekerja telah di-clockout dan sesi resmi ditutup.',
+      });
+
+      setShowCloseModal(false);
+      setCloseLeaveHour('');
+      setCloseReason('');
+      await fetchTodaySessions();
+    } catch (err: any) {
+      setAlertData({
+        visible: true,
+        type: 'error',
+        title: 'Gagal Menutup Sesi',
+        message: err.response?.data?.msg || 'Terjadi kesalahan saat menutup sesi.',
+      });
+    } finally {
+      setClosingSession(false);
+    }
+  };
+
   const toggleBulkLeaveWorker = (id: string) => {
     setBulkLeaveWorkerIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  };
+
+  const selectAllRemainingWorkers = () => {
+    setBulkLeaveWorkerIds(new Set(workersStillPresent.map(w => w._id)));
+  };
+
+  const clearBulkLeaveWorkers = () => {
+    setBulkLeaveWorkerIds(new Set());
   };
 
   const handleResumeSession = async (session: ActiveSession) => {
@@ -548,11 +754,14 @@ export default function GroupAttendance() {
         conflicts: [],
       });
 
+      const isClosed = isSessionClosed(fullSession);
       setAlertData({
         visible: true,
         type: 'success',
-        title: 'Sesi Dimuat',
-        message: 'Anda melanjutkan sesi absensi yang sudah ada.',
+        title: isClosed ? 'Detail Sesi Dimuat (Selesai)' : 'Sesi Dimuat (Aktif)',
+        message: isClosed
+          ? 'Sesi ini telah selesai/ditutup. Anda dapat meninjau rekap jam pulang pekerja.'
+          : 'Anda melanjutkan sesi absensi yang sedang aktif.',
       });
     } catch (err) {
       console.error('Failed to resume session', err);
@@ -634,12 +843,13 @@ export default function GroupAttendance() {
         visible: true,
         type: 'success',
         title: 'Check-Out Berhasil!',
-        message: `Check-out berhasil tercatat pada ${formatWIBTime(new Date())} WIB.`,
+        message: `Check-out berhasil tercatat pada ${formatWIBTime(new Date())} WIB. Status sesi aktif telah diperbarui.`,
       });
       setSelfPhoto(null);
       setSelfPhotoPreview(null);
       await fetchTodaySelfAttendance();
       await fetchRecentHistory();
+      await fetchTodaySessions();
     } catch (err: any) {
       setAlertData({
         visible: true,
@@ -872,7 +1082,9 @@ export default function GroupAttendance() {
           <div className="min-w-0">
             <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider m-0">Sesi Hari Ini</p>
             <h3 className="text-xl font-extrabold text-text-primary m-0 mt-0.5">{todaySessions.length} Sesi</h3>
-            <p className="text-[10px] text-emerald-600 font-semibold m-0 mt-0.5">Multi-Supervisor Aktif</p>
+            <p className="text-[10px] text-emerald-600 font-semibold m-0 mt-0.5">
+              {activeSessionsCount} Aktif • {closedSessionsCount} Ditutup
+            </p>
           </div>
         </div>
 
@@ -944,21 +1156,26 @@ export default function GroupAttendance() {
                     <PlayCircle size={20} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-base font-bold text-emerald-950 m-0">Sesi Aktif Hari Ini</h2>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-base font-bold text-emerald-950 m-0">Sesi Grup Hari Ini</h2>
                       <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-200 text-emerald-900">
-                        {todaySessions.length} Sesi Terbuka
+                        {activeSessionsCount} Aktif
                       </span>
+                      {closedSessionsCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-800">
+                          {closedSessionsCount} Ditutup
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-emerald-700/80 m-0">
-                      Seluruh sesi dari berbagai supervisor ditampilkan di bawah ini. Pilih sesi untuk mengelola jam pulang atau pekerja terlambat.
+                      Seluruh sesi multi-supervisor hari ini. Sesi otomatis ditutup setelah seluruh pekerja clock-out.
                     </p>
                   </div>
                 </div>
                 <button
                   id="refresh-session-btn"
                   onClick={fetchTodaySessions}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center text-emerald-700 hover:bg-emerald-200/70 transition-colors shrink-0 bg-emerald-100/60"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-emerald-700 hover:bg-emerald-200/70 transition-colors shrink-0 bg-emerald-100/60 cursor-pointer"
                   title="Refresh sesi"
                   aria-label="Refresh sesi"
                 >
@@ -966,13 +1183,14 @@ export default function GroupAttendance() {
                 </button>
               </div>
 
-              {/* Tabs filter */}
-              {(todaySessions.length > 1 || mySessionsCount > 0) && (
-                <div className="flex gap-2 p-1 bg-emerald-200/50 rounded-xl mb-3.5">
+              {/* Multi-Filter Bar: Supervisor & Status */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3.5">
+                {/* Supervisor Filter */}
+                <div className="flex gap-1.5 p-1 bg-emerald-200/50 rounded-xl">
                   <button
                     type="button"
                     onClick={() => setSessionFilter('all')}
-                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                    className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       sessionFilter === 'all'
                         ? 'bg-bg-white text-emerald-950 shadow-sm'
                         : 'text-emerald-800/80 hover:text-emerald-950'
@@ -983,7 +1201,7 @@ export default function GroupAttendance() {
                   <button
                     type="button"
                     onClick={() => setSessionFilter('mine')}
-                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                    className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       sessionFilter === 'mine'
                         ? 'bg-bg-white text-emerald-950 shadow-sm'
                         : 'text-emerald-800/80 hover:text-emerald-950'
@@ -992,17 +1210,59 @@ export default function GroupAttendance() {
                     Sesi Saya ({mySessionsCount})
                   </button>
                 </div>
-              )}
+
+                {/* Status Filter */}
+                <div className="flex gap-1.5 p-1 bg-bg-secondary rounded-xl border border-border-light">
+                  <button
+                    type="button"
+                    onClick={() => setSessionStatusFilter('all')}
+                    className={`py-1 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      sessionStatusFilter === 'all'
+                        ? 'bg-bg-white text-text-primary shadow-sm'
+                        : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    Semua ({todaySessions.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSessionStatusFilter('active')}
+                    className={`py-1 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      sessionStatusFilter === 'active'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-emerald-700 hover:text-emerald-900'
+                    }`}
+                  >
+                    🟢 Aktif ({activeSessionsCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSessionStatusFilter('closed')}
+                    className={`py-1 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      sessionStatusFilter === 'closed'
+                        ? 'bg-slate-700 text-white shadow-sm'
+                        : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    ⚪ Ditutup ({closedSessionsCount})
+                  </button>
+                </div>
+              </div>
 
               {/* List of sessions */}
               {displayedSessions.length === 0 ? (
-                <div className="p-4 rounded-xl bg-bg-white border border-emerald-200 text-center text-xs text-text-muted">
-                  Tidak ada sesi yang Anda buat hari ini. Silakan beralih ke tab <strong>Semua Supervisor</strong> atau buat sesi baru.
+                <div className="p-5 rounded-xl bg-bg-white border border-emerald-200 text-center text-xs text-text-muted">
+                  {sessionStatusFilter === 'active'
+                    ? 'Tidak ada sesi yang sedang aktif. Semua sesi telah selesai / ditutup.'
+                    : sessionStatusFilter === 'closed'
+                      ? 'Belum ada sesi yang selesai / ditutup hari ini.'
+                      : 'Tidak ada sesi yang sesuai dengan kriteria filter.'}
                 </div>
               ) : (
                 <div className="flex flex-col gap-3 max-h-[420px] overflow-y-auto pr-1">
                   {displayedSessions.map((session) => {
                     const isMine = isMySession(session);
+                    const { total: totalWorkers, left: leftWorkers, remaining: remainingWorkers, isClosed } = getSessionWorkerCounts(session);
                     const projectName = typeof session.projectId === 'string'
                       ? 'Proyek'
                       : session.projectId?.nama || 'Proyek';
@@ -1010,7 +1270,6 @@ export default function GroupAttendance() {
                     const supervisorName = typeof session.supervisorId === 'object'
                       ? session.supervisorId?.fullName
                       : 'Supervisor';
-                    const totalWorkers = (session.workerIds?.length || 0) + (session.lateWorkerIds?.length || 0);
                     const isResumingThis = resumingSessionId === session._id;
                     const photoSrc = getImageUrl(session.photoUrl);
 
@@ -1018,9 +1277,11 @@ export default function GroupAttendance() {
                       <div
                         key={session._id}
                         className={`p-4 rounded-xl border transition-all ${
-                          isMine
-                            ? 'bg-bg-white border-emerald-300 shadow-sm ring-1 ring-emerald-200'
-                            : 'bg-bg-white/95 border-emerald-200/80 hover:border-emerald-300'
+                          isClosed
+                            ? 'bg-slate-50/70 border-slate-200/90 hover:border-slate-300 opacity-95'
+                            : isMine
+                              ? 'bg-bg-white border-emerald-300 shadow-sm ring-1 ring-emerald-200'
+                              : 'bg-bg-white/95 border-emerald-200/80 hover:border-emerald-300'
                         }`}
                       >
                         <div className="flex items-start gap-3.5">
@@ -1036,7 +1297,9 @@ export default function GroupAttendance() {
                               </PhotoView>
                             </div>
                           ) : (
-                            <div className="w-16 h-16 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                            <div className={`w-16 h-16 rounded-xl flex items-center justify-center shrink-0 ${
+                              isClosed ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-600'
+                            }`}>
                               <Camera size={22} />
                             </div>
                           )}
@@ -1047,8 +1310,22 @@ export default function GroupAttendance() {
                               <h4 className="text-sm font-bold text-text-primary m-0 truncate">
                                 {projectName}
                               </h4>
+
+                              {/* Status Badge */}
+                              {isClosed ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-200/80 text-slate-700 border border-slate-300 flex items-center gap-1">
+                                  <CheckCircle2 size={11} className="text-slate-600" />
+                                  Selesai (Clock-out Semua)
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  Sesi Aktif
+                                </span>
+                              )}
+
                               {isMine ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-700 border border-emerald-300">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
                                   ✓ Sesi Anda
                                 </span>
                               ) : (
@@ -1065,15 +1342,32 @@ export default function GroupAttendance() {
                             )}
 
                             <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
-                              <span className="flex items-center gap-1 font-bold text-emerald-800">
-                                <Users size={13} className="text-emerald-600" />
-                                {totalWorkers} pekerja hadir
-                              </span>
+                              {isClosed ? (
+                                <span className="flex items-center gap-1 font-bold text-slate-700">
+                                  <Users size={13} className="text-slate-500" />
+                                  {totalWorkers} pekerja • Selesai Clock-Out
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 font-bold text-emerald-800">
+                                  <Users size={13} className="text-emerald-600" />
+                                  {remainingWorkers} dari {totalWorkers} belum clock-out {leftWorkers > 0 && `(${leftWorkers} pulang)`}
+                                </span>
+                              )}
+
                               <span className="w-1 h-1 rounded-full bg-border" />
                               <span className="flex items-center gap-1 font-medium">
                                 <Clock size={13} className="text-text-muted" />
-                                {formatWIBTime(new Date(session.createdAt || session.date))} WIB
+                                Mulai: {formatWIBTime(new Date(session.createdAt || session.date))} WIB
                               </span>
+
+                              {isClosed && session.closedAt && (
+                                <>
+                                  <span className="w-1 h-1 rounded-full bg-border" />
+                                  <span className="text-[11px] text-slate-500 font-medium">
+                                    Ditutup: {formatWIBTime(new Date(session.closedAt))} WIB
+                                  </span>
+                                </>
+                              )}
                             </div>
 
                             {session.notes && (
@@ -1085,28 +1379,49 @@ export default function GroupAttendance() {
 
                           {/* Action Button */}
                           <div className="shrink-0 self-center">
-                            <button
-                              onClick={() => handleResumeSession(session)}
-                              disabled={resumingSessionId !== null}
-                              className={`flex items-center gap-1.5 py-2.5 px-4 rounded-xl text-xs font-bold text-white transition-all ${
-                                isResumingThis
-                                  ? 'bg-emerald-400 cursor-not-allowed'
-                                  : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 shadow-sm cursor-pointer'
-                              }`}
-                            >
-                              {isResumingThis ? (
-                                <>
-                                  <Loader size={14} className="animate-spin" />
-                                  <span>Memuat...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <PlayCircle size={14} />
-                                  <span>Lanjutkan Sesi</span>
-                                  <ChevronRight size={14} />
-                                </>
-                              )}
-                            </button>
+                            {isClosed ? (
+                              <button
+                                onClick={() => handleResumeSession(session)}
+                                disabled={resumingSessionId !== null}
+                                className="flex items-center gap-1.5 py-2 px-3.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                              >
+                                {isResumingThis ? (
+                                  <>
+                                    <Loader size={14} className="animate-spin" />
+                                    <span>Memuat...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <FileText size={14} className="text-slate-600" />
+                                    <span>Detail Sesi</span>
+                                    <ChevronRight size={14} />
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleResumeSession(session)}
+                                disabled={resumingSessionId !== null}
+                                className={`flex items-center gap-1.5 py-2.5 px-4 rounded-xl text-xs font-bold text-white transition-all ${
+                                  isResumingThis
+                                    ? 'bg-emerald-400 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 shadow-sm cursor-pointer'
+                                }`}
+                              >
+                                {isResumingThis ? (
+                                  <>
+                                    <Loader size={14} className="animate-spin" />
+                                    <span>Memuat...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <PlayCircle size={14} />
+                                    <span>Lanjutkan Sesi</span>
+                                    <ChevronRight size={14} />
+                                  </>
+                                )}
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1121,20 +1436,38 @@ export default function GroupAttendance() {
           {result && (
             <div className="space-y-6">
               {/* Header Bar */}
-              <div className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-bg-white border border-border-light shadow-sm">
+              <div className={`flex items-center justify-between gap-3 p-4 rounded-2xl bg-bg-white border shadow-sm ${
+                isCurrentSessionClosed ? 'border-slate-300 ring-1 ring-slate-200' : 'border-emerald-300'
+              }`}>
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
-                    <PlayCircle size={20} />
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm text-white ${
+                    isCurrentSessionClosed ? 'bg-slate-700' : 'bg-emerald-500'
+                  }`}>
+                    {isCurrentSessionClosed ? <CheckCircle2 size={22} /> : <PlayCircle size={20} />}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider m-0">
-                      Sesi Sedang Dibuka
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <p className={`text-[10px] font-black uppercase tracking-wider m-0 px-2 py-0.5 rounded-full ${
+                        isCurrentSessionClosed ? 'bg-slate-100 text-slate-800 border border-slate-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      }`}>
+                        {isCurrentSessionClosed ? '⚪ Sesi Telah Ditutup (Selesai)' : '🟢 Sesi Sedang Dibuka (Aktif)'}
+                      </p>
+                      {isCurrentSessionClosed && currentActiveSession?.closedAt && (
+                        <span className="text-[11px] text-text-muted font-medium">
+                          Ditutup: {formatWIBTime(new Date(currentActiveSession.closedAt))} WIB
+                        </span>
+                      )}
+                    </div>
                     <h3 className="text-base font-extrabold text-text-primary m-0 truncate">
                       {selectedProject?.nama || (typeof currentActiveSession?.projectId === 'object' ? currentActiveSession.projectId?.nama : 'Proyek')}
                     </h3>
                     <p className="text-xs text-text-muted m-0 truncate">
                       Supervisor: {typeof currentActiveSession?.supervisorId === 'object' ? currentActiveSession.supervisorId.fullName : user?.fullName}
+                      {!isCurrentSessionClosed && (
+                        <span className="text-emerald-700 font-bold ml-2">
+                          • {workersStillPresent.length} pekerja belum clock-out
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1143,8 +1476,8 @@ export default function GroupAttendance() {
                   <button
                     id="back-to-sessions-btn"
                     onClick={handleBackToSessions}
-                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-text-primary bg-bg-secondary hover:bg-border-light border border-border-light transition-all flex items-center gap-1.5 cursor-pointer"
-                    title="Kembali ke daftar sesi aktif"
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-text-primary bg-bg-secondary hover:bg-border-light border border-border-light transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    title="Kembali ke daftar sesi hari ini"
                   >
                     <ChevronLeft size={14} />
                     <span>Daftar Sesi ({todaySessions.length})</span>
@@ -1152,235 +1485,460 @@ export default function GroupAttendance() {
                 </div>
               </div>
 
-              {/* Result Summary Card */}
-              <Card className="text-center p-8">
-                <div className="w-16 h-16 bg-gradient-to-br from-emerald-600 to-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-3.5 text-white shadow-[0_4px_20px_rgba(5,150,105,0.3)]">
-                  <Check size={32} />
-                </div>
-                <h3 className="text-xl font-extrabold text-text-primary m-0 mb-1">Absensi Sesi Aktif</h3>
-                <p className="text-sm text-text-muted m-0">
-                  <span className="font-black text-emerald-600 text-lg">{result.created}</span> pekerja tercatat hadir pada sesi ini
-                </p>
-
-                {result.conflicts.length > 0 && (
-                  <div className="mt-4 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-left max-w-md mx-auto">
-                    <p className="text-xs font-bold text-amber-800 mb-1.5 flex items-center gap-1.5">
-                      <AlertCircle size={14} />
-                      {result.conflicts.length} pekerja dilewati (sudah absen mandiri):
-                    </p>
-                    {result.conflicts.map((c) => (
-                      <p key={c.workerId} className="text-xs text-amber-700 m-0 pl-4">• {c.fullName}</p>
-                    ))}
+              {/* Status & Summary Card */}
+              {isCurrentSessionClosed ? (
+                <Card className="text-center p-8 bg-gradient-to-br from-slate-50 via-bg-white to-slate-50/50 border-2 border-slate-300">
+                  <div className="w-16 h-16 bg-gradient-to-br from-slate-700 to-slate-600 rounded-2xl flex items-center justify-center mx-auto mb-3.5 text-white shadow-[0_4px_20px_rgba(71,85,105,0.25)]">
+                    <CheckCircle2 size={32} />
                   </div>
-                )}
-              </Card>
+                  <span className="px-3 py-1 rounded-full text-xs font-black bg-slate-200 text-slate-800 border border-slate-300 inline-block mb-2">
+                    SESI SELESAI / INAKTIF
+                  </span>
+                  <h3 className="text-xl font-extrabold text-text-primary m-0 mb-1">
+                    Seluruh Pekerja Telah Clock-Out
+                  </h3>
+                  <p className="text-sm text-text-muted m-0 max-w-lg mx-auto">
+                    Sesi grup ini telah resmi ditutup karena seluruh <span className="font-bold text-text-primary">{sessionAllWorkers.length} pekerja</span> telah tercatat jam pulang. Data sesi ini tersimpan dan bersifat read-only.
+                  </p>
 
-              {/* Late Add Section */}
-              <Card className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 bg-gradient-to-br from-amber-500 to-amber-400">
-                    <UserPlus size={20} />
+                  <div className="flex items-center justify-center gap-4 mt-4 text-xs text-text-muted flex-wrap">
+                    <span className="px-3 py-1.5 bg-bg-white rounded-xl border border-border-light font-bold text-text-primary">
+                      👥 Total: {sessionAllWorkers.length} Pekerja
+                    </span>
+                    <span className="px-3 py-1.5 bg-bg-white rounded-xl border border-border-light font-bold text-slate-700">
+                      ✓ Clock-Out: {workersAlreadyLeft.length} Pekerja
+                    </span>
+                    {currentActiveSession?.closedAt && (
+                      <span className="px-3 py-1.5 bg-bg-white rounded-xl border border-border-light font-semibold text-text-muted">
+                        🕒 Ditutup: {formatWIBTime(new Date(currentActiveSession.closedAt))} WIB
+                      </span>
+                    )}
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-text-primary m-0">Tambah Pekerja Terlambat</h3>
-                    <p className="text-xs text-text-muted m-0">Catat pekerja yang datang menyusul setelah foto grup diambil</p>
+                </Card>
+              ) : (
+                <Card className="text-center p-8 bg-gradient-to-br from-emerald-50/60 via-bg-white to-emerald-50/30 border-2 border-emerald-300">
+                  <div className="w-16 h-16 bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-3.5 text-white shadow-[0_4px_20px_rgba(5,150,105,0.3)]">
+                    <Check size={32} />
                   </div>
-                </div>
+                  <h3 className="text-xl font-extrabold text-text-primary m-0 mb-1">Sesi Absensi Berjalan (Aktif)</h3>
+                  <p className="text-sm text-text-muted m-0">
+                    <span className="font-black text-emerald-600 text-lg">{workersStillPresent.length}</span> pekerja masih berada di lokasi • <span className="font-bold text-text-muted">{workersAlreadyLeft.length}</span> telah tercatat pulang
+                  </p>
 
-                {untaggedWorkers.length > 0 ? (
-                  <div className="flex gap-2">
-                    <select
-                      id="late-add-select"
-                      value={lateWorkerId}
-                      onChange={(e) => setLateWorkerId(e.target.value)}
-                      className="flex-1 p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary focus:outline-none focus:border-primary transition-colors"
-                    >
-                      <option value="">— Pilih Pekerja yang Baru Tiba —</option>
-                      {untaggedWorkers.map(w => (
-                        <option key={w._id} value={w._id}>
-                          {w.fullName} ({w.position || w.role})
-                        </option>
+                  {result.conflicts && result.conflicts.length > 0 && (
+                    <div className="mt-4 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-left max-w-md mx-auto">
+                      <p className="text-xs font-bold text-amber-800 mb-1.5 flex items-center gap-1.5">
+                        <AlertCircle size={14} />
+                        {result.conflicts.length} pekerja dilewati (sudah absen mandiri):
+                      </p>
+                      {result.conflicts.map((c) => (
+                        <p key={c.workerId} className="text-xs text-amber-700 m-0 pl-4">• {c.fullName}</p>
                       ))}
-                    </select>
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {/* ══════════════ IF CLOSED: REKAP TABEL READ-ONLY ══════════════ */}
+              {isCurrentSessionClosed ? (
+                <Card className="p-6">
+                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 border border-slate-300">
+                        <FileText size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-text-primary m-0">Rekap Jam Pulang Seluruh Pekerja</h3>
+                        <p className="text-xs text-text-muted m-0">Daftar kehadiran dan kepulangan pekerja pada sesi ini</p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                      {sessionAllWorkers.length} Pekerja Selesai
+                    </span>
+                  </div>
+
+                  {/* Rekap Table */}
+                  <div className="overflow-x-auto rounded-xl border border-border-light">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-bg-secondary text-text-muted uppercase text-[10px] font-bold border-b border-border-light">
+                        <tr>
+                          <th className="py-3 px-3.5 w-12 text-center">No</th>
+                          <th className="py-3 px-3.5">Nama Pekerja</th>
+                          <th className="py-3 px-3.5">Jabatan / Role</th>
+                          <th className="py-3 px-3.5 text-center">Status Masuk</th>
+                          <th className="py-3 px-3.5 text-center">Jam Pulang</th>
+                          <th className="py-3 px-3.5">Keterangan / Alasan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border-light bg-bg-white">
+                        {sessionAllWorkers.map((worker, idx) => (
+                          <tr key={worker._id} className="hover:bg-bg-secondary/40 transition-colors">
+                            <td className="py-3 px-3.5 text-center font-bold text-text-muted">{idx + 1}</td>
+                            <td className="py-3 px-3.5 font-bold text-text-primary">
+                              {worker.fullName}
+                            </td>
+                            <td className="py-3 px-3.5 text-text-muted">
+                              {worker.role || 'Pekerja Lapangan'}
+                            </td>
+                            <td className="py-3 px-3.5 text-center">
+                              {worker.isLate ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                  Menyusul
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  Hadir Awal
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3.5 text-center font-bold text-slate-800">
+                              {worker.leaveHour ? `${worker.leaveHour} WIB` : '—'}
+                            </td>
+                            <td className="py-3 px-3.5 text-text-muted italic">
+                              {worker.leaveReason || 'Shift selesai'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Actions for closed session */}
+                  <div className="flex gap-3 mt-6">
+                    <Button
+                      title="Kembali ke Daftar Sesi"
+                      onClick={handleBackToSessions}
+                      icon={ChevronLeft}
+                      variant="outline"
+                      className="flex-1"
+                    />
+                    <Button
+                      title="Buat Sesi Absensi Baru"
+                      onClick={resetAll}
+                      icon={Camera}
+                      variant="primary"
+                      className="flex-1"
+                    />
+                    <Button
+                      title="Lihat Log Kehadiran"
+                      onClick={() => navigate('/attendance-logs')}
+                      icon={FileText}
+                      variant="outline"
+                      className="flex-1"
+                    />
+                  </div>
+                </Card>
+              ) : (
+                /* ══════════════ IF ACTIVE: LIVE CLOCK-OUT & MANAGEMENT ══════════════ */
+                <>
+                  {/* 1-Click Action: Bulk Clock-Out & Close Session */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-50 via-emerald-50 to-bg-white border-2 border-emerald-300 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <LogOut size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-extrabold text-emerald-950 m-0 flex items-center gap-2">
+                          <span>Clock-Out Seluruh Pekerja & Tutup Sesi</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 text-emerald-900">
+                            1-Klik
+                          </span>
+                        </h4>
+                        <p className="text-xs text-emerald-800/80 m-0 mt-0.5">
+                          Tandai jam pulang untuk seluruh {workersStillPresent.length} pekerja tersisa dan ubah status sesi menjadi inaktif/ditutup.
+                        </p>
+                      </div>
+                    </div>
+
                     <button
-                      id="late-add-btn"
-                      onClick={handleLateAdd}
-                      disabled={!lateWorkerId || addingLate}
-                      className={`px-5 py-3 rounded-xl border-none text-sm font-bold text-white bg-gradient-to-br from-amber-500 to-amber-400 transition-all cursor-pointer ${
-                        !lateWorkerId || addingLate ? 'opacity-50 cursor-not-allowed' : 'hover:-translate-y-[1px]'
-                      }`}
+                      type="button"
+                      onClick={() => {
+                        setCloseLeaveHour(formatWIBTime(new Date()));
+                        setShowCloseModal(true);
+                      }}
+                      className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 shadow-sm cursor-pointer whitespace-nowrap transition-all flex items-center justify-center gap-2 shrink-0"
                     >
-                      {addingLate ? <Loader size={18} className="animate-spin" /> : <span>Tambah</span>}
+                      <LogOut size={14} />
+                      <span>Clock-Out Semua ({workersStillPresent.length}) & Tutup Sesi</span>
                     </button>
                   </div>
-                ) : (
-                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-center text-xs font-semibold text-emerald-800">
-                    ✓ Seluruh pekerja yang terdaftar pada proyek ini sudah tercatat hadir.
-                  </div>
-                )}
-              </Card>
 
-              {/* Leave Hour Section */}
-              <Card className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 bg-gradient-to-br from-red-500 to-red-400">
-                    <LogOut size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-text-primary m-0">Catat Jam Pulang / Pulang Awal</h3>
-                    <p className="text-xs text-text-muted m-0">Pekerja yang pulang lebih awal atau checkout shift</p>
-                  </div>
-                </div>
+                  {/* Late Add Section */}
+                  {untaggedWorkers.length > 0 && (
+                    <Card className="p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 bg-gradient-to-br from-amber-500 to-amber-400">
+                          <UserPlus size={20} />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-text-primary m-0">Tambah Pekerja Terlambat</h3>
+                          <p className="text-xs text-text-muted m-0">Catat pekerja yang datang menyusul setelah foto grup diambil</p>
+                        </div>
+                      </div>
 
-                {/* Mode Toggle */}
-                <div className="flex gap-2 p-1 bg-bg-secondary rounded-xl mb-4">
-                  <button
-                    id="leave-mode-individual"
-                    onClick={() => setLeaveMode('individual')}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-                      leaveMode === 'individual'
-                        ? 'bg-bg-white text-text-primary shadow-sm'
-                        : 'text-text-muted hover:text-text-primary'
-                    }`}
-                  >
-                    Individual
-                  </button>
-                  <button
-                    id="leave-mode-bulk"
-                    onClick={() => setLeaveMode('bulk')}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-                      leaveMode === 'bulk'
-                        ? 'bg-bg-white text-text-primary shadow-sm'
-                        : 'text-text-muted hover:text-text-primary'
-                    }`}
-                  >
-                    Grup (Bulk Pulang Bersama)
-                  </button>
-                </div>
+                      <div className="flex gap-2">
+                        <select
+                          id="late-add-select"
+                          value={lateWorkerId}
+                          onChange={(e) => setLateWorkerId(e.target.value)}
+                          className="flex-1 p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary focus:outline-none focus:border-primary transition-colors"
+                        >
+                          <option value="">— Pilih Pekerja yang Baru Tiba —</option>
+                          {untaggedWorkers.map(w => (
+                            <option key={w._id} value={w._id}>
+                              {w.fullName} ({w.position || w.role})
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          id="late-add-btn"
+                          onClick={handleLateAdd}
+                          disabled={!lateWorkerId || addingLate}
+                          className={`px-5 py-3 rounded-xl border-none text-sm font-bold text-white bg-gradient-to-br from-amber-500 to-amber-400 transition-all cursor-pointer ${
+                            !lateWorkerId || addingLate ? 'opacity-50 cursor-not-allowed' : 'hover:-translate-y-[1px]'
+                          }`}
+                        >
+                          {addingLate ? <Loader size={18} className="animate-spin" /> : <span>Tambah</span>}
+                        </button>
+                      </div>
+                    </Card>
+                  )}
 
-                {leaveMode === 'individual' ? (
-                  <div className="space-y-3">
-                    <select
-                      id="leave-worker-select"
-                      value={leaveWorkerId}
-                      onChange={(e) => setLeaveWorkerId(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary focus:outline-none focus:border-primary transition-colors"
-                    >
-                      <option value="">— Pilih Pekerja yang Pulang —</option>
-                      {taggedWorkers.map(w => (
-                        <option key={w._id} value={w._id}>{w.fullName}</option>
-                      ))}
-                    </select>
-                    <div>
-                      <label htmlFor="leave-hour-input" className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
-                        Jam Pulang
-                      </label>
-                      <input
-                        id="leave-hour-input"
-                        type="time"
-                        value={leaveHour}
-                        onChange={(e) => setLeaveHour(e.target.value)}
-                        className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary focus:outline-none focus:border-primary transition-colors"
-                      />
+                  {/* Leave Hour Section (Individual & Bulk) */}
+                  <Card className="p-6">
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 bg-gradient-to-br from-red-500 to-red-400">
+                          <LogOut size={20} />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-text-primary m-0">Catat Jam Pulang / Pulang Awal</h3>
+                          <p className="text-xs text-text-muted m-0">Catat jam kepulangan untuk pekerja tertentu atau sebagian pekerja</p>
+                        </div>
+                      </div>
+
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        {workersStillPresent.length} Pekerja Belum Pulang
+                      </span>
                     </div>
-                    <div>
-                      <label htmlFor="leave-reason-input" className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
-                        Alasan Pulang (Opsional)
-                      </label>
-                      <input
-                        id="leave-reason-input"
-                        type="text"
-                        value={leaveReason}
-                        onChange={(e) => setLeaveReason(e.target.value)}
-                        placeholder="Contoh: Sakit, urusan keluarga, cuaca hujan..."
-                        className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-primary transition-colors"
-                      />
+
+                    {/* Mode Toggle */}
+                    <div className="flex gap-2 p-1 bg-bg-secondary rounded-xl mb-4">
+                      <button
+                        id="leave-mode-individual"
+                        onClick={() => setLeaveMode('individual')}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          leaveMode === 'individual'
+                            ? 'bg-bg-white text-text-primary shadow-sm'
+                            : 'text-text-muted hover:text-text-primary'
+                        }`}
+                      >
+                        Individual ({workersStillPresent.length})
+                      </button>
+                      <button
+                        id="leave-mode-bulk"
+                        onClick={() => setLeaveMode('bulk')}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          leaveMode === 'bulk'
+                            ? 'bg-bg-white text-text-primary shadow-sm'
+                            : 'text-text-muted hover:text-text-primary'
+                        }`}
+                      >
+                        Grup / Bulk ({workersStillPresent.length})
+                      </button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-xs font-bold text-text-muted uppercase tracking-wider">Pilih pekerja yang pulang:</p>
-                    <div
-                      id="bulk-leave-worker-list"
-                      className="flex flex-col gap-[2px] max-h-[220px] overflow-y-auto rounded-xl border border-border-light"
-                    >
-                      {taggedWorkers.map(w => {
-                        const checked = bulkLeaveWorkerIds.has(w._id);
-                        return (
-                          <button
-                            key={w._id}
-                            id={`bulk-leave-worker-${w._id}`}
-                            onClick={() => toggleBulkLeaveWorker(w._id)}
-                            className={`flex items-center gap-3 p-3 text-left transition-all min-h-[48px] border-b border-border-light last:border-0 ${
-                              checked ? 'bg-red-50' : 'bg-bg-white hover:bg-bg-secondary'
-                            }`}
-                          >
-                            <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-all ${
-                              checked ? 'bg-red-500 text-white' : 'border-2 border-border bg-bg-white'
-                            }`}>
-                              {checked && <Check size={12} />}
+
+                    {workersStillPresent.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-center text-xs font-bold text-emerald-800">
+                        ✓ Seluruh pekerja telah mencatat jam pulang. Sesi ini siap untuk ditutup.
+                      </div>
+                    ) : leaveMode === 'individual' ? (
+                      <div className="space-y-3">
+                        <select
+                          id="leave-worker-select"
+                          value={leaveWorkerId}
+                          onChange={(e) => setLeaveWorkerId(e.target.value)}
+                          className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary focus:outline-none focus:border-primary transition-colors"
+                        >
+                          <option value="">— Pilih Pekerja yang Pulang —</option>
+                          {workersStillPresent.map(w => (
+                            <option key={w._id} value={w._id}>
+                              {w.fullName} {w.isLate ? '(Menyusul)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <div>
+                          <label htmlFor="leave-hour-input" className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
+                            Jam Pulang (Format HH:mm)
+                          </label>
+                          <input
+                            id="leave-hour-input"
+                            type="time"
+                            value={leaveHour}
+                            onChange={(e) => setLeaveHour(e.target.value)}
+                            className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary focus:outline-none focus:border-primary transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="leave-reason-input" className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
+                            Alasan Pulang (Opsional)
+                          </label>
+                          <input
+                            id="leave-reason-input"
+                            type="text"
+                            value={leaveReason}
+                            onChange={(e) => setLeaveReason(e.target.value)}
+                            placeholder="Contoh: Selesai shift, izin keluarga, sakit..."
+                            className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-primary transition-colors"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-text-muted uppercase tracking-wider m-0">
+                            Pilih pekerja yang pulang ({bulkLeaveWorkerIds.size} dipilih):
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={selectAllRemainingWorkers}
+                              className="text-xs font-bold text-primary hover:underline cursor-pointer"
+                            >
+                              Pilih Semua ({workersStillPresent.length})
+                            </button>
+                            <span className="text-border-light">•</span>
+                            <button
+                              type="button"
+                              onClick={clearBulkLeaveWorkers}
+                              className="text-xs font-semibold text-text-muted hover:underline cursor-pointer"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          id="bulk-leave-worker-list"
+                          className="flex flex-col gap-[2px] max-h-[220px] overflow-y-auto rounded-xl border border-border-light"
+                        >
+                          {workersStillPresent.map(w => {
+                            const checked = bulkLeaveWorkerIds.has(w._id);
+                            return (
+                              <button
+                                key={w._id}
+                                id={`bulk-leave-worker-${w._id}`}
+                                onClick={() => toggleBulkLeaveWorker(w._id)}
+                                className={`flex items-center gap-3 p-3 text-left transition-all min-h-[48px] border-b border-border-light last:border-0 cursor-pointer ${
+                                  checked ? 'bg-red-50' : 'bg-bg-white hover:bg-bg-secondary'
+                                }`}
+                              >
+                                <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-all ${
+                                  checked ? 'bg-red-500 text-white' : 'border-2 border-border bg-bg-white'
+                                }`}>
+                                  {checked && <Check size={12} />}
+                                </div>
+                                <span className="text-sm font-medium text-text-primary">{w.fullName}</span>
+                                {w.isLate && (
+                                  <span className="ml-auto text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
+                                    Menyusul
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div>
+                          <label htmlFor="bulk-leave-hour-input" className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
+                            Jam Pulang (untuk semua yang dipilih)
+                          </label>
+                          <input
+                            id="bulk-leave-hour-input"
+                            type="time"
+                            value={bulkLeaveHour}
+                            onChange={(e) => setBulkLeaveHour(e.target.value)}
+                            className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary focus:outline-none focus:border-primary transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="bulk-leave-reason-input" className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
+                            Alasan Pulang Bersama (Opsional)
+                          </label>
+                          <input
+                            id="bulk-leave-reason-input"
+                            type="text"
+                            value={bulkLeaveReason}
+                            onChange={(e) => setBulkLeaveReason(e.target.value)}
+                            placeholder="Contoh: Selesai shift, hujan deras..."
+                            className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-primary transition-colors"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {workersStillPresent.length > 0 && (
+                      <Button
+                        title={recordingLeave ? 'Menyimpan...' : 'Simpan Jam Pulang'}
+                        onClick={handleLeaveHour}
+                        loading={recordingLeave}
+                        icon={LogOut}
+                        fullWidth
+                        variant="danger"
+                        className="mt-4"
+                      />
+                    )}
+                  </Card>
+
+                  {/* Summary of workers who already left in this session */}
+                  {workersAlreadyLeft.length > 0 && (
+                    <Card className="p-6">
+                      <div className="flex items-center justify-between mb-3.5">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={18} className="text-emerald-600" />
+                          <h4 className="text-sm font-bold text-text-primary m-0">
+                            Pekerja yang Sudah Clock-Out ({workersAlreadyLeft.length})
+                          </h4>
+                        </div>
+                        <span className="text-xs text-text-muted font-medium">Tercatat di sistem</span>
+                      </div>
+
+                      <div className="divide-y divide-border-light rounded-xl border border-border-light max-h-[180px] overflow-y-auto">
+                        {workersAlreadyLeft.map((w) => (
+                          <div key={w._id} className="p-2.5 flex items-center justify-between text-xs bg-bg-white">
+                            <div>
+                              <span className="font-bold text-text-primary">{w.fullName}</span>
+                              {w.leaveReason && (
+                                <span className="text-text-muted italic ml-2">({w.leaveReason})</span>
+                              )}
                             </div>
-                            <span className="text-sm font-medium text-text-primary">{w.fullName}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div>
-                      <label htmlFor="bulk-leave-hour-input" className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
-                        Jam Pulang (untuk semua yang dipilih)
-                      </label>
-                      <input
-                        id="bulk-leave-hour-input"
-                        type="time"
-                        value={bulkLeaveHour}
-                        onChange={(e) => setBulkLeaveHour(e.target.value)}
-                        className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary focus:outline-none focus:border-primary transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="bulk-leave-reason-input" className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
-                        Alasan Pulang Bersama (Opsional)
-                      </label>
-                      <input
-                        id="bulk-leave-reason-input"
-                        type="text"
-                        value={bulkLeaveReason}
-                        onChange={(e) => setBulkLeaveReason(e.target.value)}
-                        placeholder="Contoh: Hujan lebat di lokasi proyek"
-                        className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-primary transition-colors"
-                      />
-                    </div>
+                            <span className="font-bold text-slate-700 px-2 py-0.5 rounded bg-slate-100 border border-slate-200">
+                              {w.leaveHour} WIB
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* Bottom navigation buttons */}
+                  <div className="flex gap-3">
+                    <Button
+                      title="Kembali ke Daftar Sesi"
+                      onClick={handleBackToSessions}
+                      icon={ChevronLeft}
+                      variant="outline"
+                      className="flex-1"
+                    />
+                    <Button
+                      title="Buat Sesi Absensi Baru"
+                      onClick={resetAll}
+                      icon={Camera}
+                      variant="primary"
+                      className="flex-1"
+                    />
                   </div>
-                )}
-
-                <Button
-                  title={recordingLeave ? 'Menyimpan...' : 'Simpan Jam Pulang'}
-                  onClick={handleLeaveHour}
-                  loading={recordingLeave}
-                  icon={LogOut}
-                  fullWidth
-                  variant="danger"
-                  className="mt-4"
-                />
-              </Card>
-
-              {/* Start New Session Button */}
-              <div className="flex gap-3">
-                <Button
-                  title="Kembali ke Daftar Sesi"
-                  onClick={handleBackToSessions}
-                  icon={ChevronLeft}
-                  variant="outline"
-                  className="flex-1"
-                />
-                <Button
-                  title="Buat Sesi Absensi Baru"
-                  onClick={resetAll}
-                  icon={Camera}
-                  variant="primary"
-                  className="flex-1"
-                />
-              </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1904,6 +2462,15 @@ export default function GroupAttendance() {
                       </label>
                     )}
 
+                    {myActiveSessionsCount > 0 && (
+                      <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-medium flex items-start gap-1.5">
+                        <Info size={14} className="shrink-0 text-amber-600 mt-0.5" />
+                        <span>
+                          Info: Anda memiliki <strong>{myActiveSessionsCount} sesi grup aktif</strong>. Sesi yang seluruh pekerjanya telah clock-out akan otomatis ditutup saat Anda check-out.
+                        </span>
+                      </div>
+                    )}
+
                     <button
                       onClick={handleSelfCheckOut}
                       disabled={selfSubmitting || !selfPhoto}
@@ -2178,6 +2745,86 @@ export default function GroupAttendance() {
                 onClick={handlePermitSubmit}
                 loading={submittingPermit}
                 variant="primary"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Close Session (Bulk Clock-Out & Close) Confirmation Modal ── */}
+      {showCloseModal && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm"
+          onClick={() => !closingSession && setShowCloseModal(false)}
+        >
+          <div
+            className="bg-bg-white rounded-2xl w-full max-w-[480px] p-6 shadow-2xl border border-border-light"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                <LogOut size={22} />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-text-primary m-0">
+                  Clock-Out Semua & Selesaikan Sesi
+                </h3>
+                <p className="text-xs text-text-muted m-0">
+                  Tandai jam pulang seluruh sisa pekerja dan tutup sesi ini
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-950 mb-4">
+              <p className="m-0 font-bold mb-1">Konfirmasi Penutupan Sesi:</p>
+              <p className="m-0 text-emerald-800">
+                Aksi ini akan mencatat jam kepulangan untuk <strong>{workersStillPresent.length} pekerja</strong> yang tersisa dan mengubah status sesi menjadi <strong>Inaktif / Ditutup</strong>.
+              </p>
+            </div>
+
+            <div className="space-y-3.5 mb-5">
+              <div>
+                <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
+                  Jam Pulang Bersama (WIB)
+                </label>
+                <input
+                  type="time"
+                  value={closeLeaveHour}
+                  onChange={(e) => setCloseLeaveHour(e.target.value)}
+                  className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-semibold text-text-primary focus:outline-none focus:border-primary"
+                />
+                <span className="text-[11px] text-text-muted mt-1 block">
+                  Default: jam saat ini ({formatWIBTime(new Date())} WIB)
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
+                  Keterangan / Catatan Penutupan (Opsional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Shift harian selesai serentak"
+                  value={closeReason}
+                  onChange={(e) => setCloseReason(e.target.value)}
+                  className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-medium text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 justify-end">
+              <Button
+                title="Batal"
+                onClick={() => setShowCloseModal(false)}
+                variant="outline"
+                disabled={closingSession}
+              />
+              <Button
+                title={closingSession ? 'Menutup Sesi...' : `Ya, Clock-Out (${workersStillPresent.length}) & Tutup Sesi`}
+                onClick={handleCloseAllAndFinishSession}
+                loading={closingSession}
+                variant="danger"
+                icon={LogOut}
               />
             </div>
           </div>

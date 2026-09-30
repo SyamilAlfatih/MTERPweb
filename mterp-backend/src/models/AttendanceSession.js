@@ -54,6 +54,17 @@ const attendanceSessionSchema = new mongoose.Schema({
     },
   }],
   notes: String,
+  status: {
+    type: String,
+    enum: ['active', 'closed'],
+    default: 'active',
+    index: true,
+  },
+  closedAt: Date,
+  closedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
   createdAt: {
     type: Date,
     default: Date.now,

@@ -166,15 +166,34 @@ router.post(
   }
 );
 
+/**
+ * Helper to compute effective session status:
+ * If explicitly closed, returns 'closed'.
+ * If all workers (from workerIds and lateWorkerIds) have a corresponding record in leaveRecords, returns 'closed'.
+ * Otherwise returns 'active'.
+ */
+function computeSessionStatus(session) {
+  if (session.status === 'closed') return 'closed';
+  const allWorkerIds = [
+    ...(session.workerIds || []).map(id => (id?._id || id).toString()),
+    ...(session.lateWorkerIds || []).map(lw => (lw.workerId?._id || lw.workerId).toString()),
+  ];
+  const leftWorkerIds = (session.leaveRecords || []).map(lr => (lr.workerId?._id || lr.workerId).toString());
+  if (allWorkerIds.length > 0 && allWorkerIds.every(id => leftWorkerIds.includes(id))) {
+    return 'closed';
+  }
+  return session.status || 'active';
+}
+
 // ─── GET /api/attendance-session ────────────────────────────────────────────
-// List sessions (filterable by projectId, date range, paginated)
+// List sessions (filterable by projectId, date range, status, paginated)
 router.get(
   '/',
   auth,
   authorize(...SUPERVISOR_ROLES),
   async (req, res) => {
     try {
-      const { projectId, date, page = 1, limit = 10, supervisorId } = req.query;
+      const { projectId, date, page = 1, limit = 10, supervisorId, status } = req.query;
 
       const query = {};
       if (projectId) query.projectId = projectId;
@@ -189,7 +208,7 @@ router.get(
       const pageNum = Math.max(1, parseInt(page) || 1);
       const limitNum = Math.max(1, Math.min(parseInt(limit) || 10, 100));
 
-      const [sessions, total] = await Promise.all([
+      const [rawSessions, total] = await Promise.all([
         AttendanceSession.find(query)
           .populate('supervisorId', 'fullName role')
           .populate('projectId', 'nama lokasi')
@@ -199,6 +218,27 @@ router.get(
           .lean(),
         AttendanceSession.countDocuments(query),
       ]);
+
+      // Enrich status and backfill closed status if all workers clocked out
+      let sessions = rawSessions.map(s => {
+        const computedStatus = computeSessionStatus(s);
+        if (computedStatus === 'closed' && s.status !== 'closed') {
+          s.status = 'closed';
+          s.closedAt = s.closedAt || nowWIB();
+          AttendanceSession.updateOne(
+            { _id: s._id },
+            { $set: { status: 'closed', closedAt: s.closedAt } }
+          ).catch(() => {});
+        } else {
+          s.status = computedStatus;
+        }
+        return s;
+      });
+
+      // Filter by status if specified in query
+      if (status) {
+        sessions = sessions.filter(s => s.status === status);
+      }
 
       res.json({
         sessions,
@@ -234,6 +274,18 @@ router.get(
 
       if (!session) {
         return res.status(404).json({ msg: 'Session not found' });
+      }
+
+      const computedStatus = computeSessionStatus(session);
+      if (computedStatus === 'closed' && session.status !== 'closed') {
+        session.status = 'closed';
+        session.closedAt = session.closedAt || nowWIB();
+        AttendanceSession.updateOne(
+          { _id: session._id },
+          { $set: { status: 'closed', closedAt: session.closedAt } }
+        ).catch(() => {});
+      } else {
+        session.status = computedStatus;
       }
 
       res.json(session);
@@ -405,14 +457,98 @@ router.post(
         }
       }
 
+      // Check if all workers in this session have now clocked out
+      const allWorkerIds = [
+        ...session.workerIds.map(id => id.toString()),
+        ...session.lateWorkerIds.map(lw => (lw.workerId?._id || lw.workerId).toString()),
+      ];
+      const leftWorkerIds = session.leaveRecords.map(lr => (lr.workerId?._id || lr.workerId).toString());
+      const allLeft = allWorkerIds.length > 0 && allWorkerIds.every(id => leftWorkerIds.includes(id));
+
+      if (allLeft) {
+        session.status = 'closed';
+        session.closedAt = nowWIB();
+        session.closedBy = req.user._id;
+      }
+
       await session.save();
 
       res.json({
-        msg: `Leave recorded for ${results.filter(r => r.status === 'recorded').length} workers`,
+        msg: `Leave recorded for ${results.filter(r => r.status === 'recorded').length} workers.${allLeft ? ' Seluruh pekerja telah clock-out, sesi ditutup.' : ''}`,
         results,
+        isClosed: allLeft,
+        session,
       });
     } catch (error) {
       console.error('Leave hour error:', error);
+      res.status(500).json({ msg: 'Server error' });
+    }
+  }
+);
+
+// ─── POST /api/attendance-session/:id/close ────────────────────────────────
+// Explicitly close a session, optionally clocking out all remaining workers
+router.post(
+  '/:id/close',
+  auth,
+  authorize(...SUPERVISOR_ROLES),
+  async (req, res) => {
+    try {
+      const { defaultLeaveHour, reason } = req.body;
+      const session = await AttendanceSession.findById(req.params.id);
+      if (!session) {
+        return res.status(404).json({ msg: 'Session not found' });
+      }
+
+      const today = getTodayStart();
+      const allWorkerIds = [
+        ...session.workerIds.map(id => id.toString()),
+        ...session.lateWorkerIds.map(lw => (lw.workerId?._id || lw.workerId).toString()),
+      ];
+      const alreadyLeftIds = session.leaveRecords.map(lr => (lr.workerId?._id || lr.workerId).toString());
+      const remainingWorkerIds = allWorkerIds.filter(id => !alreadyLeftIds.includes(id));
+
+      const finalLeaveHour = defaultLeaveHour || new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Jakarta',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(nowWIB());
+
+      if (remainingWorkerIds.length > 0) {
+        const [hours] = finalLeaveHour.split(':').map(Number);
+        const wibDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(today);
+        const leaveDateWIB = new Date(`${wibDateStr}T${finalLeaveHour}:00+07:00`);
+
+        for (const wId of remainingWorkerIds) {
+          session.leaveRecords.push({
+            workerId: wId,
+            leaveHour: finalLeaveHour,
+            reason: reason || 'Clock-out otomatis saat sesi ditutup oleh supervisor',
+            recordedAt: nowWIB(),
+          });
+
+          const attendance = await Attendance.findOne({ userId: wId, date: today });
+          if (attendance) {
+            attendance.checkOut = { time: leaveDateWIB };
+            if (hours < 12) attendance.status = 'Half-day';
+            await attendance.save();
+          }
+        }
+      }
+
+      session.status = 'closed';
+      session.closedAt = nowWIB();
+      session.closedBy = req.user._id;
+      await session.save();
+
+      res.json({
+        msg: `Sesi berhasil ditutup. ${remainingWorkerIds.length} pekerja telah di-clockout.`,
+        session,
+        remainingClockedOut: remainingWorkerIds.length,
+      });
+    } catch (error) {
+      console.error('Close session error:', error);
       res.status(500).json({ msg: 'Server error' });
     }
   }

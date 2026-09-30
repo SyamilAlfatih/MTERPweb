@@ -443,6 +443,31 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
     
     await attendance.save();
     await attendance.populate('userId', 'fullName');
+
+    // Auto-close supervisor's sessions today if all workers have already left
+    try {
+      const todaySessions = await AttendanceSession.find({
+        supervisorId: req.user._id,
+        date: today,
+        status: { $ne: 'closed' },
+      });
+
+      for (const sess of todaySessions) {
+        const allWIds = [
+          ...(sess.workerIds || []).map(id => id.toString()),
+          ...(sess.lateWorkerIds || []).map(lw => (lw.workerId?._id || lw.workerId).toString()),
+        ];
+        const leftWIds = (sess.leaveRecords || []).map(lr => (lr.workerId?._id || lr.workerId).toString());
+        if (allWIds.length > 0 && allWIds.every(id => leftWIds.includes(id))) {
+          sess.status = 'closed';
+          sess.closedAt = nowWIB();
+          sess.closedBy = req.user._id;
+          await sess.save();
+        }
+      }
+    } catch (sErr) {
+      console.error('Auto close session on supervisor checkout error:', sErr);
+    }
     
     res.json(attendance);
   } catch (error) {
