@@ -36,11 +36,13 @@ interface ActiveSession {
   _id: string;
   projectId: { _id: string; nama: string; lokasi?: string } | string;
   date: string;
-  workerIds: string[];
-  lateWorkerIds: { workerId: string }[];
+  workerIds: (string | { _id: string; fullName: string })[];
+  lateWorkerIds: { workerId: string | { _id: string; fullName: string }; addedAt?: string }[];
+  leaveRecords?: { workerId: string | { _id: string; fullName: string }; leaveHour: string; reason?: string }[];
   photoUrl: string;
   notes?: string;
-  supervisorId: { fullName: string } | string;
+  supervisorId: { _id?: string; fullName: string; role?: string } | string;
+  createdAt?: string;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -97,10 +99,12 @@ export default function GroupAttendance() {
     visible: boolean; type: 'success' | 'error'; title: string; message: string;
   }>({ visible: false, type: 'success', title: '', message: '' });
 
-  // ── Active Session (today's existing session) ──
-  const [todaySession, setTodaySession] = useState<ActiveSession | null>(null);
-  const [loadingTodaySession, setLoadingTodaySession] = useState(true);
-  const [resuming, setResuming] = useState(false);
+  // ── Active Sessions (today's existing sessions) ──
+  const [todaySessions, setTodaySessions] = useState<ActiveSession[]>([]);
+  const [loadingTodaySessions, setLoadingTodaySessions] = useState(true);
+  const [resumingSessionId, setResumingSessionId] = useState<string | null>(null);
+  const [sessionFilter, setSessionFilter] = useState<'all' | 'mine'>('all');
+  const [currentActiveSession, setCurrentActiveSession] = useState<ActiveSession | null>(null);
   // Flag to prevent useEffect from re-fetching workers (and clearing selection) during resume
   const skipProjectFetchRef = useRef(false);
 
@@ -126,11 +130,29 @@ export default function GroupAttendance() {
     return workers.filter(w => selectedWorkerIds.has(w._id));
   }, [workers, selectedWorkerIds]);
 
+  // ── Active Sessions Helpers ──
+  const isMySession = useCallback((s: ActiveSession) => {
+    if (!user?._id) return false;
+    const supId = typeof s.supervisorId === 'string' ? s.supervisorId : s.supervisorId?._id;
+    return String(supId) === String(user._id);
+  }, [user?._id]);
+
+  const mySessionsCount = useMemo(() => {
+    return todaySessions.filter(isMySession).length;
+  }, [todaySessions, isMySession]);
+
+  const displayedSessions = useMemo(() => {
+    if (sessionFilter === 'mine') {
+      return todaySessions.filter(isMySession);
+    }
+    return todaySessions;
+  }, [todaySessions, sessionFilter, isMySession]);
+
   // ── Effects ──
 
   useEffect(() => {
     fetchProjects();
-    fetchTodaySession();
+    fetchTodaySessions();
   }, []);
 
   useEffect(() => {
@@ -154,19 +176,18 @@ export default function GroupAttendance() {
     }
   };
 
-  const fetchTodaySession = async () => {
-    setLoadingTodaySession(true);
+  const fetchTodaySessions = async () => {
+    setLoadingTodaySessions(true);
     try {
       const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
-      const response = await api.get(`/attendance-session?date=${today}&limit=1`);
+      const response = await api.get(`/attendance-session?date=${today}&limit=50`);
       const sessions = response.data?.sessions || [];
-      if (sessions.length > 0) {
-        setTodaySession(sessions[0]);
-      }
+      setTodaySessions(sessions);
     } catch (err) {
-      console.error('Failed to fetch today session', err);
+      console.error('Failed to fetch today sessions', err);
+      setTodaySessions([]);
     } finally {
-      setLoadingTodaySession(false);
+      setLoadingTodaySessions(false);
     }
   };
 
@@ -263,11 +284,16 @@ export default function GroupAttendance() {
       });
 
       setResult(response.data);
-      // Refresh today's session so banner stays accurate after reset
-      setTodaySession(response.data.session
-        ? { ...response.data.session, workerIds: Array.from(selectedWorkerIds), lateWorkerIds: [], photoUrl: '', date: new Date().toISOString(), projectId: selectedProjectId, supervisorId: '' }
-        : null
-      );
+      if (response.data.session) {
+        setCurrentActiveSession({
+          ...response.data.session,
+          workerIds: Array.from(selectedWorkerIds),
+          lateWorkerIds: [],
+          projectId: selectedProject ? selectedProject : { _id: selectedProjectId, nama: 'Proyek' },
+          supervisorId: user ? { _id: user._id, fullName: user.fullName, role: user.role } : '',
+        });
+      }
+      fetchTodaySessions();
       setAlertData({
         visible: true,
         type: 'success',
@@ -298,6 +324,7 @@ export default function GroupAttendance() {
       // Add to selected set so it moves to taggedWorkers
       setSelectedWorkerIds(prev => new Set(prev).add(lateWorkerId));
       setLateWorkerId('');
+      fetchTodaySessions();
     } catch (err: any) {
       setAlertData({
         visible: true, type: 'error', title: 'Gagal',
@@ -347,6 +374,7 @@ export default function GroupAttendance() {
       setBulkLeaveWorkerIds(new Set());
       setBulkLeaveHour('');
       setBulkLeaveReason('');
+      fetchTodaySessions();
     } catch (err: any) {
       setAlertData({
         visible: true, type: 'error', title: 'Gagal',
@@ -366,11 +394,12 @@ export default function GroupAttendance() {
   };
 
   const handleResumeSession = async (session: ActiveSession) => {
-    setResuming(true);
+    setResumingSessionId(session._id);
     try {
       // Fetch full session detail to get populated workerIds
       const response = await api.get(`/attendance-session/${session._id}`);
       const fullSession = response.data;
+      setCurrentActiveSession(fullSession);
 
       const projectId = typeof fullSession.projectId === 'string'
         ? fullSession.projectId
@@ -421,13 +450,21 @@ export default function GroupAttendance() {
         message: 'Tidak dapat memuat detail sesi. Coba lagi.',
       });
     } finally {
-      setResuming(false);
+      setResumingSessionId(null);
     }
+  };
+
+  const handleBackToSessions = () => {
+    setResult(null);
+    setCurrentActiveSession(null);
+    setStep(1);
+    fetchTodaySessions();
   };
 
   const resetAll = () => {
     setStep(1);
     setResult(null);
+    setCurrentActiveSession(null);
     setPhoto(null);
     setPhotoPreview(null);
     setSelectedProjectId('');
@@ -435,6 +472,7 @@ export default function GroupAttendance() {
     setNotes('');
     setLateWorkerId('');
     setBulkLeaveWorkerIds(new Set());
+    fetchTodaySessions();
   };
 
   // ── Guard ──
@@ -479,8 +517,8 @@ export default function GroupAttendance() {
         </div>
       </div>
 
-      {/* ── Active Session Banner ── */}
-      {loadingTodaySession && !result && (
+      {/* ── Active Sessions Section (Today's Sessions) ── */}
+      {loadingTodaySessions && !result && (
         <div className="flex items-center gap-3 p-4 mb-4 rounded-xl bg-bg-secondary border border-border-light animate-pulse">
           <div className="w-10 h-10 rounded-lg bg-border-light shrink-0" />
           <div className="flex-1 space-y-2">
@@ -490,86 +528,172 @@ export default function GroupAttendance() {
         </div>
       )}
 
-      {!loadingTodaySession && todaySession && !result && (
-        <div className="mb-4 rounded-xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-emerald-100/60 overflow-hidden">
-          {/* Pulsing active indicator bar */}
-          <div className="h-1 bg-gradient-to-r from-emerald-500 to-emerald-400 w-full" />
-
-          <div className="p-4">
-            <div className="flex items-start gap-3">
-              {/* Icon with pulse ring */}
-              <div className="relative shrink-0">
-                <div className="w-11 h-11 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-[0_4px_12px_rgba(5,150,105,0.3)]">
-                  <PlayCircle size={22} />
-                </div>
-                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-emerald-50 animate-ping" />
-                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-emerald-50" />
+      {!loadingTodaySessions && todaySessions.length > 0 && !result && (
+        <div className="mb-6 rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-emerald-100/50 p-4 shadow-sm">
+          {/* Header */}
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500 text-white flex items-center justify-center shadow-[0_2px_8px_rgba(5,150,105,0.3)] shrink-0">
+                <PlayCircle size={18} />
               </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider m-0 mb-0.5">
-                  Sesi Aktif Hari Ini
-                </p>
-                <p className="text-sm font-bold text-emerald-900 m-0 truncate">
-                  {typeof todaySession.projectId === 'string'
-                    ? 'Proyek'
-                    : todaySession.projectId?.nama || 'Proyek'}
-                </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="flex items-center gap-1 text-[11px] text-emerald-700 font-medium">
-                    <Users size={11} />
-                    {(todaySession.workerIds?.length || 0) + (todaySession.lateWorkerIds?.length || 0)} pekerja
-                  </span>
-                  <span className="w-1 h-1 rounded-full bg-emerald-400" />
-                  <span className="flex items-center gap-1 text-[11px] text-emerald-700 font-medium">
-                    <Clock size={11} />
-                    {formatWIBTime(new Date(todaySession.date))}
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-bold text-emerald-950 m-0">Sesi Aktif Hari Ini</h2>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-200/80 text-emerald-800">
+                    {todaySessions.length} Sesi
                   </span>
                 </div>
+                <p className="text-[11px] text-emerald-700/80 m-0">
+                  {todaySessions.length > 1
+                    ? 'Pilih sesi untuk melanjutkan absensi atau kelola jam pulang'
+                    : 'Lanjutkan sesi yang sudah ada atau buat sesi baru di bawah'}
+                </p>
               </div>
+            </div>
+            <button
+              id="refresh-session-btn"
+              onClick={fetchTodaySessions}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-emerald-700 hover:bg-emerald-200/70 transition-colors shrink-0"
+              title="Refresh daftar sesi"
+              aria-label="Refresh sesi"
+            >
+              <RefreshCw size={15} />
+            </button>
+          </div>
 
-              {/* Refresh button */}
+          {/* Filter Tabs (when multiple sessions or user has own sessions) */}
+          {(todaySessions.length > 1 || mySessionsCount > 0) && (
+            <div className="flex gap-1.5 p-1 bg-emerald-200/50 rounded-xl mb-3">
               <button
-                id="refresh-session-btn"
-                onClick={fetchTodaySession}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-emerald-600 hover:bg-emerald-200 transition-colors shrink-0"
-                aria-label="Refresh sesi"
+                type="button"
+                onClick={() => setSessionFilter('all')}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                  sessionFilter === 'all'
+                    ? 'bg-bg-white text-emerald-900 shadow-sm'
+                    : 'text-emerald-800/80 hover:text-emerald-950'
+                }`}
               >
-                <RefreshCw size={15} />
+                Semua Sesi ({todaySessions.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSessionFilter('mine')}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                  sessionFilter === 'mine'
+                    ? 'bg-bg-white text-emerald-900 shadow-sm'
+                    : 'text-emerald-800/80 hover:text-emerald-950'
+                }`}
+              >
+                Sesi Saya ({mySessionsCount})
               </button>
             </div>
+          )}
 
-            {/* Resume Button */}
-            <button
-              id="resume-session-btn"
-              onClick={() => handleResumeSession(todaySession)}
-              disabled={resuming}
-              className={`mt-3 w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold text-white transition-all duration-150 border-none ${
-                resuming
-                  ? 'bg-emerald-400 cursor-not-allowed opacity-70'
-                  : 'bg-gradient-to-r from-emerald-600 to-emerald-500 shadow-[0_4px_12px_rgba(5,150,105,0.35)] hover:-translate-y-[1px] cursor-pointer'
-              }`}
-            >
-              {resuming ? (
-                <>
-                  <Loader size={16} className="animate-spin" />
-                  <span>Memuat Sesi...</span>
-                </>
-              ) : (
-                <>
-                  <PlayCircle size={16} />
-                  <span>Lanjutkan Sesi Ini</span>
-                  <ChevronRight size={16} className="ml-auto" />
-                </>
-              )}
-            </button>
+          {/* Sessions List */}
+          {displayedSessions.length === 0 ? (
+            <div className="p-4 rounded-xl bg-bg-white/80 border border-emerald-200/60 text-center text-xs text-text-muted">
+              Tidak ada sesi yang Anda buat hari ini. Silakan lihat tab <strong>Semua Sesi</strong> atau buat sesi baru di bawah.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5 max-h-[360px] overflow-y-auto pr-1">
+              {displayedSessions.map((session) => {
+                const isMine = isMySession(session);
+                const projectName = typeof session.projectId === 'string'
+                  ? 'Proyek'
+                  : session.projectId?.nama || 'Proyek';
+                const projectLocation = typeof session.projectId === 'object' ? session.projectId?.lokasi : '';
+                const supervisorName = typeof session.supervisorId === 'object'
+                  ? session.supervisorId?.fullName
+                  : 'Supervisor';
+                const totalWorkers = (session.workerIds?.length || 0) + (session.lateWorkerIds?.length || 0);
+                const isResumingThis = resumingSessionId === session._id;
 
-            {/* Create new session option */}
-            <p className="text-center text-[11px] text-emerald-700/70 mt-2 m-0">
-              atau buat sesi baru di bawah ini
-            </p>
-          </div>
+                return (
+                  <div
+                    key={session._id}
+                    className={`p-3.5 rounded-xl border transition-all ${
+                      isMine
+                        ? 'bg-bg-white border-emerald-300 shadow-sm ring-1 ring-emerald-200/50'
+                        : 'bg-bg-white/90 border-emerald-200/70 hover:border-emerald-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="text-sm font-bold text-text-primary m-0 truncate">
+                            {projectName}
+                          </h4>
+                          {isMine ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200 shrink-0">
+                              ✓ Sesi Anda
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-bg-secondary text-text-muted shrink-0">
+                              Oleh: {supervisorName}
+                            </span>
+                          )}
+                        </div>
+                        {projectLocation && (
+                          <p className="text-[11px] text-text-muted m-0 truncate mt-0.5">
+                            {projectLocation}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="flex items-center gap-3 text-xs text-text-muted mb-3 flex-wrap">
+                      <span className="flex items-center gap-1 font-semibold text-emerald-800">
+                        <Users size={12} className="text-emerald-600" />
+                        {totalWorkers} pekerja
+                      </span>
+                      <span className="w-1 h-1 rounded-full bg-border" />
+                      <span className="flex items-center gap-1">
+                        <Clock size={12} className="text-text-muted" />
+                        {formatWIBTime(new Date(session.createdAt || session.date))}
+                      </span>
+                      {session.notes && (
+                        <>
+                          <span className="w-1 h-1 rounded-full bg-border" />
+                          <span className="text-[11px] text-text-muted truncate max-w-[150px]" title={session.notes}>
+                            "{session.notes}"
+                          </span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Resume Button */}
+                    <button
+                      onClick={() => handleResumeSession(session)}
+                      disabled={resumingSessionId !== null}
+                      className={`w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold text-white transition-all ${
+                        isResumingThis
+                          ? 'bg-emerald-400 cursor-not-allowed'
+                          : 'bg-emerald-600 hover:bg-emerald-700 shadow-sm cursor-pointer'
+                      }`}
+                    >
+                      {isResumingThis ? (
+                        <>
+                          <Loader size={14} className="animate-spin" />
+                          <span>Memuat Sesi...</span>
+                        </>
+                      ) : (
+                        <>
+                          <PlayCircle size={14} />
+                          <span>Lanjutkan Sesi Ini</span>
+                          <ChevronRight size={14} className="ml-auto" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <p className="text-center text-[11px] text-emerald-800/70 mt-3 m-0">
+            atau buat sesi absensi baru di bawah ini ↓
+          </p>
         </div>
       )}
 
@@ -950,6 +1074,36 @@ export default function GroupAttendance() {
       {/* ══════════════ POST-SUBMIT: Results ══════════════ */}
       {result && (
         <>
+          {/* Active Session Management Header Bar */}
+          <div className="flex items-center justify-between gap-3 mb-4 p-3.5 rounded-xl bg-bg-secondary border border-border-light">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                <PlayCircle size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider m-0">
+                  Mengelola Sesi
+                </p>
+                <p className="text-xs font-bold text-text-primary m-0 truncate">
+                  {selectedProject?.nama || (typeof currentActiveSession?.projectId === 'object' ? currentActiveSession.projectId?.nama : 'Proyek')}
+                  {currentActiveSession?.supervisorId && (
+                    <span className="text-text-muted font-normal">
+                      {' '}• Oleh {typeof currentActiveSession.supervisorId === 'object' ? currentActiveSession.supervisorId.fullName : user?.fullName}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <button
+              id="back-to-sessions-btn"
+              onClick={handleBackToSessions}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-text-primary bg-bg-white hover:bg-border-light border border-border-light transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+              title="Kembali ke daftar sesi aktif"
+            >
+              <ChevronLeft size={14} />
+              <span>Daftar Sesi</span>
+            </button>
+          </div>
           {/* Result Success Card */}
           <Card className="text-center p-8 mb-4">
             <div className="w-[72px] h-[72px] bg-gradient-to-br from-emerald-600 to-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4 text-white shadow-[0_4px_20px_rgba(5,150,105,0.3)]">

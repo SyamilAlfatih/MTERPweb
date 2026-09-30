@@ -168,10 +168,11 @@ router.get(
   authorize(...SUPERVISOR_ROLES),
   async (req, res) => {
     try {
-      const { projectId, date, page = 1, limit = 10 } = req.query;
+      const { projectId, date, page = 1, limit = 10, supervisorId } = req.query;
 
       const query = {};
       if (projectId) query.projectId = projectId;
+      if (supervisorId) query.supervisorId = supervisorId;
       if (date) {
         const range = wibDayRange(date);
         if (range) {
@@ -179,12 +180,12 @@ router.get(
         }
       }
 
-      const pageNum = parseInt(page);
-      const limitNum = parseInt(limit);
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limitNum = Math.max(1, Math.min(parseInt(limit) || 10, 100));
 
       const [sessions, total] = await Promise.all([
         AttendanceSession.find(query)
-          .populate('supervisorId', 'fullName')
+          .populate('supervisorId', 'fullName role')
           .populate('projectId', 'nama lokasi')
           .sort({ createdAt: -1 })
           .skip((pageNum - 1) * limitNum)
@@ -218,7 +219,7 @@ router.get(
   async (req, res) => {
     try {
       const session = await AttendanceSession.findById(req.params.id)
-        .populate('supervisorId', 'fullName')
+        .populate('supervisorId', 'fullName role')
         .populate('projectId', 'nama lokasi')
         .populate('workerIds', 'fullName role position')
         .populate('lateWorkerIds.workerId', 'fullName role position')
