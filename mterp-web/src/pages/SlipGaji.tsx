@@ -67,8 +67,67 @@ interface Worker {
     _id: string;
     fullName: string;
     role: string;
+    position?: string;
+    phone?: string;
+    email?: string;
     paymentInfo?: { bankAccount: string; bankPlatform: string; accountName: string };
 }
+
+const PAYROLL_ALLOWED_ROLES = [
+    'owner', 'president_director', 'operational_director',
+    'director', 'supervisor', 'site_manager', 'admin_project',
+    'asset_admin'
+];
+
+const ROLE_BADGES: Record<string, { label: string; bg: string; text: string; border: string }> = {
+    worker: { label: 'Worker', bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-300' },
+    tukang: { label: 'Tukang', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+    helper: { label: 'Helper', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+    supervisor: { label: 'Supervisor', bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+    site_manager: { label: 'Site Manager', bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+    foreman: { label: 'Mandor (Foreman)', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200' },
+    asset_admin: { label: 'Asset Admin', bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+    admin_project: { label: 'Admin Project', bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
+    device_admin: { label: 'Device Admin', bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+    director: { label: 'Director', bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
+    president_director: { label: 'Pres. Director', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-300' },
+    operational_director: { label: 'Ops. Director', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-300' },
+    owner: { label: 'Owner', bg: 'bg-amber-100', text: 'text-amber-900', border: 'border-amber-400' },
+};
+
+const getRoleBadge = (roleStr: string = '') => {
+    return ROLE_BADGES[roleStr.toLowerCase()] || {
+        label: roleStr || 'Staff',
+        bg: 'bg-gray-100',
+        text: 'text-gray-700',
+        border: 'border-gray-200',
+    };
+};
+
+const isFieldRole = (r: string = '') => ['worker', 'tukang', 'helper'].includes(r.toLowerCase());
+const isSupervisorRole = (r: string = '') => ['foreman', 'supervisor', 'site_manager'].includes(r.toLowerCase());
+const isManagementRole = (r: string = '') => ['owner', 'president_director', 'operational_director', 'director', 'admin_project', 'asset_admin', 'device_admin'].includes(r.toLowerCase());
+
+const matchesSlipSearch = (s: SlipData, query: string, status: string = 'all') => {
+    if (status !== 'all') {
+        if (status === 'draft' && s.status !== 'draft') return false;
+        if (status === 'authorized' && s.status !== 'authorized') return false;
+        if (status === 'issued' && s.status !== 'issued') return false;
+    }
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+
+    const nameMatch = (s.workerId?.fullName || '').toLowerCase().includes(q);
+    const slipNoMatch = (s.slipNumber || '').toLowerCase().includes(q);
+    const roleMatch = (s.workerId?.role || '').toLowerCase().includes(q);
+    const posMatch = (s.workerId?.position || '').toLowerCase().includes(q);
+    const bankPlatformMatch = (s.workerPaymentInfo?.bankPlatform || s.workerId?.paymentInfo?.bankPlatform || '').toLowerCase().includes(q);
+    const bankAccountMatch = (s.workerPaymentInfo?.bankAccount || s.workerId?.paymentInfo?.bankAccount || '').toLowerCase().includes(q);
+    const accountNameMatch = (s.workerPaymentInfo?.accountName || s.workerId?.paymentInfo?.accountName || '').toLowerCase().includes(q);
+    const notesMatch = (s.notes || '').toLowerCase().includes(q);
+
+    return nameMatch || slipNoMatch || roleMatch || posMatch || bankPlatformMatch || bankAccountMatch || accountNameMatch || notesMatch;
+};
 
 interface SlipData {
     _id: string;
@@ -122,7 +181,7 @@ export default function SlipGaji() {
 
     // Access guard
     useEffect(() => {
-        if (!['owner', 'director', 'supervisor', 'asset_admin'].includes(role)) {
+        if (!PAYROLL_ALLOWED_ROLES.includes(role)) {
             navigate('/home');
         }
     }, [role, navigate]);
@@ -140,10 +199,16 @@ export default function SlipGaji() {
     const [filterStart, setFilterStart] = useState(toInputDate(weekRange.startDate));
     const [filterEnd, setFilterEnd] = useState(toInputDate(weekRange.endDate));
     const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'authorized' | 'issued'>('all');
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // Generate modal
+    // Generate modal & user selector state
     const [genModal, setGenModal] = useState(false);
     const [genWorker, setGenWorker] = useState('');
+    const [userSearchQuery, setUserSearchQuery] = useState('');
+    const [userRoleCategory, setUserRoleCategory] = useState<'all' | 'field' | 'supervisor' | 'management'>('all');
+    const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+    const userDropdownRef = useRef<HTMLDivElement>(null);
     const [genStart, setGenStart] = useState(toInputDate(weekRange.startDate));
     const [genEnd, setGenEnd] = useState(toInputDate(weekRange.endDate));
     const [genBonus, setGenBonus] = useState(0);
@@ -230,9 +295,38 @@ export default function SlipGaji() {
     useEffect(() => { fetchWorkers(); }, [fetchWorkers]);
 
     // Body scroll lock while any modal is open
+
+    // Body scroll lock while any modal is open
     useEffect(() => {
         document.body.style.overflow = (genModal || detailModal || authModal) ? 'hidden' : '';
         return () => { document.body.style.overflow = ''; };
+    }, [genModal, detailModal, authModal]);
+
+    // Close user picker dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) {
+                setIsUserDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Global keyboard shortcut '/' or 'Ctrl+K' to focus main search bar
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (
+                (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) &&
+                !['INPUT', 'TEXTAREA', 'SELECT'].includes((document.activeElement?.tagName || '')) &&
+                !genModal && !detailModal && !authModal
+            ) {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
     }, [genModal, detailModal, authModal]);
 
     // Escape key closes modals (priority: auth > detail > generate)
@@ -290,6 +384,17 @@ export default function SlipGaji() {
     };
 
     /* ---- actions ---- */
+    const openGenerateModal = () => {
+        setGenWorker('');
+        setUserSearchQuery('');
+        setUserRoleCategory('all');
+        setIsUserDropdownOpen(false);
+        setGenBonus(0);
+        setGenDeductions(0);
+        setGenNotes('');
+        setGenModal(true);
+    };
+
     const isGeneratingRef = useRef(false);
     const handleGenerate = async () => {
         if (!genWorker || isGeneratingRef.current) return;
@@ -306,6 +411,8 @@ export default function SlipGaji() {
             });
             setGenModal(false);
             setGenWorker('');
+            setUserSearchQuery('');
+            setIsUserDropdownOpen(false);
             setGenBonus(0);
             setGenDeductions(0);
             setGenNotes('');
@@ -375,12 +482,12 @@ export default function SlipGaji() {
     };
 
     const openDetail = (slip: SlipData) => { setSelectedSlip(slip); setDetailModal(true); };
-    const openAuth = (slipId: string) => { 
+    const openAuth = (slipId: string) => {
         setIsBatchAuth(false);
-        setAuthSlipId(slipId); 
-        setPassphrase(''); 
-        setPassphraseError(''); 
-        setAuthModal(true); 
+        setAuthSlipId(slipId);
+        setPassphrase('');
+        setPassphraseError('');
+        setAuthModal(true);
     };
     const openBatchAuth = () => {
         if (selectedSlipIds.length === 0) return;
@@ -390,16 +497,19 @@ export default function SlipGaji() {
         setAuthModal(true);
     };
     const canSign = (slip: SlipData) => {
-        if (role === 'director' && !slip.authorization.directorPassphrase) return true;
+        if (['director', 'president_director', 'operational_director'].includes(role) && !slip.authorization.directorPassphrase) return true;
         if (role === 'owner' && !slip.authorization.ownerPassphrase) return true;
         return false;
     };
 
     const handleExportPdf = async (slip: SlipData) => {
+        const roleLabel = slip.workerId?.position
+            ? `${slip.workerId.position} (${slip.workerId.role})`
+            : (slip.workerId?.role || '');
         await exportSlipToPdf({
             slipNumber: slip.slipNumber,
-            workerName: slip.workerId?.fullName || 'Worker',
-            workerRole: slip.workerId?.role || '',
+            workerName: slip.workerId?.fullName || 'Pegawai',
+            workerRole: roleLabel,
             periodStart: slip.period.startDate,
             periodEnd: slip.period.endDate,
             attendance: {
@@ -420,10 +530,41 @@ export default function SlipGaji() {
         });
     };
 
+    // User filtering for the generate modal picker
+    const filteredWorkers = useMemo(() => {
+        const q = userSearchQuery.trim().toLowerCase();
+        return workers.filter(w => {
+            if (userRoleCategory === 'field' && !isFieldRole(w.role)) return false;
+            if (userRoleCategory === 'supervisor' && !isSupervisorRole(w.role)) return false;
+            if (userRoleCategory === 'management' && !isManagementRole(w.role)) return false;
+
+            if (!q) return true;
+            const nameMatch = (w.fullName || '').toLowerCase().includes(q);
+            const roleMatch = (w.role || '').toLowerCase().includes(q);
+            const posMatch = (w.position || '').toLowerCase().includes(q);
+            const phoneMatch = (w.phone || '').toLowerCase().includes(q);
+            const emailMatch = (w.email || '').toLowerCase().includes(q);
+            const bankMatch = (w.paymentInfo?.bankAccount || '').toLowerCase().includes(q) ||
+                (w.paymentInfo?.bankPlatform || '').toLowerCase().includes(q) ||
+                (w.paymentInfo?.accountName || '').toLowerCase().includes(q);
+
+            return nameMatch || roleMatch || posMatch || phoneMatch || emailMatch || bankMatch;
+        });
+    }, [workers, userSearchQuery, userRoleCategory]);
+
+    const fieldWorkersCount = useMemo(() => workers.filter(w => isFieldRole(w.role)).length, [workers]);
+    const spvWorkersCount = useMemo(() => workers.filter(w => isSupervisorRole(w.role)).length, [workers]);
+    const mgmtWorkersCount = useMemo(() => workers.filter(w => isManagementRole(w.role)).length, [workers]);
+    const selectedWorkerObj = useMemo(() => workers.find(w => w._id === genWorker), [workers, genWorker]);
+
+    // Counts for status filters
+    const draftSlipsCount = useMemo(() => slips.filter(s => s.status === 'draft').length, [slips]);
+    const approvedSlipsCount = useMemo(() => slips.filter(s => s.status === 'authorized').length, [slips]);
+    const issuedSlipsCount = useMemo(() => slips.filter(s => s.status === 'issued').length, [slips]);
+
     const filteredSlips = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-        return slips.filter(s => !q || (s.workerId?.fullName || '').toLowerCase().includes(q));
-    }, [slips, searchQuery]);
+        return slips.filter(s => matchesSlipSearch(s, searchQuery, statusFilter));
+    }, [slips, searchQuery, statusFilter]);
 
     const { gridProps, getRowProps, getCellProps } = useDataGridKeyboard(
         filteredSlips.length,
@@ -488,77 +629,126 @@ export default function SlipGaji() {
                     </div>
                     <button className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0" onClick={() => shiftWeek(1)}>▶</button>
                 </div>
-                <button className="flex items-center gap-1.5 px-5 py-2.5 border-none rounded-md bg-gradient-to-br from-teal-600 to-teal-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(13,148,136,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_6px_18px_rgba(13,148,136,0.35)]" onClick={() => setGenModal(true)}>
+                <button className="flex items-center gap-1.5 px-5 py-2.5 border-none rounded-md bg-gradient-to-br from-teal-600 to-teal-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(13,148,136,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_6px_18px_rgba(13,148,136,0.35)]" onClick={openGenerateModal}>
                     <Plus size={18} />
                     <span>{t('slipGaji.actions.generate')}</span>
                 </button>
             </div>
 
-            {/* Search Bar + View Toggle */}
-            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-                <div className="relative flex-1 min-w-[240px]">
-                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        placeholder="Cari nama pekerja..."
-                        className="w-full pl-9 pr-9 py-2 border border-border rounded-lg bg-bg-white text-sm text-text-primary outline-none transition-all focus:border-primary focus:shadow-[0_0_0_3px_rgba(30,58,138,0.1)] placeholder:text-text-muted"
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => setSearchQuery('')}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-border-light text-text-muted hover:bg-border hover:text-text-primary transition-colors"
-                            title="Hapus pencarian"
-                        >
-                            <X size={12} />
-                        </button>
-                    )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                    {/* View mode toggle */}
-                    <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-lg border border-border-light">
-                        <button
-                            onClick={() => { setViewMode('table'); localStorage.setItem('payroll_view_mode', 'table'); }}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                                viewMode === 'table'
-                                    ? 'bg-bg-white text-primary shadow-sm'
-                                    : 'text-text-muted hover:text-text-primary'
-                            }`}
-                        >
-                            <List size={14} />
-                            <span>Tabel Verifikasi</span>
-                        </button>
-                        <button
-                            onClick={() => { setViewMode('board'); localStorage.setItem('payroll_view_mode', 'board'); }}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                                viewMode === 'board'
-                                    ? 'bg-bg-white text-primary shadow-sm'
-                                    : 'text-text-muted hover:text-text-primary'
-                            }`}
-                        >
-                            <LayoutGrid size={14} />
-                            <span>Papan Kanban</span>
-                        </button>
+            {/* Search Bar + Status Filter Tabs + View Toggle */}
+            <div className="flex flex-col gap-3 mb-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    {/* Enhanced Search Input */}
+                    <div className="relative flex-1 min-w-[280px]">
+                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            placeholder="Cari nama karyawan, no. slip, peran, jabatan, bank..."
+                            className="w-full pl-9 pr-16 py-2.5 border border-border rounded-lg bg-bg-white text-sm text-text-primary outline-none transition-all focus:border-primary focus:shadow-[0_0_0_3px_rgba(30,58,138,0.1)] placeholder:text-text-muted"
+                        />
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                            {searchQuery ? (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="w-5 h-5 flex items-center justify-center rounded-full bg-border-light text-text-muted hover:bg-border hover:text-text-primary transition-colors cursor-pointer"
+                                    title="Hapus pencarian (Esc)"
+                                >
+                                    <X size={12} />
+                                </button>
+                            ) : (
+                                <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-medium text-text-muted bg-bg-secondary border border-border-light rounded pointer-events-none">
+                                    /
+                                </kbd>
+                            )}
+                        </div>
                     </div>
 
-                    {/* Density toggle for table view */}
-                    {viewMode === 'table' && (
-                        <div className="flex items-center gap-1">
-                            {(['compact', 'normal', 'comfortable'] as const).map((density) => (
-                                <button
-                                    key={density}
-                                    onClick={() => setTableDensity(density)}
-                                    className={`px-2 py-1 text-xs font-medium rounded border transition-all ${
-                                        tableDensity === density
-                                            ? 'border-primary bg-primary/10 text-primary font-semibold'
-                                            : 'border-border-light bg-bg-white text-text-secondary hover:bg-bg-secondary'
+                    <div className="flex items-center gap-2">
+                        {/* View mode toggle */}
+                        <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-lg border border-border-light">
+                            <button
+                                onClick={() => { setViewMode('table'); localStorage.setItem('payroll_view_mode', 'table'); }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${viewMode === 'table'
+                                        ? 'bg-bg-white text-primary shadow-sm'
+                                        : 'text-text-muted hover:text-text-primary'
                                     }`}
-                                >
-                                    {density === 'compact' ? 'Rapat' : density === 'normal' ? 'Standar' : 'Lapang'}
-                                </button>
-                            ))}
+                            >
+                                <List size={14} />
+                                <span>Tabel Verifikasi</span>
+                            </button>
+                            <button
+                                onClick={() => { setViewMode('board'); localStorage.setItem('payroll_view_mode', 'board'); }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${viewMode === 'board'
+                                        ? 'bg-bg-white text-primary shadow-sm'
+                                        : 'text-text-muted hover:text-text-primary'
+                                    }`}
+                            >
+                                <LayoutGrid size={14} />
+                                <span>Papan Kanban</span>
+                            </button>
+                        </div>
+
+                        {/* Density toggle for table view */}
+                        {viewMode === 'table' && (
+                            <div className="flex items-center gap-1">
+                                {(['compact', 'normal', 'comfortable'] as const).map((density) => (
+                                    <button
+                                        key={density}
+                                        onClick={() => setTableDensity(density)}
+                                        className={`px-2 py-1 text-xs font-medium rounded border transition-all cursor-pointer ${tableDensity === density
+                                                ? 'border-primary bg-primary/10 text-primary font-semibold'
+                                                : 'border-border-light bg-bg-white text-text-secondary hover:bg-bg-secondary'
+                                            }`}
+                                    >
+                                        {density === 'compact' ? 'Rapat' : density === 'normal' ? 'Standar' : 'Lapang'}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Status Filter Chips + Active Filter Summary Bar */}
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {[
+                            { id: 'all', label: 'Semua Status', count: slips.length },
+                            { id: 'draft', label: 'Draft', count: draftSlipsCount },
+                            { id: 'authorized', label: 'Disetujui', count: approvedSlipsCount },
+                            { id: 'issued', label: 'Terbit', count: issuedSlipsCount },
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setStatusFilter(tab.id as any)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${statusFilter === tab.id
+                                        ? 'bg-primary text-white border-primary shadow-xs'
+                                        : 'bg-bg-white text-text-secondary border-border hover:bg-bg-secondary'
+                                    }`}
+                            >
+                                <span>{tab.label}</span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${statusFilter === tab.id ? 'bg-white/20 text-white' : 'bg-bg-secondary text-text-muted'
+                                    }`}>
+                                    {tab.count}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {(searchQuery.trim() || statusFilter !== 'all') && (
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-text-muted">
+                                Ditemukan <strong className="text-primary font-mono">{filteredSlips.length}</strong> dari {slips.length} slip
+                            </span>
+                            <button
+                                onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}
+                                className="px-2 py-0.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-md font-medium transition-colors cursor-pointer"
+                            >
+                                Reset Filter
+                            </button>
                         </div>
                     )}
                 </div>
@@ -576,31 +766,60 @@ export default function SlipGaji() {
                 <Card className="flex flex-col items-center gap-4 !p-10 text-center text-text-muted">
                     <FileText size={48} color="var(--text-muted)" />
                     <p>{t('slipGaji.empty.title')}</p>
-                    <button className="flex items-center gap-1.5 px-5 py-2.5 border-none rounded-md bg-gradient-to-br from-teal-600 to-teal-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(13,148,136,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_6px_18px_rgba(13,148,136,0.35)]" onClick={() => setGenModal(true)}>
+                    <button className="flex items-center gap-1.5 px-5 py-2.5 border-none rounded-md bg-gradient-to-br from-teal-600 to-teal-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(13,148,136,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_6px_18px_rgba(13,148,136,0.35)]" onClick={openGenerateModal}>
                         <Plus size={18} />
                         <span>{t('slipGaji.empty.btnGenerate')}</span>
                     </button>
                 </Card>
+            ) : filteredSlips.length === 0 ? (
+                <Card className="flex flex-col items-center gap-3 !p-10 text-center text-text-muted">
+                    <Search size={36} className="text-text-muted/60" />
+                    <div>
+                        <p className="font-semibold text-text-primary text-sm m-0">Tidak ada slip gaji yang cocok</p>
+                        <p className="text-xs text-text-muted mt-1 m-0">
+                            Tidak ditemukan slip gaji untuk pencarian &ldquo;{searchQuery}&rdquo;
+                            {statusFilter !== 'all' ? ` pada status "${statusFilter}"` : ''}
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}
+                        className="mt-2 px-3 py-1.5 text-xs font-semibold bg-primary/10 text-primary border border-primary/20 rounded-md hover:bg-primary/20 transition-colors cursor-pointer"
+                    >
+                        Bersihkan Pencarian & Filter
+                    </button>
+                </Card>
             ) : (() => {
-                const q = searchQuery.trim().toLowerCase();
-                const matchesSearch = (s: SlipData) =>
-                    !q || (s.workerId?.fullName || '').toLowerCase().includes(q);
-
-                const draftSlips = slips.filter(s => s.status === 'draft' && matchesSearch(s));
-                const approvedSlips = slips.filter(s => (s.status === 'authorized' || s.status === 'issued') && matchesSearch(s));
+                const draftSlips = filteredSlips.filter(s => s.status === 'draft');
+                const approvedSlips = filteredSlips.filter(s => s.status === 'authorized' || s.status === 'issued');
 
                 const renderSlipCard = (slip: SlipData) => {
                     const badge = STATUS_BADGE[slip.status] || STATUS_BADGE.draft;
+                    const rBadge = getRoleBadge(slip.workerId?.role);
                     return (
                         <Card key={slip._id} className="!p-4 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md" onClick={() => openDetail(slip)}>
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-3">
                                     <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ background: badge.bg, color: badge.color }}>
-                                        {slip.workerId?.fullName?.[0]?.toUpperCase() || 'W'}
+                                        {slip.workerId?.fullName?.[0]?.toUpperCase() || 'U'}
                                     </div>
-                                    <div>
-                                        <span className="block text-sm font-semibold text-text-primary">{slip.workerId?.fullName || t('slipGaji.card.worker')}</span>
-                                        <span className="block text-[10px] text-text-muted font-mono">{slip.slipNumber}</span>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="block text-sm font-semibold text-text-primary truncate">{slip.workerId?.fullName || t('slipGaji.card.worker')}</span>
+                                            {slip.workerId?.role && (
+                                                <span className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border ${rBadge.bg} ${rBadge.text} ${rBadge.border}`}>
+                                                    {rBadge.label}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-[10px] text-text-muted font-mono flex items-center gap-1.5 mt-0.5">
+                                            <span>{slip.slipNumber}</span>
+                                            {slip.workerId?.position && (
+                                                <>
+                                                    <span>•</span>
+                                                    <span className="text-text-secondary truncate max-w-[150px]">{slip.workerId.position}</span>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                                 <span className="text-[9px] font-bold px-2.5 py-[3px] rounded-full uppercase tracking-[0.3px] whitespace-nowrap" style={{ color: badge.color, background: badge.bg }}>
@@ -662,7 +881,7 @@ export default function SlipGaji() {
                     );
                 };
 
-                const matchingSlips = slips.filter(matchesSearch);
+                const matchingSlips = filteredSlips;
                 const signableSlips = matchingSlips.filter(canSign);
                 const allSignableSelected = signableSlips.length > 0 && signableSlips.every(s => selectedSlipIds.includes(s._id));
 
@@ -702,8 +921,8 @@ export default function SlipGaji() {
                                                     </button>
                                                 </th>
                                                 <th role="columnheader" aria-colindex={2} className={`${DENSITY_CONFIG[tableDensity].th} sticky left-10 z-20 bg-slate-50 w-10 text-center border-r border-border-light`}>#</th>
-                                                <th role="columnheader" aria-colindex={3} className={`${DENSITY_CONFIG[tableDensity].th} sticky left-20 z-20 bg-slate-50 min-w-[200px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
-                                                    Pekerja & No. Slip
+                                                <th role="columnheader" aria-colindex={3} className={`${DENSITY_CONFIG[tableDensity].th} sticky left-20 z-20 bg-slate-50 min-w-[220px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
+                                                    Karyawan / Pekerja & No. Slip
                                                 </th>
                                                 <th role="columnheader" aria-colindex={4} className={`${DENSITY_CONFIG[tableDensity].th} min-w-[110px]`}>Status</th>
                                                 <th role="columnheader" aria-colindex={5} className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px]`}>Kehadiran</th>
@@ -718,18 +937,19 @@ export default function SlipGaji() {
                                         <tbody className="divide-y divide-border-light">
                                             {matchingSlips.map((slip, index) => {
                                                 const badge = STATUS_BADGE[slip.status] || STATUS_BADGE.draft;
+                                                const rBadge = getRoleBadge(slip.workerId?.role);
                                                 const isSelected = selectedSlipIds.includes(slip._id);
                                                 const eligible = canSign(slip);
 
                                                 return (
-                                                    <tr 
+                                                    <tr
                                                         {...getRowProps(index)}
-                                                        key={slip._id} 
+                                                        key={slip._id}
                                                         className={`hover:bg-slate-50/80 transition-colors group cursor-pointer ${isSelected ? 'bg-primary/5' : ''}`}
                                                         onClick={() => openDetail(slip)}
                                                     >
                                                         {/* Row Checkbox */}
-                                                        <td 
+                                                        <td
                                                             {...getCellProps(index, 0)}
                                                             className={`${DENSITY_CONFIG[tableDensity].td} sticky left-0 z-10 bg-white group-hover:bg-slate-50 text-center border-r border-border-light focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset ${isSelected ? '!bg-primary/5' : ''}`}
                                                             onClick={(e) => { e.stopPropagation(); toggleSelectOne(slip._id); }}
@@ -759,11 +979,26 @@ export default function SlipGaji() {
                                                         <td {...getCellProps(index, 2)} className={`${DENSITY_CONFIG[tableDensity].td} sticky left-20 z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset ${isSelected ? '!bg-primary/5' : ''}`}>
                                                             <div className="flex items-center gap-2.5">
                                                                 <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0" style={{ background: badge.bg, color: badge.color }}>
-                                                                    {slip.workerId?.fullName?.[0]?.toUpperCase() || 'W'}
+                                                                    {slip.workerId?.fullName?.[0]?.toUpperCase() || 'U'}
                                                                 </div>
                                                                 <div className="min-w-0">
-                                                                    <div className="font-semibold text-text-primary truncate">{slip.workerId?.fullName || t('slipGaji.card.worker')}</div>
-                                                                    <div className="text-[10px] text-text-muted font-mono">{slip.slipNumber}</div>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="font-semibold text-text-primary truncate">{slip.workerId?.fullName || t('slipGaji.card.worker')}</span>
+                                                                        {slip.workerId?.role && (
+                                                                            <span className={`text-[8px] font-semibold px-1 py-0.2 rounded border ${rBadge.bg} ${rBadge.text} ${rBadge.border}`}>
+                                                                                {rBadge.label}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-text-muted font-mono flex items-center gap-1.5">
+                                                                        <span>{slip.slipNumber}</span>
+                                                                        {slip.workerId?.position && (
+                                                                            <>
+                                                                                <span>•</span>
+                                                                                <span className="text-text-secondary truncate max-w-[130px]">{slip.workerId.position}</span>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -818,7 +1053,7 @@ export default function SlipGaji() {
                                                         </td>
 
                                                         {/* Sticky Aksi */}
-                                                        <td 
+                                                        <td
                                                             {...getCellProps(index, 10)}
                                                             className={`${DENSITY_CONFIG[tableDensity].td} sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-inset ${isSelected ? '!bg-primary/5' : ''}`}
                                                             onClick={(e) => e.stopPropagation()}
@@ -946,29 +1181,176 @@ export default function SlipGaji() {
             {/* ===== Generate Modal ===== */}
             {genModal && (
                 <div className="modal-overlay" onClick={() => setGenModal(false)}>
-                    <div ref={genModalRef} role="dialog" aria-modal="true" aria-labelledby="modal-generate-title" className="bg-bg-white rounded-xl w-[90%] max-w-[520px] max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div ref={genModalRef} role="dialog" aria-modal="true" aria-labelledby="modal-generate-title" className="bg-bg-white rounded-xl w-[90%] max-w-[540px] max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-3 px-5 pt-5 pb-0">
                             <div className="w-[42px] h-[42px] rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #6366F1, #818CF8)' }}>
                                 <Receipt size={20} color="white" />
                             </div>
                             <div>
                                 <h3 id="modal-generate-title" className="text-lg font-bold text-text-primary m-0">{t('slipGaji.modals.generate.title')}</h3>
-                                <p className="text-xs text-text-muted m-0">{t('slipGaji.modals.generate.desc')}</p>
+                                <p className="text-xs text-text-muted m-0">Pilih karyawan/pekerja untuk menghitung upah, lembur & kasbon</p>
                             </div>
                             <button className="ml-auto w-8 h-8 border-none bg-bg-secondary rounded-full cursor-pointer flex items-center justify-center text-text-muted transition-colors hover:bg-border" onClick={() => setGenModal(false)}><X size={18} /></button>
                         </div>
 
                         <div className="p-5">
-                            <div className="mb-4 flex-1">
-                                <label className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-[0.3px]"><UserCheck size={14} /> {t('slipGaji.modals.generate.worker')}</label>
-                                <div className="w-full relative flex items-center">
-                                    <Search size={14} className="absolute left-2.5 text-text-muted pointer-events-none z-10" />
-                                    <select className="w-full py-2 pr-7 pl-8 border border-border rounded-md text-sm font-medium text-text-primary bg-bg-white appearance-none cursor-pointer outline-none transition-colors focus:border-primary" value={genWorker} onChange={(e) => setGenWorker(e.target.value)}>
-                                        <option value="">{t('slipGaji.modals.generate.workerPlaceholder')}</option>
-                                        {workers.map(w => <option key={w._id} value={w._id}>{w.fullName}</option>)}
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-2.5 text-text-muted pointer-events-none" />
-                                </div>
+                            {/* ── Employee Searchable Combobox Selector ── */}
+                            <div className="mb-4" ref={userDropdownRef}>
+                                <label className="flex items-center justify-between text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-[0.3px]">
+                                    <span className="flex items-center gap-1.5"><UserCheck size={14} /> Karyawan / Pegawai / Pekerja</span>
+                                    <span className="text-[11px] font-normal text-text-muted lowercase">({workers.length} terdaftar)</span>
+                                </label>
+
+                                {selectedWorkerObj && !isUserDropdownOpen ? (
+                                    /* Selected Employee Card */
+                                    <div className="p-3 bg-gradient-to-r from-indigo-50/80 to-blue-50/60 border border-indigo-200/80 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0 shadow-sm"
+                                                style={{ background: 'linear-gradient(135deg, #4F46E5, #6366F1)' }}>
+                                                {selectedWorkerObj.fullName?.[0]?.toUpperCase() || 'U'}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="font-bold text-sm text-text-primary truncate">{selectedWorkerObj.fullName}</span>
+                                                    {(() => {
+                                                        const badge = getRoleBadge(selectedWorkerObj.role);
+                                                        return (
+                                                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
+                                                                {badge.label}
+                                                            </span>
+                                                        );
+                                                    })()}
+                                                </div>
+                                                <div className="text-xs text-text-secondary truncate mt-0.5">
+                                                    {selectedWorkerObj.position ? selectedWorkerObj.position : (selectedWorkerObj.phone || selectedWorkerObj.email || 'Tanpa spesifikasi jabatan')}
+                                                </div>
+                                                {selectedWorkerObj.paymentInfo?.bankAccount && (
+                                                    <div className="text-[11px] text-text-muted mt-0.5 flex items-center gap-1 font-mono">
+                                                        <CreditCard size={11} className="text-indigo-500" />
+                                                        <span>{selectedWorkerObj.paymentInfo.bankPlatform || 'Bank'} {selectedWorkerObj.paymentInfo.bankAccount}</span>
+                                                        {selectedWorkerObj.paymentInfo.accountName && <span className="truncate">({selectedWorkerObj.paymentInfo.accountName})</span>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsUserDropdownOpen(true)}
+                                            className="shrink-0 text-xs font-semibold px-3 py-1.5 bg-white border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-50 transition-colors shadow-xs cursor-pointer"
+                                        >
+                                            Ganti
+                                        </button>
+                                    </div>
+                                ) : (
+                                    /* Search Combobox Input & Dropdown */
+                                    <div className="relative">
+                                        <div className="relative flex items-center">
+                                            <Search size={15} className="absolute left-3 text-text-muted pointer-events-none" />
+                                            <input
+                                                type="text"
+                                                value={userSearchQuery}
+                                                onChange={(e) => {
+                                                    setUserSearchQuery(e.target.value);
+                                                    setIsUserDropdownOpen(true);
+                                                }}
+                                                onFocus={() => setIsUserDropdownOpen(true)}
+                                                placeholder="Ketik nama, peran (Tukang, SPV, Helper), posisi..."
+                                                className="w-full pl-9 pr-8 py-2.5 border border-border rounded-lg text-sm text-text-primary bg-bg-white outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-text-muted"
+                                                autoFocus={isUserDropdownOpen && !selectedWorkerObj}
+                                            />
+                                            {userSearchQuery && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setUserSearchQuery('')}
+                                                    className="absolute right-2.5 text-text-muted hover:text-text-primary p-0.5 cursor-pointer"
+                                                    title="Hapus"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Category Filter Pills inside picker */}
+                                        <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1 scrollbar-none text-[11px]">
+                                            {[
+                                                { id: 'all', label: `Semua (${workers.length})` },
+                                                { id: 'field', label: `Lapangan & Tukang (${fieldWorkersCount})` },
+                                                { id: 'supervisor', label: `Supervisi & Mandor (${spvWorkersCount})` },
+                                                { id: 'management', label: `Manajemen & Admin (${mgmtWorkersCount})` },
+                                            ].map(cat => (
+                                                <button
+                                                    key={cat.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setUserRoleCategory(cat.id as any);
+                                                        setIsUserDropdownOpen(true);
+                                                    }}
+                                                    className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition-all cursor-pointer ${userRoleCategory === cat.id
+                                                            ? 'bg-primary text-white shadow-xs'
+                                                            : 'bg-bg-secondary text-text-secondary hover:bg-border-light'
+                                                        }`}
+                                                >
+                                                    {cat.label}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {/* Dropdown User List */}
+                                        {isUserDropdownOpen && (
+                                            <div className="mt-1.5 bg-bg-white border border-border rounded-xl shadow-xl max-h-[240px] overflow-y-auto divide-y divide-border-light animate-in fade-in zoom-in-95 duration-150">
+                                                {filteredWorkers.length === 0 ? (
+                                                    <div className="py-6 px-4 text-center text-xs text-text-muted">
+                                                        <UserCheck size={24} className="mx-auto text-text-muted/60 mb-1.5" />
+                                                        <p className="font-semibold text-text-secondary m-0">Tidak ada pengguna ditemukan</p>
+                                                        <p className="m-0 mt-0.5 text-[11px]">Coba cari dengan kata kunci lain atau pilih tab &lsquo;Semua&rsquo;</p>
+                                                    </div>
+                                                ) : (
+                                                    filteredWorkers.map(w => {
+                                                        const isSelected = w._id === genWorker;
+                                                        const badge = getRoleBadge(w.role);
+                                                        return (
+                                                            <div
+                                                                key={w._id}
+                                                                onClick={() => {
+                                                                    setGenWorker(w._id);
+                                                                    setIsUserDropdownOpen(false);
+                                                                    setUserSearchQuery('');
+                                                                }}
+                                                                className={`p-2.5 flex items-center justify-between gap-2.5 transition-colors cursor-pointer ${isSelected ? 'bg-primary/5' : 'hover:bg-bg-secondary'
+                                                                    }`}
+                                                            >
+                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${badge.bg} ${badge.text} border ${badge.border}`}>
+                                                                        {w.fullName?.[0]?.toUpperCase() || 'U'}
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-xs font-bold text-text-primary truncate">{w.fullName}</span>
+                                                                            <span className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border ${badge.bg} ${badge.text} ${badge.border}`}>
+                                                                                {badge.label}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="text-[11px] text-text-muted truncate mt-0.5">
+                                                                            {w.position ? w.position : (w.phone || w.email || 'Tanpa spesifikasi jabatan')}
+                                                                        </div>
+                                                                        {w.paymentInfo?.bankAccount && (
+                                                                            <div className="text-[10px] text-text-secondary font-mono mt-0.5">
+                                                                                {w.paymentInfo.bankPlatform || 'Bank'}: {w.paymentInfo.bankAccount}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                {isSelected && (
+                                                                    <CheckCircle2 size={16} className="text-primary shrink-0" />
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex gap-3">
@@ -988,14 +1370,14 @@ export default function SlipGaji() {
                                     {/* Panel header */}
                                     <div className="flex items-center gap-2 px-3.5 py-2.5 bg-primary/5 border-b border-border-light">
                                         <UserCheck size={14} className="text-primary" />
-                                        <span className="text-xs font-bold uppercase tracking-[0.3px] text-primary">Pratinjau Data Pekerja</span>
+                                        <span className="text-xs font-bold uppercase tracking-[0.3px] text-primary">Pratinjau Data Pegawai / Pekerja</span>
                                         {previewLoading && <Loader2 size={12} className="animate-spin text-text-muted ml-auto" />}
                                     </div>
 
                                     {/* Skeleton while loading */}
                                     {previewLoading && !previewData && (
                                         <div className="p-3 flex flex-col gap-2">
-                                            {[1,2,3].map(i => (
+                                            {[1, 2, 3].map(i => (
                                                 <div key={i} className="h-4 rounded bg-border-light animate-pulse" style={{ width: `${60 + i * 10}%` }} />
                                             ))}
                                         </div>
@@ -1143,17 +1525,29 @@ export default function SlipGaji() {
                         </div>
 
                         <div className="p-5 flex flex-col gap-4">
-                            {/* Worker Info */}
+                            {/* Worker / Employee Info */}
                             <div>
                                 <div className="flex items-center gap-3">
-                                    <div className="w-[42px] h-[42px] rounded-full bg-gradient-to-br from-indigo-500 to-indigo-400 text-white flex items-center justify-center font-bold text-base shrink-0">
-                                        {selectedSlip.workerId?.fullName?.[0]?.toUpperCase() || 'W'}
+                                    <div className="w-[42px] h-[42px] rounded-full bg-gradient-to-br from-indigo-500 to-indigo-400 text-white flex items-center justify-center font-bold text-base shrink-0 shadow-xs">
+                                        {selectedSlip.workerId?.fullName?.[0]?.toUpperCase() || 'U'}
                                     </div>
-                                    <div>
-                                        <span className="block font-bold text-base text-text-primary">{selectedSlip.workerId?.fullName}</span>
-                                        <span className="block text-xs text-text-muted capitalize">{selectedSlip.workerId?.role}</span>
+                                    <div className="min-w-0 flex-1">
+                                        <span className="block font-bold text-base text-text-primary truncate">{selectedSlip.workerId?.fullName}</span>
+                                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                            {(() => {
+                                                const rBadge = getRoleBadge(selectedSlip.workerId?.role);
+                                                return (
+                                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rBadge.bg} ${rBadge.text} ${rBadge.border}`}>
+                                                        {rBadge.label}
+                                                    </span>
+                                                );
+                                            })()}
+                                            {selectedSlip.workerId?.position && (
+                                                <span className="text-xs text-text-secondary truncate">{selectedSlip.workerId.position}</span>
+                                            )}
+                                        </div>
                                     </div>
-                                    <span className="text-[9px] font-bold px-2.5 py-[3px] rounded-full uppercase tracking-[0.3px] whitespace-nowrap" style={{
+                                    <span className="text-[9px] font-bold px-2.5 py-[3px] rounded-full uppercase tracking-[0.3px] whitespace-nowrap shrink-0" style={{
                                         color: STATUS_BADGE[selectedSlip.status]?.color,
                                         background: STATUS_BADGE[selectedSlip.status]?.bg,
                                     }}>

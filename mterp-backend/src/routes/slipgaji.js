@@ -65,8 +65,14 @@ const getCurrentWeekRange = () => {
     return { startDate: monday, endDate: saturday };
 };
 
+const PAYROLL_ADMIN_ROLES = [
+    'owner', 'president_director', 'operational_director',
+    'director', 'supervisor', 'site_manager', 'admin_project',
+    'asset_admin'
+];
+
 // GET /api/slipgaji — List all slips (admin)
-router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.get('/', auth, authorize(...PAYROLL_ADMIN_ROLES), async (req, res) => {
     try {
         const { workerId, startDate, endDate, status } = req.query;
         const query = {};
@@ -82,7 +88,7 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
         if (status) query.status = status;
 
         const slips = await SlipGaji.find(query)
-            .populate('workerId', 'fullName role paymentInfo')
+            .populate('workerId', 'fullName role position paymentInfo email phone')
             .populate('createdBy', 'fullName')
             .sort({ createdAt: -1 });
 
@@ -93,27 +99,32 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
     }
 });
 
-// GET /api/slipgaji/workers — Get workers list for slip generation
-router.get('/workers', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+// GET /api/slipgaji/workers & /api/slipgaji/users — Get users list for slip generation (all verified users)
+const getUsersForSlip = async (req, res) => {
     try {
-        const workers = await User.find({ role: 'worker', isVerified: true })
-            .select('fullName role paymentInfo')
+        const filter = { isVerified: true };
+        if (req.query.role) filter.role = req.query.role;
+        const users = await User.find(filter)
+            .select('fullName role position paymentInfo email phone')
             .sort({ fullName: 1 });
-        res.json(workers);
+        res.json(users);
     } catch (error) {
-        console.error('Get workers error:', error);
+        console.error('Get users for slip error:', error);
         res.status(500).json({ msg: 'Server error' });
     }
-});
+};
 
-// GET /api/slipgaji/my — Get current user's own slips (worker-facing)
+router.get('/workers', auth, authorize(...PAYROLL_ADMIN_ROLES), getUsersForSlip);
+router.get('/users', auth, authorize(...PAYROLL_ADMIN_ROLES), getUsersForSlip);
+
+// GET /api/slipgaji/my — Get current user's own slips (worker & staff facing)
 router.get('/my', auth, async (req, res) => {
     try {
         const slips = await SlipGaji.find({
             workerId: req.user._id,
             status: { $in: ['draft', 'authorized', 'issued'] },
         })
-            .populate('workerId', 'fullName role paymentInfo')
+            .populate('workerId', 'fullName role position paymentInfo email phone')
             .populate('createdBy', 'fullName')
             .sort({ createdAt: -1 });
 
@@ -134,7 +145,7 @@ router.get('/week', auth, (req, res) => {
 });
 
 // GET /api/slipgaji/preview — Preview slip data without saving (same logic as generate)
-router.get('/preview', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.get('/preview', auth, authorize(...PAYROLL_ADMIN_ROLES), async (req, res) => {
     try {
         const { workerId, startDate, endDate } = req.query;
         if (!workerId || !startDate || !endDate) {
@@ -211,10 +222,10 @@ router.get('/preview', auth, authorize('owner', 'director', 'supervisor', 'asset
 });
 
 // GET /api/slipgaji/:id — Get single slip
-router.get('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.get('/:id', auth, authorize(...PAYROLL_ADMIN_ROLES), async (req, res) => {
     try {
         const slip = await SlipGaji.findById(req.params.id)
-            .populate('workerId', 'fullName role paymentInfo email phone')
+            .populate('workerId', 'fullName role position paymentInfo email phone')
             .populate('createdBy', 'fullName');
 
         if (!slip) return res.status(404).json({ msg: 'Slip not found' });
@@ -226,12 +237,12 @@ router.get('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_adm
 });
 
 // POST /api/slipgaji/generate — Generate a draft slip from attendance data
-router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.post('/generate', auth, authorize(...PAYROLL_ADMIN_ROLES), async (req, res) => {
     try {
         const { workerId, startDate, endDate, bonus, deductions, notes } = req.body;
 
         if (!workerId || !startDate || !endDate) {
-            return res.status(400).json({ msg: 'Worker, start date, and end date are required' });
+            return res.status(400).json({ msg: 'Worker/User, start date, and end date are required' });
         }
 
         // Use WIB dates mapped to UTC consistently to avoid timezone issues
@@ -256,14 +267,14 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
         if (existing) {
             // Return the existing slip instead of an error — idempotent behaviour
             const populated = await SlipGaji.findById(existing._id)
-                .populate('workerId', 'fullName role paymentInfo email phone')
+                .populate('workerId', 'fullName role position paymentInfo email phone')
                 .populate('createdBy', 'fullName');
             return res.status(200).json(populated);
         }
 
         // Get worker info
         const worker = await User.findById(workerId);
-        if (!worker) return res.status(404).json({ msg: 'Worker not found' });
+        if (!worker) return res.status(404).json({ msg: 'User not found' });
 
         // Get attendance records for the date range
         const attendanceRecords = await Attendance.find({
@@ -344,7 +355,7 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
         await slip.save();
 
         const populated = await SlipGaji.findById(slip._id)
-            .populate('workerId', 'fullName role paymentInfo email phone')
+            .populate('workerId', 'fullName role position paymentInfo email phone')
             .populate('createdBy', 'fullName');
 
         res.status(201).json(populated);
@@ -360,7 +371,7 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
                 const periodStart = startR.start;
                 const periodEnd = endR.end;
                 const existing = await SlipGaji.findOne({ workerId, 'period.startDate': periodStart, 'period.endDate': periodEnd })
-                    .populate('workerId', 'fullName role paymentInfo email phone')
+                    .populate('workerId', 'fullName role position paymentInfo email phone')
                     .populate('createdBy', 'fullName');
                 if (existing) return res.status(200).json(existing);
             } catch (_) { /* fall through */ }
@@ -371,7 +382,7 @@ router.post('/generate', auth, authorize('owner', 'director', 'supervisor', 'ass
 });
 
 // POST /api/slipgaji/:id/authorize — Authorize with passphrase
-router.post('/:id/authorize', auth, authorize('owner', 'director'), async (req, res) => {
+router.post('/:id/authorize', auth, authorize('owner', 'director', 'president_director', 'operational_director'), async (req, res) => {
     try {
         const { passphrase } = req.body;
         if (!passphrase || passphrase.length < 4) {
@@ -395,7 +406,7 @@ router.post('/:id/authorize', auth, authorize('owner', 'director'), async (req, 
         const hashedPassphrase = await bcrypt.hash(passphrase, 10);
         const role = req.user.role;
 
-        if (role === 'director') {
+        if (['director', 'president_director', 'operational_director'].includes(role)) {
             if (slip.authorization.directorPassphrase) {
                 return res.status(400).json({ msg: 'Director has already signed this slip' });
             }
@@ -423,7 +434,7 @@ router.post('/:id/authorize', auth, authorize('owner', 'director'), async (req, 
         await slip.save();
 
         const populated = await SlipGaji.findById(slip._id)
-            .populate('workerId', 'fullName role paymentInfo email phone')
+            .populate('workerId', 'fullName role position paymentInfo email phone')
             .populate('createdBy', 'fullName');
 
         res.json(populated);
@@ -434,7 +445,7 @@ router.post('/:id/authorize', auth, authorize('owner', 'director'), async (req, 
 });
 
 // DELETE /api/slipgaji/:id — Delete a draft slip
-router.delete('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.delete('/:id', auth, authorize(...PAYROLL_ADMIN_ROLES), async (req, res) => {
     try {
         const slip = await SlipGaji.findById(req.params.id);
         if (!slip) return res.status(404).json({ msg: 'Slip not found' });
