@@ -124,7 +124,10 @@ router.post(
             { _id: existing._id },
             {
               $set: {
-                checkIn: { time: nowWIB() },
+                checkIn: {
+                  time: existing.checkIn?.time || nowWIB(),
+                  photo: existing.checkIn?.photo || photoUrl,
+                },
                 status: 'Present',
                 projectId,
                 sessionId: session._id,
@@ -132,11 +135,14 @@ router.post(
             }
           );
         } else {
-          // Create new attendance record
+          // Create new attendance record with group photo as proof
           await Attendance.create({
             userId: workerId,
             date: today,
-            checkIn: { time: nowWIB() },
+            checkIn: {
+              time: nowWIB(),
+              photo: photoUrl,
+            },
             status: 'Present',
             projectId,
             sessionId: session._id,
@@ -286,7 +292,10 @@ router.post(
           { _id: existing._id },
           {
             $set: {
-              checkIn: { time: nowWIB() },
+              checkIn: {
+                time: existing.checkIn?.time || nowWIB(),
+                photo: existing.checkIn?.photo || session.photoUrl,
+              },
               status: 'Late',
               projectId: session.projectId,
               sessionId: session._id,
@@ -297,7 +306,10 @@ router.post(
         await Attendance.create({
           userId: workerId,
           date: today,
-          checkIn: { time: nowWIB() },
+          checkIn: {
+            time: nowWIB(),
+            photo: session.photoUrl,
+          },
           status: 'Late',
           projectId: session.projectId,
           sessionId: session._id,

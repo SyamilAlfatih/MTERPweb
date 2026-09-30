@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, User, Clock, Filter,
   ChevronDown, DollarSign, X, Check, Building, Users,
   Wallet, Loader, FileText, CalendarOff, Eye, Ban, AlertTriangle,
+  LayoutGrid, Table as TableIcon, Camera, Image, ShieldCheck,
+  RefreshCw, Download, ExternalLink, Sparkles, MapPin, ZoomIn,
+  CheckCircle2, AlertCircle, Layers
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PhotoView } from 'react-photo-view';
@@ -12,17 +15,25 @@ import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, CostInput } from '../components/shared';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
 
+// ─── Interfaces ─────────────────────────────────────────────────────────────
+
 interface UserOption {
   _id: string;
   fullName: string;
   role: string;
 }
 
+interface ProjectOption {
+  _id: string;
+  nama: string;
+  lokasi?: string;
+}
+
 interface AttendanceRecord {
   _id: string;
-  userId: { _id: string; fullName: string; role: string };
+  userId: { _id: string; fullName: string; role: string; profileImage?: string };
   date: string;
-  checkIn?: { time: string; photo?: string };
+  checkIn?: { time: string; photo?: string; isGroupPhoto?: boolean };
   checkOut?: { time: string; photo?: string };
   wageType: string;
   wageMultiplier: number;
@@ -31,7 +42,8 @@ interface AttendanceRecord {
   overtimePay: number;
   paymentStatus: 'Unpaid' | 'Paid';
   paidAt?: string;
-  projectId?: { _id: string; nama: string };
+  projectId?: { _id: string; nama: string; lokasi?: string };
+  sessionId?: { _id: string; photoUrl?: string; notes?: string; createdAt?: string };
   status: string;
   permit?: { reason: string; evidence: string; status: string };
   invalidatedBy?: { fullName: string };
@@ -39,19 +51,12 @@ interface AttendanceRecord {
   invalidatedReason?: string;
 }
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
-
-const getImageUrl = (path: string | undefined): string => {
-  if (!path) return '';
-  // Convert Windows backslashes to forward slashes
-  const normalizedPath = path.replace(/\\/g, '/');
-  // If absolute path from backend (contains /uploads/), extract from 'uploads'
-  const uploadsIndex = normalizedPath.indexOf('uploads/');
-  if (uploadsIndex !== -1) {
-    return `${API_BASE}/${normalizedPath.substring(uploadsIndex)}`;
-  }
-  return `${API_BASE}/${normalizedPath}`;
-};
+interface PhotoEvidenceItem {
+  type: 'checkIn' | 'checkOut' | 'session' | 'permit';
+  label: string;
+  url: string;
+  isGroupSession?: boolean;
+}
 
 interface RecapSummary {
   total: number;
@@ -64,13 +69,122 @@ interface RecapSummary {
   totalPayment: number;
 }
 
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
 
-const STATUS_STYLES: Record<string, { color: string; bg: string }> = {
-  Present: { color: '#059669', bg: '#D1FAE5' },
-  Late: { color: '#D97706', bg: '#FEF3C7' },
-  Absent: { color: '#DC2626', bg: '#FEE2E2' },
-  Permit: { color: '#7C3AED', bg: '#EDE9FE' },
-  'Half-day': { color: '#6366F1', bg: '#EEF2FF' },
+const getImageUrl = (path: string | undefined): string => {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  const normalizedPath = path.replace(/\\/g, '/');
+  const uploadsIndex = normalizedPath.indexOf('uploads/');
+  if (uploadsIndex !== -1) {
+    return `${API_BASE}/${normalizedPath.substring(uploadsIndex)}`;
+  }
+  const clean = normalizedPath.startsWith('/') ? normalizedPath.slice(1) : normalizedPath;
+  return `${API_BASE}/${clean}`;
+};
+
+const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }> = {
+  Present: { color: '#059669', bg: '#D1FAE5', label: 'Hadir' },
+  Late: { color: '#D97706', bg: '#FEF3C7', label: 'Terlambat' },
+  Absent: { color: '#DC2626', bg: '#FEE2E2', label: 'Tidak Hadir' },
+  Permit: { color: '#7C3AED', bg: '#EDE9FE', label: 'Izin / Sakit' },
+  'Half-day': { color: '#6366F1', bg: '#EEF2FF', label: 'Setengah Hari' },
+};
+
+const getRecordPhotos = (record: AttendanceRecord): PhotoEvidenceItem[] => {
+  const items: PhotoEvidenceItem[] = [];
+  const sessionPhotoUrl = record.sessionId?.photoUrl;
+  const isCheckInGroup = (record.checkIn as any)?.isGroupPhoto ||
+    (sessionPhotoUrl && record.checkIn?.photo === sessionPhotoUrl);
+
+  // 1. Check-In photo / Group Session proof
+  if (record.checkIn?.photo) {
+    if (isCheckInGroup) {
+      items.push({
+        type: 'session',
+        label: 'Foto Sesi Grup (Bukti Hadir)',
+        url: getImageUrl(record.checkIn.photo),
+        isGroupSession: true,
+      });
+    } else {
+      items.push({
+        type: 'checkIn',
+        label: 'Foto Masuk (Selfie)',
+        url: getImageUrl(record.checkIn.photo),
+        isGroupSession: false,
+      });
+    }
+  } else if (sessionPhotoUrl) {
+    // If worker had no individual selfie check-in, group session photo serves as attendance proof
+    items.push({
+      type: 'session',
+      label: 'Foto Sesi Grup (Bukti Hadir)',
+      url: getImageUrl(sessionPhotoUrl),
+      isGroupSession: true,
+    });
+  }
+
+  // If there's a distinct supervisor session photo
+  if (sessionPhotoUrl && !items.some(it => it.url === getImageUrl(sessionPhotoUrl))) {
+    items.push({
+      type: 'session',
+      label: 'Foto Sesi Supervisi Lapangan',
+      url: getImageUrl(sessionPhotoUrl),
+      isGroupSession: true,
+    });
+  }
+
+  // 2. Check-Out photo
+  if (record.checkOut?.photo) {
+    items.push({
+      type: 'checkOut',
+      label: 'Foto Pulang (Check-Out)',
+      url: getImageUrl(record.checkOut.photo),
+    });
+  }
+
+  // 3. Permit evidence
+  if (record.permit?.evidence) {
+    items.push({
+      type: 'permit',
+      label: 'Bukti Izin / Surat Dokter',
+      url: getImageUrl(record.permit.evidence),
+    });
+  }
+
+  return items;
+};
+
+/**
+ * Returns the primary display photo for a worker.
+ * If the worker attended via group attendance, uses the group photo so quick preview displays that photo.
+ */
+const getWorkerDisplayPhoto = (record: AttendanceRecord): { url: string; label: string; isGroupSession: boolean } | null => {
+  const photos = getRecordPhotos(record);
+  const attendancePhoto = photos.find(p => p.type === 'session' || p.type === 'checkIn');
+  if (attendancePhoto) {
+    return {
+      url: attendancePhoto.url,
+      label: attendancePhoto.label,
+      isGroupSession: !!attendancePhoto.isGroupSession,
+    };
+  }
+  const checkOutPhoto = photos.find(p => p.type === 'checkOut');
+  if (checkOutPhoto) {
+    return {
+      url: checkOutPhoto.url,
+      label: checkOutPhoto.label,
+      isGroupSession: false,
+    };
+  }
+  if (record.userId?.profileImage) {
+    return {
+      url: getImageUrl(record.userId.profileImage),
+      label: 'Foto Profil',
+      isGroupSession: false,
+    };
+  }
+  return null;
 };
 
 export default function AttendanceLogs() {
@@ -78,20 +192,26 @@ export default function AttendanceLogs() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  // Core Data
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [summary, setSummary] = useState<RecapSummary | null>(null);
   const [users, setUsers] = useState<UserOption[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // View mode
+  // View Mode & Layout Mode
   const [viewMode, setViewMode] = useState<'attendance' | 'permits'>('attendance');
+  const [layoutMode, setLayoutMode] = useState<'table' | 'cards'>('table');
 
   // Filters
   const [dateRange, setDateRange] = useState<'week' | 'month' | 'custom'>('week');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedUser, setSelectedUser] = useState('');
-  const [paymentStatus, setPaymentStatus] = useState<'All' | 'Unpaid' | 'Paid'>('Unpaid');
+  const [selectedProject, setSelectedProject] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Present' | 'Late' | 'Absent' | 'Permit' | 'Half-day'>('All');
+  const [paymentStatus, setPaymentStatus] = useState<'All' | 'Unpaid' | 'Paid'>('All');
+  const [photoOnly, setPhotoOnly] = useState(false);
 
   // Wage modal
   const [wageModal, setWageModal] = useState(false);
@@ -103,8 +223,15 @@ export default function AttendanceLogs() {
   const [submitting, setSubmitting] = useState(false);
   const [paying, setPaying] = useState(false);
 
-  // Permit evidence modal
-  const [evidenceModal, setEvidenceModal] = useState<{ open: boolean; url: string; worker: string }>({ open: false, url: '', worker: '' });
+  // Quick Photo Inspector Modal
+  const [photoInspector, setPhotoInspector] = useState<{
+    open: boolean;
+    workerName: string;
+    dateStr: string;
+    projectName: string;
+    sessionNotes?: string;
+    photos: PhotoEvidenceItem[];
+  }>({ open: false, workerName: '', dateStr: '', projectName: '', photos: [] });
 
   // Invalidate modal
   const [invalidateModal, setInvalidateModal] = useState(false);
@@ -113,34 +240,39 @@ export default function AttendanceLogs() {
   const [invalidateReason, setInvalidateReason] = useState('');
   const [invalidating, setInvalidating] = useState(false);
 
-  const isSupervisor = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
+  const isSupervisor = user?.role && ['owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin', 'site_manager'].includes(user.role);
 
-  // Use local date string to avoid UTC offset shifting the date (e.g. WIB UTC+7)
-  const toLocalDateStr = (date: Date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  };
-
+  // Initial Range Setup
   useEffect(() => {
     const todayStr = todayWIB();
     const [y, m, d] = todayStr.split('-').map(Number);
     const todayD = new Date(Date.UTC(y, m - 1, d));
-    
+
     const weekStart = new Date(todayD);
     weekStart.setUTCDate(todayD.getUTCDate() - todayD.getUTCDay());
-    
+
     setStartDate(weekStart.toISOString().slice(0, 10));
     setEndDate(todayStr);
     fetchUsers();
+    fetchProjects();
   }, []);
 
   const fetchUsers = async () => {
     try {
       const response = await api.get('/attendance/users');
-      setUsers(response.data);
-    } catch (err) { console.error('Failed to fetch users', err); }
+      setUsers(response.data || []);
+    } catch (err) {
+      console.error('Failed to fetch users', err);
+    }
+  };
+
+  const fetchProjects = async () => {
+    try {
+      const response = await api.get('/attendance/projects');
+      setProjects(response.data || []);
+    } catch (err) {
+      console.error('Failed to fetch projects', err);
+    }
   };
 
   const fetchRecords = async () => {
@@ -149,7 +281,7 @@ export default function AttendanceLogs() {
       const params: Record<string, string> = { startDate, endDate };
       if (selectedUser) params.userId = selectedUser;
       const response = await api.get('/attendance/recap', { params });
-      let fetchedRecords = response.data.records;
+      let fetchedRecords = response.data.records || [];
       if (paymentStatus !== 'All') {
         fetchedRecords = fetchedRecords.filter((r: AttendanceRecord) =>
           (r.paymentStatus || 'Unpaid') === paymentStatus
@@ -157,8 +289,11 @@ export default function AttendanceLogs() {
       }
       setRecords(fetchedRecords);
       setSummary(response.data.summary);
-    } catch (err) { console.error('Failed to fetch attendance', err); }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.error('Failed to fetch attendance', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -185,6 +320,29 @@ export default function AttendanceLogs() {
     }
   };
 
+  // Client-side filtering for project, status, and photos
+  const filteredRecords = useMemo(() => {
+    let result = records;
+    if (selectedProject) {
+      result = result.filter(r => {
+        const pId = typeof r.projectId === 'string' ? r.projectId : r.projectId?._id;
+        return pId === selectedProject;
+      });
+    }
+    if (statusFilter !== 'All') {
+      result = result.filter(r => r.status === statusFilter);
+    }
+    if (photoOnly) {
+      result = result.filter(r => getRecordPhotos(r).length > 0);
+    }
+    return result;
+  }, [records, selectedProject, statusFilter, photoOnly]);
+
+  const permitRecords = useMemo(() => {
+    return filteredRecords.filter(r => r.status === 'Permit');
+  }, [filteredRecords]);
+
+  // Wage Modal Handlers
   const openWageModal = (record: AttendanceRecord) => {
     setSelectedRecord(record);
     const hourly = record.dailyRate ? record.dailyRate / 8 : 0;
@@ -221,25 +379,39 @@ export default function AttendanceLogs() {
     setSubmitting(true);
     try {
       await api.put(`/attendance/${selectedRecord._id}/rate`, {
-        wageType: newWageType, dailyRate: newDailyRate, overtimePay: newOvertimePay,
+        wageType: newWageType,
+        dailyRate: newDailyRate,
+        overtimePay: newOvertimePay,
       });
       await fetchRecords();
-      setWageModal(false); setSelectedRecord(null);
-    } catch (err) { console.error('Failed to update wage', err); alert('Failed to update wage type'); }
-    finally { setSubmitting(false); }
+      setWageModal(false);
+      setSelectedRecord(null);
+    } catch (err) {
+      console.error('Failed to update wage', err);
+      alert('Gagal memperbarui upah pekerja.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleMarkAsPaid = async () => {
-    if (records.length === 0) return;
-    const unpaidIds = records.filter(r => r.paymentStatus !== 'Paid').map(r => r._id);
-    if (unpaidIds.length === 0) { alert(t('attendanceLogs.messages.noUnpaid')); return; }
-    if (!window.confirm(t('attendanceLogs.messages.confirmPay', { count: unpaidIds.length, amount: formatRp(summary?.totalPayment || 0) }))) return;
+    if (filteredRecords.length === 0) return;
+    const unpaidIds = filteredRecords.filter(r => r.paymentStatus !== 'Paid').map(r => r._id);
+    if (unpaidIds.length === 0) {
+      alert('Tidak ada tagihan upah yang belum dibayar.');
+      return;
+    }
+    if (!window.confirm(`Konfirmasi pembayaran untuk ${unpaidIds.length} catatan kehadiran?`)) return;
     setPaying(true);
     try {
       await api.post('/attendance/pay', { attendanceIds: unpaidIds });
       await fetchRecords();
-    } catch (err) { console.error('Payment failed', err); alert(t('attendanceLogs.messages.payFailed')); }
-    finally { setPaying(false); }
+    } catch (err) {
+      console.error('Payment failed', err);
+      alert('Gagal memproses status pembayaran.');
+    } finally {
+      setPaying(false);
+    }
   };
 
   const openInvalidateModal = (record: AttendanceRecord) => {
@@ -261,10 +433,22 @@ export default function AttendanceLogs() {
       setInvalidateRecord(null);
       await fetchRecords();
     } catch (err: any) {
-      alert(err?.response?.data?.msg || 'Failed to invalidate attendance');
+      alert(err?.response?.data?.msg || 'Gagal mengoreksi kehadiran.');
     } finally {
       setInvalidating(false);
     }
+  };
+
+  const openQuickPhotoInspector = (record: AttendanceRecord) => {
+    const photos = getRecordPhotos(record);
+    setPhotoInspector({
+      open: true,
+      workerName: record.userId?.fullName || 'Pekerja',
+      dateStr: formatWIBDate(record.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+      projectName: record.projectId?.nama || 'Proyek Lapangan',
+      sessionNotes: record.sessionId?.notes,
+      photos,
+    });
   };
 
   const formatDateDisplay = (dateStr: string) =>
@@ -273,505 +457,924 @@ export default function AttendanceLogs() {
   const formatTimeDisplay = (dateStr: string) =>
     formatWIBTime(dateStr);
 
-
-
-  const WAGE_OPTIONS_TRANSLATED = [
-    { label: t('attendanceLogs.wageOptions.daily'), value: 'daily', multiplier: 1 },
-    { label: t('attendanceLogs.wageOptions.overtime'), value: 'overtime', multiplier: '-' },
-  ];
-
   const formatRp = (val: number) => `Rp ${new Intl.NumberFormat('id-ID').format(val)}`;
 
-  // Permit-filtered records
-  const permitRecords = records.filter(r => r.status === 'Permit');
+  const WAGE_OPTIONS = [
+    { label: 'Harian Standar (1.0x)', value: 'daily', multiplier: 1 },
+    { label: 'Lembur / Jam Tambahan', value: 'overtime', multiplier: '-' },
+  ];
 
   return (
-    <div className="p-6 max-w-[900px] mx-auto max-lg:p-4 max-sm:p-3">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 mb-8">
-        <div className="flex items-center gap-3">
-          <button 
-            className="w-12 h-12 rounded-xl bg-bg-secondary flex items-center justify-center cursor-pointer transition-all border-none text-text-primary hover:bg-border active:scale-95 shrink-0" 
-            onClick={() => navigate(-1)}
-          >
-            <ArrowLeft size={24} />
-          </button>
-          <div>
-            <h1 className="text-2xl font-black text-text-primary m-0 tracking-tight uppercase">{t('attendanceLogs.title')}</h1>
-            <span className="text-xs font-bold text-text-muted uppercase tracking-widest">{t('attendanceLogs.subtitle')}</span>
-          </div>
-        </div>
-      </div>
+    <div className="p-6 max-w-7xl mx-auto max-lg:p-4 max-sm:p-3 space-y-6">
 
-      {/* View Mode Toggle */}
-      <div className="flex gap-2 mb-6 bg-bg-secondary rounded-xl p-1.5 border-2 border-border-light">
-        <button
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 border-none rounded-lg text-sm font-black uppercase tracking-wider cursor-pointer transition-all duration-200 ${viewMode === 'attendance' ? 'bg-bg-white text-primary shadow-sm' : 'bg-transparent text-text-muted hover:text-text-primary'}`}
-          onClick={() => setViewMode('attendance')}
-        >
-          <Users size={20} />
-          {t('attendanceLogs.viewMode.attendance')}
-        </button>
-        <button
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 border-none rounded-lg text-sm font-black uppercase tracking-wider cursor-pointer transition-all duration-200 ${viewMode === 'permits' ? 'bg-bg-white text-primary shadow-sm' : 'bg-transparent text-text-muted hover:text-text-primary'}`}
-          onClick={() => setViewMode('permits')}
-        >
-          <CalendarOff size={20} />
-          {t('attendanceLogs.viewMode.permits')}
-          {permitRecords.length > 0 && <span className="inline-flex items-center justify-center min-w-[24px] h-[24px] px-[8px] rounded-full bg-red-500 text-white text-[11px] font-black">{permitRecords.length}</span>}
-        </button>
-      </div>
-
-      {/* Filters - Section Wrapper */}
-      <div className="mb-10 last:mb-0">
-        <div className="flex items-center gap-3 mb-4 px-1">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <Filter size={22} strokeWidth={2.5} />
-          </div>
-          <h3 className="text-xl font-black text-text-primary tracking-tight uppercase m-0 leading-none">{t('attendanceLogs.filters.title', 'Filters')}</h3>
-        </div>
-        <Card className="!p-5 border-2 border-border-light">
-          <div className="mb-5">
-            <label className="block text-xs font-bold text-text-muted uppercase mb-3">{t('attendanceLogs.filters.dateRange')}</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['week', 'month', 'custom'] as const).map(r => (
-                <button
-                  key={r}
-                  className={`py-3 rounded-xl text-xs font-black uppercase transition-all border-2 ${dateRange === r ? 'bg-primary border-primary text-white shadow-md' : 'bg-bg-white border-border-light text-text-secondary hover:border-primary/50'}`}
-                  onClick={() => handleDateRangeChange(r)}
-                >
-                  {r === 'week' ? t('attendanceLogs.filters.tabs.week') : r === 'month' ? t('attendanceLogs.filters.tabs.month') : t('attendanceLogs.filters.tabs.custom')}
-                </button>
-              ))}
+      {/* ══════════════ 1. ERP HEADER ══════════════ */}
+      <div className="rounded-2xl bg-bg-white border border-border-light p-6 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <button
+              onClick={() => navigate(-1)}
+              className="w-10 h-10 rounded-xl bg-bg-secondary flex items-center justify-center border border-border-light text-text-primary hover:bg-border-light transition-all cursor-pointer shrink-0 mt-1"
+              title="Kembali"
+              aria-label="Kembali"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold text-text-muted uppercase tracking-wider mb-1">
+                <span>MTERP</span>
+                <span>/</span>
+                <span>Operasional Proyek</span>
+                <span>/</span>
+                <span className="text-primary font-black">Audit & Log Kehadiran</span>
+              </div>
+              <h1 className="text-2xl font-black text-text-primary tracking-tight m-0 flex items-center gap-2.5">
+                <span>Log & Validasi Kehadiran (ERP)</span>
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-primary/10 text-primary border border-primary/20">
+                  Site Audit
+                </span>
+              </h1>
+              <p className="text-xs text-text-muted m-0 mt-1 max-w-xl">
+                Audit verifikasi foto bukti check-in/out, rekam jam kerja lapangan, koreksi kehadiran, dan persetujuan upah.
+              </p>
             </div>
           </div>
 
-          {dateRange === 'custom' && (
-            <div className="grid grid-cols-2 gap-4 mb-5">
-              <div>
-                <label className="block text-[10px] font-bold text-text-muted uppercase mb-2">{t('attendanceLogs.filters.customStart')}</label>
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-3 border-2 border-border-light rounded-xl font-bold focus:border-primary outline-none" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-text-muted uppercase mb-2">{t('attendanceLogs.filters.customEnd')}</label>
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-3 border-2 border-border-light rounded-xl font-bold focus:border-primary outline-none" />
-              </div>
+          {/* Quick Toolbar */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              onClick={() => navigate('/group-attendance')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors border border-emerald-200 cursor-pointer"
+            >
+              <Camera size={14} />
+              <span>Absensi Foto Grup</span>
+            </button>
+            <button
+              onClick={() => navigate('/attendance-recap')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-primary-bg text-primary hover:bg-primary/20 transition-colors border border-primary/20 cursor-pointer"
+            >
+              <TableIcon size={14} />
+              <span>Rekapitulasi</span>
+            </button>
+            <button
+              onClick={fetchRecords}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-bg-secondary text-text-primary hover:bg-border-light transition-colors border border-border-light cursor-pointer"
+              title="Refresh data"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        {/* View Mode & Layout Mode Selectors */}
+        <div className="mt-5 pt-4 border-t border-border-light flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 bg-bg-secondary p-1 rounded-xl border border-border-light">
+            <button
+              onClick={() => setViewMode('attendance')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                viewMode === 'attendance'
+                  ? 'bg-bg-white text-primary shadow-sm'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <Users size={15} />
+              <span>Log Kehadiran & Upah ({filteredRecords.length})</span>
+            </button>
+            <button
+              onClick={() => setViewMode('permits')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                viewMode === 'permits'
+                  ? 'bg-bg-white text-primary shadow-sm'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <CalendarOff size={15} />
+              <span>Verifikasi Izin & Sakit ({permitRecords.length})</span>
+            </button>
+          </div>
+
+          {viewMode === 'attendance' && (
+            <div className="flex items-center gap-1.5 bg-bg-secondary p-1 rounded-xl border border-border-light self-start sm:self-auto">
+              <span className="text-[11px] font-bold text-text-muted px-2 uppercase">Layout:</span>
+              <button
+                onClick={() => setLayoutMode('table')}
+                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  layoutMode === 'table'
+                    ? 'bg-bg-white text-primary shadow-sm'
+                    : 'text-text-muted hover:text-text-primary'
+                }`}
+                title="Tampilan Tabel ERP (Data Grid)"
+              >
+                <TableIcon size={16} />
+              </button>
+              <button
+                onClick={() => setLayoutMode('cards')}
+                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  layoutMode === 'cards'
+                    ? 'bg-bg-white text-primary shadow-sm'
+                    : 'text-text-muted hover:text-text-primary'
+                }`}
+                title="Tampilan Kartu"
+              >
+                <LayoutGrid size={16} />
+              </button>
             </div>
           )}
+        </div>
+      </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {users.length > 0 && (
+      {/* ══════════════ 2. KPI SUMMARY BENTO ROW ══════════════ */}
+      {viewMode === 'attendance' && summary && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-4 rounded-xl bg-bg-white border border-border-light shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
+              <Calendar size={22} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider m-0">Total Catatan Log</p>
+              <h3 className="text-xl font-extrabold text-text-primary m-0 mt-0.5">{summary.total} Log</h3>
+              <p className="text-[10px] text-text-muted font-medium m-0 mt-0.5">Dalam rentang aktif</p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-bg-white border border-border-light shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
+              <CheckCircle2 size={22} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider m-0">Kehadiran Valid</p>
+              <h3 className="text-xl font-extrabold text-text-primary m-0 mt-0.5">{summary.present} Hadir</h3>
+              <p className="text-[10px] text-amber-600 font-semibold m-0 mt-0.5">{summary.late} terlambat</p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-bg-white border border-border-light shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center shrink-0 border border-orange-100">
+              <Clock size={22} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider m-0">Total Jam Kerja</p>
+              <h3 className="text-xl font-extrabold text-text-primary m-0 mt-0.5">{summary.totalHours.toFixed(1)}j</h3>
+              <p className="text-[10px] text-orange-600 font-semibold m-0 mt-0.5">
+                {(summary.totalOvertimeHours || 0).toFixed(1)}j lembur
+              </p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-bg-white border border-border-light shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-primary-bg text-primary flex items-center justify-center shrink-0 border border-primary/20">
+              <DollarSign size={22} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider m-0">Total Estimasi Upah</p>
+              <h3 className="text-base font-black text-primary m-0 mt-0.5 truncate">{formatRp(summary.totalPayment || 0)}</h3>
+              {isSupervisor && paymentStatus === 'Unpaid' && (summary.totalPayment || 0) > 0 ? (
+                <button
+                  onClick={handleMarkAsPaid}
+                  disabled={paying}
+                  className="mt-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded-md inline-flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <Check size={10} />
+                  <span>Bayar Semua Unpaid</span>
+                </button>
+              ) : (
+                <p className="text-[10px] text-text-muted font-medium m-0 mt-0.5">Termasuk harian & lembur</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ 3. ERP ADVANCED FILTER SUITE ══════════════ */}
+      <div className="p-5 rounded-2xl bg-bg-white border border-border-light shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Filter size={16} className="text-primary" />
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">
+              Filter Pencarian & Parameter Audit
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              setSelectedUser('');
+              setSelectedProject('');
+              setStatusFilter('All');
+              setPaymentStatus('All');
+              setPhotoOnly(false);
+              handleDateRangeChange('week');
+            }}
+            className="text-[11px] font-bold text-primary hover:underline cursor-pointer"
+          >
+            Reset Filter
+          </button>
+        </div>
+
+        {/* Date Presets */}
+        <div>
+          <div className="grid grid-cols-3 gap-2">
+            {(['week', 'month', 'custom'] as const).map(r => (
+              <button
+                key={r}
+                className={`py-2 px-3 rounded-xl text-xs font-bold uppercase transition-all border cursor-pointer ${
+                  dateRange === r
+                    ? 'bg-primary text-white border-primary shadow-sm'
+                    : 'bg-bg-secondary text-text-muted border-border-light hover:text-text-primary'
+                }`}
+                onClick={() => handleDateRangeChange(r)}
+              >
+                {r === 'week' ? 'Minggu Ini' : r === 'month' ? 'Bulan Ini' : 'Rentang Kustom'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {dateRange === 'custom' && (
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Tanggal Mulai</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full p-2.5 border border-border-light rounded-xl text-xs font-bold text-text-primary focus:border-primary outline-none bg-bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Tanggal Akhir</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full p-2.5 border border-border-light rounded-xl text-xs font-bold text-text-primary focus:border-primary outline-none bg-bg-white"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Dropdown Filters Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1 border-t border-border-light">
+          {/* Worker */}
+          <div>
+            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Pekerja</label>
+            <select
+              value={selectedUser}
+              onChange={(e) => setSelectedUser(e.target.value)}
+              className="w-full p-2.5 border border-border-light rounded-xl bg-bg-white text-xs font-bold text-text-primary outline-none focus:border-primary cursor-pointer"
+            >
+              <option value="">Semua Pekerja</option>
+              {users.map(u => <option key={u._id} value={u._id}>{u.fullName}</option>)}
+            </select>
+          </div>
+
+          {/* Project */}
+          <div>
+            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Proyek</label>
+            <select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className="w-full p-2.5 border border-border-light rounded-xl bg-bg-white text-xs font-bold text-text-primary outline-none focus:border-primary cursor-pointer"
+            >
+              <option value="">Semua Proyek</option>
+              {projects.map(p => <option key={p._id} value={p._id}>{p.nama}</option>)}
+            </select>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Status Kehadiran</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="w-full p-2.5 border border-border-light rounded-xl bg-bg-white text-xs font-bold text-text-primary outline-none focus:border-primary cursor-pointer"
+            >
+              <option value="All">Semua Status</option>
+              <option value="Present">Hadir (Present)</option>
+              <option value="Late">Terlambat (Late)</option>
+              <option value="Permit">Izin / Sakit (Permit)</option>
+              <option value="Half-day">Setengah Hari</option>
+              <option value="Absent">Tidak Hadir (Absent)</option>
+            </select>
+          </div>
+
+          {/* Payment or Photo Filter */}
+          <div className="flex flex-col justify-end">
+            {viewMode === 'attendance' ? (
               <div>
-                <label className="block text-[10px] font-bold text-text-muted uppercase mb-2">{t('attendanceLogs.filters.worker')}</label>
-                <div className="relative">
-                  <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                  <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="w-full py-4 pr-10 pl-11 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-sm font-bold cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-sm">
-                    <option value="">{t('attendanceLogs.filters.allWorkers')}</option>
-                    {users.map(u => <option key={u._id} value={u._id}>{u.fullName}</option>)}
-                  </select>
-                  <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                </div>
+                <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Status Gaji / Payroll</label>
+                <select
+                  value={paymentStatus}
+                  onChange={(e) => setPaymentStatus(e.target.value as any)}
+                  className="w-full p-2.5 border border-border-light rounded-xl bg-bg-white text-xs font-bold text-text-primary outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="All">Semua Pembayaran</option>
+                  <option value="Unpaid">Belum Dibayar (Unpaid)</option>
+                  <option value="Paid">Sudah Dibayar (Paid)</option>
+                </select>
               </div>
-            )}
-
-            {viewMode === 'attendance' && (
-              <div>
-                <label className="block text-[10px] font-bold text-text-muted uppercase mb-2">{t('attendanceLogs.filters.payment')}</label>
-                <div className="relative">
-                  <Wallet size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                  <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as 'All' | 'Unpaid' | 'Paid')} className="w-full py-4 pr-10 pl-11 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-sm font-bold cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-sm">
-                    <option value="Unpaid">{t('attendanceLogs.filters.paymentOptions.unpaid')}</option>
-                    <option value="Paid">{t('attendanceLogs.filters.paymentOptions.paid')}</option>
-                    <option value="All">{t('attendanceLogs.filters.paymentOptions.all')}</option>
-                  </select>
-                  <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                </div>
+            ) : (
+              <div className="pt-4">
+                <span className="text-xs text-text-muted">Menampilkan khusus perizinan pekerja</span>
               </div>
             )}
           </div>
-        </Card>
+        </div>
+
+        {/* Quick Photo Filter Pill */}
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            onClick={() => setPhotoOnly(prev => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+              photoOnly
+                ? 'bg-purple-100 text-purple-800 border-purple-300'
+                : 'bg-bg-secondary text-text-muted border-border-light hover:text-text-primary'
+            }`}
+          >
+            <Camera size={14} className={photoOnly ? 'text-purple-600' : ''} />
+            <span>Hanya yang Memiliki Foto Bukti</span>
+            {photoOnly && <span className="text-[10px] font-black">✓</span>}
+          </button>
+        </div>
       </div>
 
-      {/* Summary - only in attendance mode */}
-      {viewMode === 'attendance' && summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-          <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center">
-            <span className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mb-2">
-              <Calendar size={20} />
-            </span>
-            <span className="text-2xl font-black text-text-primary">{summary.total}</span>
-            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{t('attendanceLogs.summary.totalDays')}</span>
-          </Card>
-
-          <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center">
-            <span className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 mb-2">
-              <Check size={20} />
-            </span>
-            <span className="text-2xl font-black text-text-primary">{summary.present}</span>
-            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{t('attendanceLogs.summary.present')}</span>
-          </Card>
-
-          <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center">
-             <span className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 mb-2">
-               <Clock size={20} />
-             </span>
-             <span className="text-2xl font-black text-text-primary">{summary.totalHours.toFixed(1)}h</span>
-             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{t('attendanceLogs.summary.totalHours')}</span>
-          </Card>
-
-          <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center">
-             <span className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-2">
-               <Clock size={20} />
-             </span>
-             <span className="text-2xl font-black text-amber-600">{(summary.totalOvertimeHours || 0).toFixed(1)}h</span>
-             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Overtime Hours</span>
-          </Card>
-
-          <Card className="!p-4 border-2 border-border-light text-center flex flex-col justify-center items-center col-span-2 md:col-span-4">
-             <span className="w-10 h-10 rounded-full bg-primary-bg flex items-center justify-center text-primary mb-2">
-               <DollarSign size={20} />
-             </span>
-             <span className="text-lg font-black text-primary">{formatRp(summary.totalPayment || 0)}</span>
-             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{t('attendanceLogs.summary.totalPayment')}</span>
-          </Card>
-        </div>
-      )}
-
-      {/* Pay All button - only in attendance mode */}
-      {viewMode === 'attendance' && isSupervisor && paymentStatus === 'Unpaid' && (summary?.totalPayment || 0) > 0 && (
-        <div className="mb-5">
-          <Button
-            title={t('attendanceLogs.actions.markAllPaid', { amount: formatRp(summary?.totalPayment || 0) })}
-            icon={Check}
-            onClick={handleMarkAsPaid}
-            loading={paying}
-            variant="primary"
-            fullWidth
-          />
-        </div>
-      )}
-
-      {/* ===== ATTENDANCE VIEW ===== */}
+      {/* ══════════════ 4. MAIN LOGS VIEW: ATTENDANCE MODE ══════════════ */}
       {viewMode === 'attendance' && (
-        <>
+        <div>
           {loading ? (
-            <div className="py-12 text-center text-text-muted">
-              <Loader size={32} className="animate-spin mx-auto mb-4 text-primary" />
-              <p className="font-bold uppercase tracking-wider">{t('attendanceLogs.loading')}</p>
+            <div className="p-16 text-center text-text-muted bg-bg-white rounded-2xl border border-border-light">
+              <Loader size={32} className="animate-spin mx-auto mb-3 text-primary" />
+              <p className="font-bold text-sm uppercase tracking-wider">Memuat catatan kehadiran...</p>
             </div>
-          ) : records.length === 0 ? (
+          ) : filteredRecords.length === 0 ? (
             <EmptyState
               icon={Calendar}
-              title={t('attendanceLogs.empty.title')}
-              description={t('attendanceLogs.empty.desc')}
+              title="Tidak ada log kehadiran"
+              description="Tidak ada catatan kehadiran yang sesuai dengan filter yang dipilih."
             />
+          ) : layoutMode === 'table' ? (
+            /* ──── ERP DATA TABLE (DATA GRID) ──── */
+            <div className="bg-bg-white rounded-2xl border border-border-light shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[900px]">
+                  <thead>
+                    <tr className="bg-bg-secondary/60 border-b border-border-light text-[10px] font-black text-text-muted uppercase tracking-wider">
+                      <th className="py-3 px-4">Pekerja</th>
+                      <th className="py-3 px-4">Tanggal & Proyek</th>
+                      <th className="py-3 px-4">Jam Kerja (WIB)</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-center">Foto Bukti (Quick Preview)</th>
+                      <th className="py-3 px-4 text-right">Rincian Upah</th>
+                      <th className="py-3 px-4 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-light text-xs">
+                    {filteredRecords.map((record) => {
+                      const statusStyle = STATUS_STYLES[record.status] || STATUS_STYLES.Present;
+                      const totalPay = (record.dailyRate || 0) + (record.overtimePay || 0);
+                      const photos = getRecordPhotos(record);
+                      const workerPhoto = getWorkerDisplayPhoto(record);
+
+                      return (
+                        <tr key={record._id} className="hover:bg-bg-secondary/40 transition-colors">
+                          {/* Worker Column with Photo Quick Preview */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-3">
+                              {workerPhoto ? (
+                                <PhotoView src={workerPhoto.url}>
+                                  <div
+                                    className="relative w-10 h-10 rounded-xl overflow-hidden border border-border-light cursor-pointer shadow-xs hover:ring-2 hover:ring-primary transition-all shrink-0 bg-bg-secondary group"
+                                    title={`Klik untuk Quick Preview Foto ${record.userId?.fullName || 'Pekerja'} (${workerPhoto.label})`}
+                                  >
+                                    <img
+                                      src={workerPhoto.url}
+                                      alt={record.userId?.fullName || 'Worker'}
+                                      className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                                    />
+                                    {workerPhoto.isGroupSession && (
+                                      <div
+                                        className="absolute bottom-0 right-0 bg-primary text-white p-0.5 rounded-tl-md leading-none shadow-xs"
+                                        title="Bukti Foto Hadir Sesi Grup"
+                                      >
+                                        <Users size={8} />
+                                      </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                      <ZoomIn size={12} />
+                                    </div>
+                                  </div>
+                                </PhotoView>
+                              ) : (
+                                <div
+                                  className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs shrink-0"
+                                  style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}
+                                >
+                                  {record.userId?.fullName?.charAt(0).toUpperCase() || '?'}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-bold text-text-primary m-0 truncate">{record.userId?.fullName || 'Deleted User'}</p>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-[11px] text-text-muted m-0 capitalize truncate">{record.userId?.role || '-'}</span>
+                                  {workerPhoto?.isGroupSession && (
+                                    <span className="text-[9px] font-black text-primary bg-primary/10 px-1.5 py-0.2 rounded inline-flex items-center gap-0.5 leading-tight">
+                                      <Users size={8} /> Sesi Grup
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Date & Project */}
+                          <td className="py-3.5 px-4">
+                            <p className="font-bold text-text-primary m-0">{formatDateDisplay(record.date)}</p>
+                            <p className="text-[11px] text-text-muted m-0 truncate">
+                              {record.projectId?.nama ? `📍 ${record.projectId.nama}` : '—'}
+                            </p>
+                          </td>
+
+                          {/* Times */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-1.5 font-bold text-text-primary tabular-nums">
+                              <Clock size={13} className="text-text-muted shrink-0" />
+                              <span>{record.checkIn?.time ? formatTimeDisplay(record.checkIn.time) : '--:--'}</span>
+                              <span className="text-text-muted font-normal">→</span>
+                              <span>{record.checkOut?.time ? formatTimeDisplay(record.checkOut.time) : '--:--'}</span>
+                            </div>
+                            {record.invalidatedBy && (
+                              <span className="text-[10px] text-red-600 font-bold block mt-0.5">
+                                ⚠ Di-koreksi ({record.invalidatedBy.fullName})
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-3.5 px-4">
+                            <span
+                              className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider inline-block"
+                              style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}
+                            >
+                              {statusStyle.label}
+                            </span>
+                          </td>
+
+                          {/* Photo Evidence (Quick Preview) */}
+                          <td className="py-3.5 px-4 text-center">
+                            {photos.length > 0 ? (
+                              <div className="flex flex-col items-center gap-1.5">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {photos.map((item, idx) => (
+                                    <div key={idx} className="relative group shrink-0">
+                                      <PhotoView src={item.url}>
+                                        <div
+                                          className={`relative w-10 h-10 rounded-xl overflow-hidden border cursor-pointer shadow-xs hover:ring-2 hover:ring-primary transition-all bg-bg-secondary group ${
+                                            item.isGroupSession ? 'border-primary/60 ring-1 ring-primary/20' : 'border-border-light'
+                                          }`}
+                                          title={`${item.label} (Klik untuk Zoom Preview)`}
+                                        >
+                                          <img src={item.url} alt={item.label} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                                          {item.isGroupSession && (
+                                            <div className="absolute bottom-0 right-0 bg-primary text-white p-0.5 rounded-tl-md leading-none shadow-xs" title="Foto Bukti Hadir Sesi Grup">
+                                              <Users size={8} />
+                                            </div>
+                                          )}
+                                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                            <ZoomIn size={12} />
+                                          </div>
+                                        </div>
+                                      </PhotoView>
+                                    </div>
+                                  ))}
+                                  <button
+                                    onClick={() => openQuickPhotoInspector(record)}
+                                    className="w-8 h-8 rounded-xl bg-bg-secondary hover:bg-primary-bg hover:text-primary transition-colors flex items-center justify-center text-text-muted shrink-0 cursor-pointer border border-border-light"
+                                    title="Buka Galeri Foto Lengkap"
+                                  >
+                                    <Eye size={13} />
+                                  </button>
+                                </div>
+                                {photos.some(p => p.isGroupSession) ? (
+                                  <PhotoView src={photos.find(p => p.isGroupSession)!.url}>
+                                    <button
+                                      className="text-[9px] font-extrabold text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-2 py-0.5 rounded-full inline-flex items-center gap-1 leading-tight cursor-pointer border border-primary/20"
+                                      title="Klik untuk Quick Preview Foto Grup"
+                                    >
+                                      <Users size={9} />
+                                      <span>Quick Preview Foto Grup</span>
+                                    </button>
+                                  </PhotoView>
+                                ) : (
+                                  <span className="text-[9px] font-bold text-text-muted">
+                                    {photos.length} foto bukti
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-text-muted/60">—</span>
+                            )}
+                          </td>
+
+                          {/* Wage */}
+                          <td className="py-3.5 px-4 text-right">
+                            <p className="font-extrabold text-text-primary m-0">{formatRp(totalPay)}</p>
+                            <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                              <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase ${
+                                record.paymentStatus === 'Paid'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {record.paymentStatus === 'Paid' ? 'PAID' : 'UNPAID'}
+                              </span>
+                              {record.overtimePay > 0 && (
+                                <span className="text-[10px] text-orange-600 font-bold">
+                                  +{formatRp(record.overtimePay)}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3.5 px-4 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {isSupervisor && (
+                                <>
+                                  <button
+                                    onClick={() => openWageModal(record)}
+                                    className="p-1.5 rounded-lg bg-bg-secondary hover:bg-primary-bg hover:text-primary transition-colors text-text-muted cursor-pointer"
+                                    title="Edit Upah / Lembur"
+                                  >
+                                    <DollarSign size={15} />
+                                  </button>
+                                  {record.checkIn?.time && ['Present', 'Late'].includes(record.status) && (
+                                    <button
+                                      onClick={() => openInvalidateModal(record)}
+                                      className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors cursor-pointer"
+                                      title="Koreksi / Invalidate Check-In"
+                                    >
+                                      <Ban size={15} />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {records.map((record) => {
+            /* ──── ERP CARDS GRID ──── */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredRecords.map((record) => {
                 const statusStyle = STATUS_STYLES[record.status] || STATUS_STYLES.Present;
                 const totalPay = (record.dailyRate || 0) + (record.overtimePay || 0);
+                const photos = getRecordPhotos(record);
+
                 return (
-                  <Card key={record._id} className="!p-5 border-2 border-border-light hover:border-primary transition-all">
-                    {/* Top row: Worker & Status Base */}
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                         <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shrink-0" style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}>
-                          {record.userId?.fullName?.charAt(0).toUpperCase() || '?'}
+                  <Card key={record._id} className="p-5 border border-border-light hover:border-primary/50 transition-all shadow-sm">
+                    {/* Top Row with Worker Photo Quick Preview */}
+                    {(() => {
+                      const workerPhoto = getWorkerDisplayPhoto(record);
+                      return (
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex items-center gap-3">
+                            {workerPhoto ? (
+                              <PhotoView src={workerPhoto.url}>
+                                <div
+                                  className="relative w-12 h-12 rounded-xl overflow-hidden border border-border-light cursor-pointer shadow-xs hover:ring-2 hover:ring-primary transition-all shrink-0 bg-bg-secondary group"
+                                  title={`Klik untuk Quick Preview Foto ${record.userId?.fullName || 'Pekerja'} (${workerPhoto.label})`}
+                                >
+                                  <img
+                                    src={workerPhoto.url}
+                                    alt={record.userId?.fullName || 'Worker'}
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                                  />
+                                  {workerPhoto.isGroupSession && (
+                                    <div
+                                      className="absolute bottom-0 right-0 bg-primary text-white p-0.5 rounded-tl-md leading-none shadow-xs"
+                                      title="Bukti Foto Hadir Sesi Grup"
+                                    >
+                                      <Users size={9} />
+                                    </div>
+                                  )}
+                                  <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                    <ZoomIn size={14} />
+                                  </div>
+                                </div>
+                              </PhotoView>
+                            ) : (
+                              <div
+                                className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-base shrink-0"
+                                style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}
+                              >
+                                {record.userId?.fullName?.charAt(0).toUpperCase() || '?'}
+                              </div>
+                            )}
+                            <div>
+                              <h4 className="text-sm font-extrabold text-text-primary m-0 flex items-center gap-1.5 flex-wrap">
+                                <span>{record.userId?.fullName || 'Deleted User'}</span>
+                                {workerPhoto?.isGroupSession && (
+                                  <span className="text-[9px] font-black text-primary bg-primary/10 px-1.5 py-0.2 rounded inline-flex items-center gap-0.5 leading-tight">
+                                    <Users size={8} /> Sesi Grup
+                                  </span>
+                                )}
+                              </h4>
+                              <p className="text-[11px] text-text-muted m-0 capitalize">{record.userId?.role || '-'}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span
+                              className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider block mb-1"
+                              style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}
+                            >
+                              {statusStyle.label}
+                            </span>
+                            <span className="text-[11px] font-bold text-text-muted">{formatDateDisplay(record.date)}</span>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-base font-black text-text-primary tracking-tight m-0">{record.userId?.fullName || t('attendanceLogs.deletedUser', 'Deleted User')}</h4>
-                          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{record.userId?.role || '-'}</span>
+                      );
+                    })()}
+
+                    {/* Time & Project Banner */}
+                    <div className="p-3 rounded-xl bg-bg-secondary flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-text-primary">
+                        <Clock size={14} className="text-text-muted" />
+                        <span>{record.checkIn?.time ? formatTimeDisplay(record.checkIn.time) : '--:--'}</span>
+                        <span className="text-text-muted font-normal">→</span>
+                        <span>{record.checkOut?.time ? formatTimeDisplay(record.checkOut.time) : '--:--'}</span>
+                      </div>
+                      {record.projectId?.nama && (
+                        <span className="text-xs text-text-muted font-semibold truncate max-w-[150px]">
+                          📍 {record.projectId.nama}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Photo Evidence Bar (Quick Preview) */}
+                    {photos.length > 0 && (
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 mb-3 ${
+                        photos.some(p => p.isGroupSession)
+                          ? 'bg-primary-bg/50 border-primary/25'
+                          : 'bg-purple-50/60 border-purple-100'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                            photos.some(p => p.isGroupSession) ? 'text-primary font-black' : 'text-purple-900'
+                          }`}>
+                            {photos.some(p => p.isGroupSession) ? <Users size={12} /> : <Camera size={12} />}
+                            <span>{photos.some(p => p.isGroupSession) ? 'Bukti Foto Grup' : 'Foto Bukti'} ({photos.length}):</span>
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {photos.map((item, idx) => (
+                              <PhotoView key={idx} src={item.url}>
+                                <div
+                                  className={`w-7 h-7 rounded-lg overflow-hidden border cursor-pointer hover:scale-105 transition-transform relative ${
+                                    item.isGroupSession ? 'border-primary/60' : 'border-purple-200'
+                                  }`}
+                                  title={`${item.label} (Klik untuk zoom)`}
+                                >
+                                  <img src={item.url} alt={item.label} className="w-full h-full object-cover" />
+                                  {item.isGroupSession && (
+                                    <div className="absolute bottom-0 right-0 bg-primary text-white p-0.5 rounded-tl leading-none">
+                                      <Users size={7} />
+                                    </div>
+                                  )}
+                                </div>
+                              </PhotoView>
+                            ))}
+                          </div>
                         </div>
+                        <button
+                          onClick={() => openQuickPhotoInspector(record)}
+                          className={`text-[11px] font-bold flex items-center gap-1 cursor-pointer ${
+                            photos.some(p => p.isGroupSession) ? 'text-primary hover:text-primary-hover' : 'text-purple-700 hover:text-purple-900'
+                          }`}
+                        >
+                          <Eye size={12} />
+                          <span>Detail</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Wage Panel */}
+                    <div className="p-3 rounded-xl bg-primary-bg/70 border border-primary/20 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold text-primary uppercase block">Total Upah</span>
+                        <span className="text-base font-black text-primary">{formatRp(totalPay)}</span>
                       </div>
                       <div className="text-right">
-                        <Badge label={record.status} variant={record.status === 'Present' ? 'success' : record.status === 'Absent' ? 'danger' : 'warning'} className="mb-1" />
-                        <span className="block text-[10px] font-bold text-text-muted uppercase">{formatDateDisplay(record.date)}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                          record.paymentStatus === 'Paid'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {record.paymentStatus === 'Paid' ? 'PAID' : 'UNPAID'}
+                        </span>
                       </div>
-                    </div>
-
-                    {/* Time Log */}
-                    <div className="flex items-center gap-2 bg-bg-secondary p-3 rounded-xl mb-4 border-2 border-transparent">
-                      <Clock size={16} className="text-text-muted" />
-                      <span className="text-sm font-black text-text-primary tabular-nums">{record.checkIn?.time ? formatTimeDisplay(record.checkIn.time) : '--:--'}</span>
-                      <span className="text-sm text-text-muted px-2">→</span>
-                      <span className="text-sm font-black text-text-primary tabular-nums">{record.checkOut?.time ? formatTimeDisplay(record.checkOut.time) : '--:--'}</span>
-                    </div>
-
-                    {/* Wage Display Panel */}
-                    <div className="bg-primary-bg rounded-xl border-2 border-primary/20 p-4 mb-4 grid grid-cols-2 gap-4">
-                       <div>
-                          <span className="block text-[10px] font-bold text-primary uppercase mb-1">{t('attendanceLogs.record.daily')}</span>
-                          <span className="text-sm font-black text-primary">{formatRp(record.dailyRate || 0)}</span>
-                       </div>
-                       {record.overtimePay > 0 && (
-                          <div>
-                            <span className="block text-[10px] font-bold text-primary uppercase mb-1">{t('attendanceLogs.record.overtime')}</span>
-                            <span className="text-sm font-black text-primary">{formatRp(record.overtimePay)}</span>
-                          </div>
-                       )}
-                       <div className="col-span-2 pt-3 border-t-2 border-primary/10 flex justify-between items-center">
-                          <span className="text-xs font-bold text-primary uppercase">Total Pay</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg font-black text-primary">{formatRp(totalPay)}</span>
-                            <Badge
-                              label={record.paymentStatus === 'Paid' ? 'PAID' : 'UNPAID'}
-                              variant={record.paymentStatus === 'Paid' ? 'success' : 'warning'}
-                              size="small"
-                            />
-                          </div>
-                       </div>
                     </div>
 
                     {/* Action Footer */}
-                    <div className="flex items-center justify-between mt-2 pt-2">
-                       {record.projectId ? (
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-text-muted">
-                            <Building size={14} />
-                            <span>{record.projectId.nama}</span>
-                          </div>
-                       ) : <div/>}
-
-                       {isSupervisor && (
-                         <div className="flex items-center gap-2">
-                           {/* Invalidate button — only for Present/Late with a check-in */}
-                           {record.checkIn?.time && ['Present', 'Late'].includes(record.status) && (
-                             <button
-                               className="flex items-center gap-1.5 h-10 px-3 border-2 border-red-200 bg-red-50 text-red-600 rounded-xl text-xs font-black uppercase tracking-wide hover:bg-red-100 hover:border-red-400 transition-all cursor-pointer active:scale-95"
-                               onClick={() => openInvalidateModal(record)}
-                               title="Invalidate accidental check-in"
-                             >
-                               <Ban size={14} />
-                               Invalidate
-                             </button>
-                           )}
-                           <Button
-                             title="Edit Wage"
-                             icon={DollarSign}
-                             onClick={() => openWageModal(record)}
-                             variant="outline"
-                             className="!h-10 text-xs px-3 py-1"
-                           />
-                         </div>
-                       )}
-                    </div>
+                    {isSupervisor && (
+                      <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-border-light">
+                        {record.checkIn?.time && ['Present', 'Late'].includes(record.status) && (
+                          <button
+                            onClick={() => openInvalidateModal(record)}
+                            className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors cursor-pointer"
+                          >
+                            <Ban size={13} />
+                            <span>Koreksi</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openWageModal(record)}
+                          className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold text-primary bg-primary-bg hover:bg-primary/20 border border-primary/20 transition-colors cursor-pointer"
+                        >
+                          <DollarSign size={13} />
+                          <span>Edit Upah</span>
+                        </button>
+                      </div>
+                    )}
                   </Card>
                 );
               })}
             </div>
           )}
-        </>
-      )}
-
-      {/* ===== PERMITS VIEW ===== */}
-      {viewMode === 'permits' && (
-        <>
-          {loading ? (
-             <div className="py-12 text-center text-text-muted">
-               <Loader size={32} className="animate-spin mx-auto mb-4 text-primary" />
-               <p className="font-bold uppercase tracking-wider">{t('attendanceLogs.loading')}</p>
-             </div>
-          ) : permitRecords.length === 0 ? (
-            <EmptyState
-              icon={CalendarOff}
-              title={t('attendanceLogs.permit.emptyTitle')}
-              description={t('attendanceLogs.permit.emptyDesc')}
-            />
-          ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {permitRecords.map((record) => (
-                <Card key={record._id} className="!p-5 border-2 border-border-light hover:border-primary transition-all relative overflow-hidden">
-                   {/* Left Accent Bar */}
-                   <div className="absolute left-0 top-0 bottom-0 w-2 bg-purple-500 rounded-l-xl" />
-                   
-                  {/* Top row */}
-                  <div className="flex justify-between items-start mb-4 pl-3">
-                    <div className="flex items-center gap-3">
-                       <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shrink-0 bg-purple-100 text-purple-600">
-                        {record.userId?.fullName?.charAt(0).toUpperCase() || '?'}
-                      </div>
-                      <div>
-                        <h4 className="text-base font-black text-text-primary tracking-tight m-0">{record.userId?.fullName || t('attendanceLogs.deletedUser', 'Deleted User')}</h4>
-                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{record.userId?.role || '-'}</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <span
-                        className="inline-block text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider mb-1"
-                        style={{
-                          backgroundColor: record.permit?.status === 'Approved' ? '#D1FAE5' : record.permit?.status === 'Rejected' ? '#FEE2E2' : '#FEF3C7',
-                          color: record.permit?.status === 'Approved' ? '#059669' : record.permit?.status === 'Rejected' ? '#DC2626' : '#D97706',
-                        }}
-                      >
-                        {record.permit?.status || 'Pending'}
-                      </span>
-                      <span className="block text-[10px] font-bold text-text-muted uppercase">
-                         {formatDateDisplay(record.date)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Permit reason */}
-                  {record.permit?.reason && (
-                    <div className="ml-3 p-4 bg-purple-50 rounded-xl mb-4 border-2 border-purple-100/50">
-                      <div className="flex items-center gap-2 mb-2">
-                         <FileText size={16} className="text-purple-600" />
-                         <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">Reason</span>
-                      </div>
-                      <p className="text-sm font-semibold text-text-secondary m-0">{record.permit.reason}</p>
-                    </div>
-                  )}
-
-                  {/* Evidence */}
-                  {record.permit?.evidence && (
-                    <div
-                      className="ml-3 relative bg-bg-secondary rounded-xl overflow-hidden cursor-pointer aspect-video group border-2 border-border-light hover:border-primary transition-all"
-                      onClick={() => setEvidenceModal({ open: true, url: getImageUrl(record.permit?.evidence), worker: record.userId?.fullName || 'Worker' })}
-                    >
-                      <img
-                        src={getImageUrl(record.permit?.evidence)}
-                        alt="Evidence"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2 text-white opacity-0 group-hover:opacity-100 transition-all backdrop-blur-sm">
-                        <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-                           <Eye size={24} />
-                        </div>
-                        <span className="text-xs font-black uppercase tracking-widest">{t('attendanceLogs.permit.viewEvidence')}</span>
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Evidence Photo Modal */}
-      {evidenceModal.open && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 backdrop-blur-[4px]" onClick={() => setEvidenceModal({ open: false, url: '', worker: '' })}>
-          <div className="bg-bg-white rounded-2xl max-w-[500px] w-full shadow-[0_20px_60px_rgba(0,0,0,0.2)] overflow-hidden animate-[evidence-modal-in_0.25s_ease-out]" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between py-4 px-5 border-b border-border-light">
-              <h3 className="text-base font-bold text-text-primary m-0">{t('attendanceLogs.permit.evidenceTitle', { name: evidenceModal.worker })}</h3>
-              <button className="border-none bg-transparent cursor-pointer text-text-muted p-1 rounded-sm transition-colors duration-200 hover:text-text-primary" onClick={() => setEvidenceModal({ open: false, url: '', worker: '' })}>
-                <X size={20} />
-              </button>
-            </div>
-            <PhotoView src={evidenceModal.url}>
-              <img src={evidenceModal.url} alt="Permit Evidence" className="w-full block max-h-[70vh] object-contain bg-[#f3f3f3] cursor-pointer" />
-            </PhotoView>
-          </div>
         </div>
       )}
 
-      {/* ===== INVALIDATE MODAL ===== */}
-      {invalidateModal && invalidateRecord && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[1050] p-4 sm:p-0 animate-in fade-in duration-200" onClick={() => setInvalidateModal(false)}>
-          <div className="bg-bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-[460px] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-5 sm:zoom-in-95" onClick={e => e.stopPropagation()}>
-            
-            {/* Header */}
-            <div className="p-6 border-b-2 border-red-100 bg-red-50 flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
-                <AlertTriangle size={24} className="text-red-600" />
+      {/* ══════════════ 5. PERMITS VIEW: AUDIT MODE ══════════════ */}
+      {viewMode === 'permits' && (
+        <div>
+          {loading ? (
+            <div className="p-16 text-center text-text-muted bg-bg-white rounded-2xl border border-border-light">
+              <Loader size={32} className="animate-spin mx-auto mb-3 text-primary" />
+              <p className="font-bold text-sm uppercase tracking-wider">Memuat permohonan izin...</p>
+            </div>
+          ) : permitRecords.length === 0 ? (
+            <EmptyState
+              icon={CalendarOff}
+              title="Tidak ada permohonan izin"
+              description="Tidak ada catatan izin atau sakit yang ditemukan dalam rentang waktu ini."
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {permitRecords.map((record) => {
+                const evidenceUrl = record.permit?.evidence ? getImageUrl(record.permit.evidence) : '';
+                return (
+                  <Card key={record._id} className="p-6 border border-border-light shadow-sm relative overflow-hidden">
+                    <div className="absolute left-0 top-0 bottom-0 w-2 bg-purple-500" />
+                    
+                    <div className="flex justify-between items-start mb-4 pl-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-black text-base shrink-0">
+                          {record.userId?.fullName?.charAt(0).toUpperCase() || '?'}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-extrabold text-text-primary m-0">{record.userId?.fullName || 'Deleted User'}</h4>
+                          <p className="text-[11px] text-text-muted m-0 capitalize">{record.userId?.role || '-'}</p>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span
+                          className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase block mb-1"
+                          style={{
+                            backgroundColor: record.permit?.status === 'Approved' ? '#D1FAE5' : record.permit?.status === 'Rejected' ? '#FEE2E2' : '#FEF3C7',
+                            color: record.permit?.status === 'Approved' ? '#059669' : record.permit?.status === 'Rejected' ? '#DC2626' : '#D97706',
+                          }}
+                        >
+                          {record.permit?.status || 'Pending'}
+                        </span>
+                        <span className="text-[11px] font-bold text-text-muted">{formatDateDisplay(record.date)}</span>
+                      </div>
+                    </div>
+
+                    {/* Reason */}
+                    {record.permit?.reason && (
+                      <div className="p-3.5 bg-purple-50 rounded-xl mb-4 border border-purple-100 text-xs pl-3">
+                        <span className="font-bold text-purple-900 block mb-1">Alasan Izin / Sakit:</span>
+                        <p className="text-text-primary m-0 leading-relaxed">{record.permit.reason}</p>
+                      </div>
+                    )}
+
+                    {/* Evidence Photo Preview */}
+                    {evidenceUrl && (
+                      <div className="rounded-xl overflow-hidden border border-border-light relative group bg-bg-secondary max-h-[220px]">
+                        <PhotoView src={evidenceUrl}>
+                          <div className="cursor-pointer relative overflow-hidden">
+                            <img src={evidenceUrl} alt="Bukti izin" className="w-full h-44 object-cover group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                              <ZoomIn size={20} />
+                              <span className="text-xs font-bold uppercase tracking-wider">Perbesar Foto Bukti</span>
+                            </div>
+                          </div>
+                        </PhotoView>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════ 6. MODALS ══════════════ */}
+
+      {/* Quick Photo Inspector Modal */}
+      {photoInspector.open && (
+        <div
+          className="fixed inset-0 bg-black/75 flex items-center justify-center z-[1100] p-4 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setPhotoInspector({ open: false, workerName: '', dateStr: '', projectName: '', photos: [] })}
+        >
+          <div
+            className="bg-bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-border-light animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between pb-3.5 border-b border-border-light mb-4">
+              <div>
+                <h3 className="text-base font-extrabold text-text-primary m-0 flex items-center gap-2">
+                  <Camera size={18} className="text-primary" />
+                  <span>Galeri Bukti Kehadiran</span>
+                </h3>
+                <p className="text-xs text-text-muted m-0 mt-0.5 font-medium">
+                  {photoInspector.workerName} • {photoInspector.dateStr} • {photoInspector.projectName}
+                </p>
+                {photoInspector.sessionNotes && (
+                  <p className="text-[11px] text-primary bg-primary-bg/70 px-2.5 py-1 rounded-lg mt-2 inline-block font-semibold border border-primary/20">
+                    💬 Catatan Sesi: "{photoInspector.sessionNotes}"
+                  </p>
+                )}
               </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-black text-red-700 m-0 uppercase tracking-tight">Invalidate Check-in</h3>
-                <p className="text-xs font-semibold text-red-500 m-0">Accidental / ghost check-in correction</p>
-              </div>
-              <button className="w-8 h-8 rounded-full bg-red-100 border-none flex items-center justify-center text-red-500 hover:bg-red-200 transition-colors cursor-pointer" onClick={() => setInvalidateModal(false)}>
+              <button
+                onClick={() => setPhotoInspector({ open: false, workerName: '', dateStr: '', projectName: '', photos: [] })}
+                className="w-8 h-8 rounded-full bg-bg-secondary flex items-center justify-center text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                title="Tutup"
+              >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="p-6 flex flex-col gap-5">
-              {/* Worker context */}
-              <div className="flex items-center gap-3 p-4 bg-bg-secondary rounded-2xl border-2 border-border-light">
-                <div className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center font-black text-lg shrink-0">
-                  {invalidateRecord.userId?.fullName?.charAt(0).toUpperCase() || '?'}
+            {photoInspector.photos.some(p => p.isGroupSession) && (
+              <div className="mb-4 p-3 rounded-xl bg-primary-bg/70 border border-primary/25 flex items-center gap-2.5 text-xs">
+                <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center shrink-0">
+                  <Users size={16} />
                 </div>
-                <div className="flex-1">
-                  <span className="block font-black text-text-primary">{invalidateRecord.userId?.fullName || 'Deleted User'}</span>
-                  <span className="text-xs font-bold text-text-muted uppercase">{invalidateRecord.userId?.role || '-'} · {formatDateDisplay(invalidateRecord.date)}</span>
-                </div>
-                <div className="text-right">
-                  <span className="block text-xs font-bold text-text-muted">Checked in at</span>
-                  <span className="text-sm font-black text-text-primary">{invalidateRecord.checkIn?.time ? formatTimeDisplay(invalidateRecord.checkIn.time) : '--:--'}</span>
+                <div>
+                  <span className="font-extrabold text-primary block">Bukti Kehadiran Sesi Foto Grup</span>
+                  <span className="text-[11px] text-text-muted">Pekerja diverifikasi dan terdata melalui foto bersama dalam sesi absensi supervisi lapangan.</span>
                 </div>
               </div>
+            )}
 
-              {/* New Status Selection */}
-              <div>
-                <label className="block text-[10px] font-black text-text-muted uppercase tracking-widest mb-3">Mark as</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-black text-sm uppercase cursor-pointer transition-all active:scale-95 ${
-                      invalidateStatus === 'Absent'
-                        ? 'border-red-500 bg-red-50 text-red-600 shadow-md shadow-red-100'
-                        : 'border-border-light bg-bg-white text-text-muted hover:border-red-300'
-                    }`}
-                    onClick={() => setInvalidateStatus('Absent')}
-                  >
-                    <Ban size={22} />
-                    Absent
-                  </button>
-                  <button
-                    className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-black text-sm uppercase cursor-pointer transition-all active:scale-95 ${
-                      invalidateStatus === 'Permit'
-                        ? 'border-purple-500 bg-purple-50 text-purple-600 shadow-md shadow-purple-100'
-                        : 'border-border-light bg-bg-white text-text-muted hover:border-purple-300'
-                    }`}
-                    onClick={() => setInvalidateStatus('Permit')}
-                  >
-                    <CalendarOff size={22} />
-                    Permit
-                  </button>
-                </div>
+            {photoInspector.photos.length === 0 ? (
+              <div className="p-8 text-center text-text-muted text-xs">
+                Tidak ada foto bukti yang terlampir untuk catatan ini.
               </div>
-
-              {/* Reason */}
-              <div>
-                <label className="block text-[10px] font-black text-text-muted uppercase tracking-widest mb-2">Reason / Note</label>
-                <textarea
-                  className="w-full p-4 border-2 border-border-light rounded-2xl text-sm font-semibold text-text-primary bg-bg-white outline-none transition-all focus:border-red-400 resize-none placeholder:text-text-muted"
-                  rows={3}
-                  value={invalidateReason}
-                  onChange={e => setInvalidateReason(e.target.value)}
-                  placeholder="e.g. Worker was not physically present at site despite check-in..."
-                />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[65vh] overflow-y-auto pr-1">
+                {photoInspector.photos.map((item, idx) => (
+                  <div key={idx} className="rounded-xl border border-border-light overflow-hidden bg-bg-secondary flex flex-col">
+                    <div className="p-2.5 bg-bg-white border-b border-border-light flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {item.isGroupSession ? (
+                          <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-extrabold shrink-0 flex items-center gap-1">
+                            <Users size={10} />
+                            <span>Grup</span>
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px] font-extrabold shrink-0">
+                            Selfie
+                          </span>
+                        )}
+                        <span className="text-[11px] font-bold text-text-primary truncate">{item.label}</span>
+                      </div>
+                      <span className="text-[10px] text-text-muted font-medium shrink-0">Klik zoom</span>
+                    </div>
+                    <PhotoView src={item.url}>
+                      <div className="cursor-pointer relative overflow-hidden group flex-1 min-h-[180px] bg-black/5">
+                        <img src={item.url} alt={item.label} className="w-full h-48 object-cover group-hover:scale-105 transition-transform" />
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center gap-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                          <ZoomIn size={18} />
+                          <span className="text-xs font-bold">Perbesar Foto</span>
+                        </div>
+                      </div>
+                    </PhotoView>
+                  </div>
+                ))}
               </div>
+            )}
 
-              {/* Warning note */}
-              <div className="flex items-start gap-2.5 p-3.5 bg-amber-50 border-2 border-amber-200 rounded-xl">
-                <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                <p className="text-xs font-semibold text-amber-700 m-0 leading-relaxed">
-                  This will <strong>clear the check-in and check-out records</strong> for this worker on {formatDateDisplay(invalidateRecord.date)} and mark them as <strong>{invalidateStatus}</strong>. This action is logged.
-                </p>
-              </div>
-            </div>
-
-            {/* Action footer */}
-            <div className="p-4 sm:p-6 border-t-2 border-border-light bg-bg-white flex gap-3">
-              <button
-                className="flex-1 py-4 border-2 border-border-light bg-bg-secondary rounded-2xl text-sm font-black text-text-secondary uppercase tracking-wide cursor-pointer hover:bg-border-light transition-colors"
-                onClick={() => setInvalidateModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className={`flex-[2] flex items-center justify-center gap-2 py-4 border-none rounded-2xl text-sm font-black text-white uppercase tracking-wide cursor-pointer transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed ${
-                  invalidateStatus === 'Absent'
-                    ? 'bg-gradient-to-r from-red-600 to-red-500 shadow-lg shadow-red-200'
-                    : 'bg-gradient-to-r from-purple-600 to-purple-500 shadow-lg shadow-purple-200'
-                }`}
-                onClick={handleInvalidate}
-                disabled={invalidating}
-              >
-                {invalidating ? (
-                  <><Loader size={16} className="animate-spin" /> Processing...</>
-                ) : (
-                  <><Ban size={16} /> Invalidate as {invalidateStatus}</>
-                )}
-              </button>
+            <div className="mt-5 pt-3.5 border-t border-border-light flex justify-between items-center text-xs text-text-muted">
+              <span>💡 Klik pada foto untuk memperbesar, memutar, atau melihat detail resolusi tinggi.</span>
+              <Button
+                title="Tutup"
+                onClick={() => setPhotoInspector({ open: false, workerName: '', dateStr: '', projectName: '', photos: [] })}
+                variant="outline"
+              />
             </div>
           </div>
         </div>
@@ -779,102 +1382,193 @@ export default function AttendanceLogs() {
 
       {/* Wage Modal */}
       {wageModal && selectedRecord && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[1000] p-4 sm:p-0 animate-in fade-in duration-200" onClick={() => setWageModal(false)}>
-          <div className="bg-bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-[480px] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-5 sm:slide-in-from-bottom-2" onClick={e => e.stopPropagation()}>
-            
-            {/* Modal Header */}
-            <div className="p-6 border-b-2 border-border-light bg-bg-secondary flex justify-between items-center sticky top-0">
-               <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
-                   <DollarSign size={20} strokeWidth={2.5} />
-                 </div>
-                 <h3 className="text-xl font-black text-text-primary m-0 tracking-tight uppercase">{t('attendanceLogs.wageModal.title')}</h3>
-               </div>
-               <button className="w-8 h-8 rounded-full bg-border border-none flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-border-light transition-colors cursor-pointer active:scale-95" onClick={() => setWageModal(false)}>
-                 <X size={18} />
-               </button>
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1050] p-4 animate-in fade-in duration-200"
+          onClick={() => setWageModal(false)}
+        >
+          <div
+            className="bg-bg-white rounded-2xl w-full max-w-[480px] shadow-2xl overflow-hidden border border-border-light animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-border-light bg-bg-secondary flex justify-between items-center">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
+                  <DollarSign size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-text-primary m-0">Edit Upah & Lembur</h3>
+                  <p className="text-xs text-text-muted m-0">{selectedRecord.userId?.fullName} • {formatDateDisplay(selectedRecord.date)}</p>
+                </div>
+              </div>
+              <button
+                className="w-8 h-8 rounded-full bg-border-light border-none flex items-center justify-center text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                onClick={() => setWageModal(false)}
+              >
+                <X size={16} />
+              </button>
             </div>
 
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-               {/* Context Banner */}
-               <div className="flex items-center gap-4 p-4 bg-primary-bg rounded-xl mb-6 border-2 border-primary/20">
-                  <div className="flex-1">
-                    <span className="block text-[10px] font-bold text-primary uppercase mb-1">{selectedRecord.userId?.role || '-'}</span>
-                    <span className="text-base font-black text-primary">{selectedRecord.userId?.fullName || 'Deleted User'}</span>
-                  </div>
-                  <div className="text-right border-l-2 border-primary/20 pl-4">
-                     <span className="block text-[10px] font-bold text-primary uppercase mb-1">Date</span>
-                     <span className="text-sm font-black text-primary">{formatDateDisplay(selectedRecord.date)}</span>
-                  </div>
-               </div>
+            <div className="p-6 max-h-[70vh] overflow-y-auto space-y-4">
+              {/* Wage Type */}
+              <div>
+                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">Tipe Upah</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {WAGE_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      className={`p-3 border-2 rounded-xl cursor-pointer transition-all text-left ${
+                        newWageType === opt.value
+                          ? 'border-primary bg-primary text-white shadow-sm'
+                          : 'border-border-light bg-bg-white text-text-primary hover:border-primary/50'
+                      }`}
+                      onClick={() => handleTypeChange(opt.value)}
+                    >
+                      <span className="block font-bold text-xs">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-               {/* Wage Type Selection */}
-               <div className="mb-6">
-                 <label className="block text-[10px] font-bold text-text-muted uppercase tracking-wider mb-3">Select Rate Type</label>
-                 <div className="grid grid-cols-1 gap-2">
-                   {WAGE_OPTIONS_TRANSLATED.map(opt => (
-                     <button
-                       key={opt.value}
-                       className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all duration-150 active:scale-[0.98] ${newWageType === opt.value ? 'border-primary bg-primary text-white shadow-md' : 'border-border-light bg-bg-white text-text-secondary hover:border-primary/50'}`}
-                       onClick={() => handleTypeChange(opt.value)}
-                     >
-                       <span className="flex-1 font-black text-sm text-left uppercase">{opt.label}</span>
-                       <span className={`text-xs font-bold px-2 py-1 rounded-lg ${newWageType === opt.value ? 'bg-white/20 text-white' : 'bg-bg-secondary text-text-muted'}`}>
-                          {opt.multiplier}x
-                       </span>
-                     </button>
-                   ))}
-                 </div>
-               </div>
+              {/* Rate Inputs */}
+              <div>
+                <CostInput
+                  label="Tarif Harian (Daily Rate - Rp)"
+                  value={newDailyRate}
+                  onChange={handleRateChange}
+                  placeholder="Contoh: 150.000"
+                />
+              </div>
 
-               {/* Rate Inputs */}
-               <div className="space-y-4">
-                 <div>
-                    <CostInput
-                      label={t('attendanceLogs.wageModal.ratePerDay')}
-                      value={newDailyRate}
-                      onChange={handleRateChange}
-                      placeholder={t('attendanceLogs.wageModal.ratePlaceholder')}
+              {newWageType === 'overtime' && (
+                <div className="p-4 bg-orange-50/70 rounded-xl border border-orange-200 space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-orange-900 uppercase mb-1">Total Jam Lembur</label>
+                    <input
+                      type="text"
+                      value={newOvertimeHours}
+                      onChange={(e) => handleHoursChange(e.target.value)}
+                      placeholder="Contoh: 2"
+                      className="w-full p-2.5 border border-orange-300 rounded-xl text-xs font-bold text-text-primary focus:border-primary outline-none bg-bg-white"
                     />
-                 </div>
-
-                 {newWageType === 'overtime' && (
-                   <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-100">
-                     <label className="block text-[10px] font-bold text-text-muted uppercase mb-2">Total Overtime Hours</label>
-                     <input 
-                        type="text" 
-                        value={newOvertimeHours} 
-                        onChange={(e) => handleHoursChange(e.target.value)}
-                        placeholder="0.5"
-                        className="w-full p-3 border-2 border-border-light rounded-xl font-bold focus:border-primary outline-none mb-3"
-                     />
-                     <div className="flex items-center justify-between text-orange-600 bg-orange-100/50 p-2 rounded-lg">
-                        <span className="text-xs font-bold uppercase">Total Overtime Pay</span>
-                        <span className="text-sm font-black">{formatRp(newOvertimePay)}</span>
-                     </div>
-                   </div>
-                 )}
-                 
-                 <p className="text-[10px] font-bold text-text-muted uppercase text-center mt-4">
-                   {t('attendanceLogs.wageModal.helper')}
-                 </p>
-               </div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold text-orange-900 pt-1">
+                    <span>Estimasi Uang Lembur:</span>
+                    <span className="text-sm font-black">{formatRp(newOvertimePay)}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Action Footer */}
-            <div className="p-4 sm:p-6 border-t-2 border-border-light bg-bg-white">
-              <Button 
-                 title={t('attendanceLogs.actions.save')} 
-                 onClick={handleSaveWage} 
-                 loading={submitting} 
-                 variant="primary" 
-                 fullWidth 
-                 className="!h-14 !text-lg !font-black uppercase tracking-widest shadow-lg shadow-primary/20 target-touch"
+            <div className="p-5 border-t border-border-light bg-bg-secondary flex gap-2.5 justify-end">
+              <Button title="Batal" onClick={() => setWageModal(false)} variant="outline" />
+              <Button
+                title={submitting ? 'Menyimpan...' : 'Simpan Perubahan Upah'}
+                onClick={handleSaveWage}
+                loading={submitting}
+                variant="primary"
               />
             </div>
           </div>
         </div>
       )}
+
+      {/* Invalidate Modal */}
+      {invalidateModal && invalidateRecord && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1050] p-4 animate-in fade-in duration-200"
+          onClick={() => setInvalidateModal(false)}
+        >
+          <div
+            className="bg-bg-white rounded-2xl w-full max-w-[460px] shadow-2xl overflow-hidden border border-border-light animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-red-100 bg-red-50 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <AlertTriangle size={22} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-extrabold text-red-700 m-0">Koreksi Kehadiran / Invalidate</h3>
+                <p className="text-xs text-red-500 m-0">Koreksi check-in yang tidak sah atau tidak berada di lokasi</p>
+              </div>
+              <button
+                className="w-8 h-8 rounded-full bg-red-100 text-red-500 flex items-center justify-center hover:bg-red-200 transition-colors cursor-pointer"
+                onClick={() => setInvalidateModal(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="p-3.5 bg-bg-secondary rounded-xl border border-border-light flex items-center justify-between text-xs">
+                <div>
+                  <p className="font-bold text-text-primary m-0">{invalidateRecord.userId?.fullName}</p>
+                  <p className="text-[11px] text-text-muted m-0">{formatDateDisplay(invalidateRecord.date)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-text-muted uppercase m-0">Waktu Check-In</p>
+                  <p className="font-bold text-text-primary m-0">
+                    {invalidateRecord.checkIn?.time ? formatTimeDisplay(invalidateRecord.checkIn.time) : '--:--'}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">Ubah Status Menjadi:</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    className={`flex items-center justify-center gap-2 p-3.5 rounded-xl border-2 font-bold text-xs cursor-pointer transition-all ${
+                      invalidateStatus === 'Absent'
+                        ? 'border-red-500 bg-red-50 text-red-700 shadow-sm'
+                        : 'border-border-light bg-bg-white text-text-muted hover:border-red-200'
+                    }`}
+                    onClick={() => setInvalidateStatus('Absent')}
+                  >
+                    <Ban size={16} />
+                    <span>Tidak Hadir (Absent)</span>
+                  </button>
+                  <button
+                    className={`flex items-center justify-center gap-2 p-3.5 rounded-xl border-2 font-bold text-xs cursor-pointer transition-all ${
+                      invalidateStatus === 'Permit'
+                        ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm'
+                        : 'border-border-light bg-bg-white text-text-muted hover:border-purple-200'
+                    }`}
+                    onClick={() => setInvalidateStatus('Permit')}
+                  >
+                    <CalendarOff size={16} />
+                    <span>Izin / Sakit (Permit)</span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1.5">Alasan Koreksi</label>
+                <textarea
+                  className="w-full p-3 border border-border-light rounded-xl text-xs text-text-primary bg-bg-white outline-none focus:border-red-400 resize-none h-20 placeholder:text-text-muted/60"
+                  value={invalidateReason}
+                  onChange={e => setInvalidateReason(e.target.value)}
+                  placeholder="Contoh: Pekerja salah tap check-in, tidak berada di lokasi proyek..."
+                />
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
+                <AlertCircle size={15} className="shrink-0 mt-0.5 text-amber-600" />
+                <span>Tindakan ini akan membatalkan jam check-in & check-out pekerja untuk tanggal tersebut dan tercatat di riwayat audit.</span>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-border-light bg-bg-secondary flex gap-2.5 justify-end">
+              <Button title="Batal" onClick={() => setInvalidateModal(false)} variant="outline" />
+              <Button
+                title={invalidating ? 'Memproses...' : `Koreksi Jadi ${invalidateStatus === 'Absent' ? 'Tidak Hadir' : 'Izin'}`}
+                onClick={handleInvalidate}
+                loading={invalidating}
+                variant="danger"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

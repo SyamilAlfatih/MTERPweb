@@ -1,5 +1,5 @@
 const express = require('express');
-const { Attendance, User, Project } = require('../models');
+const { Attendance, User, Project, AttendanceSession } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
@@ -43,6 +43,92 @@ function parseDateParam(dateStr, endOfDay = false) {
   return endOfDay ? range.end : range.start;
 }
 
+/**
+ * Ensures any attendance record that doesn't have an individual checkIn photo,
+ * but was part of a group attendance session (AttendanceSession), gets the session's
+ * group photo attached as proof of attendance.
+ */
+async function attachGroupPhotoProof(records) {
+  if (!records || records.length === 0) return records;
+
+  const missingPhoto = records.filter(r => !r.checkIn?.photo);
+  if (missingPhoto.length === 0) return records;
+
+  const stillMissing = [];
+  for (const r of missingPhoto) {
+    if (r.sessionId?.photoUrl) {
+      if (!r.checkIn) r.checkIn = {};
+      r.checkIn.photo = r.sessionId.photoUrl;
+      r.checkIn.isGroupPhoto = true;
+      Attendance.updateOne(
+        { _id: r._id },
+        { $set: { 'checkIn.photo': r.sessionId.photoUrl } }
+      ).catch(() => {});
+    } else {
+      stillMissing.push(r);
+    }
+  }
+
+  if (stillMissing.length === 0) return records;
+
+  try {
+    const dates = [...new Set(stillMissing.map(r => {
+      const d = new Date(r.date);
+      return d.toISOString().split('T')[0];
+    }))];
+
+    const dayRanges = dates.map(ds => wibDayRange(ds)).filter(Boolean);
+    if (dayRanges.length > 0) {
+      const sessionQuery = {
+        $or: dayRanges.map(dr => ({ date: { $gte: dr.start, $lte: dr.end } })),
+      };
+
+      const sessions = await AttendanceSession.find(sessionQuery)
+        .select('_id date photoUrl workerIds lateWorkerIds notes supervisorId')
+        .populate('supervisorId', 'fullName role')
+        .lean();
+
+      if (sessions.length > 0) {
+        for (const r of stillMissing) {
+          const rDate = new Date(r.date).getTime();
+          const rUserId = (r.userId?._id || r.userId)?.toString();
+
+          const matchingSession = sessions.find(s => {
+            const sDate = new Date(s.date).getTime();
+            const isSameDay = Math.abs(sDate - rDate) < 24 * 60 * 60 * 1000;
+            if (!isSameDay) return false;
+
+            const inWorkers = s.workerIds?.some(id => id.toString() === rUserId);
+            const inLate = s.lateWorkerIds?.some(lw => (lw.workerId?._id || lw.workerId)?.toString() === rUserId);
+            return inWorkers || inLate;
+          });
+
+          if (matchingSession && matchingSession.photoUrl) {
+            if (!r.checkIn) r.checkIn = {};
+            r.checkIn.photo = matchingSession.photoUrl;
+            r.checkIn.isGroupPhoto = true;
+            r.sessionId = matchingSession;
+
+            Attendance.updateOne(
+              { _id: r._id },
+              { 
+                $set: { 
+                  sessionId: matchingSession._id,
+                  'checkIn.photo': matchingSession.photoUrl 
+                } 
+              }
+            ).catch(() => {});
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('attachGroupPhotoProof error:', err);
+  }
+
+  return records;
+}
+
 // GET /api/attendance - Get attendance records
 router.get('/', auth, async (req, res) => {
   try {
@@ -75,13 +161,15 @@ router.get('/', auth, async (req, res) => {
       }
     }
     
-    const attendance = (await Attendance.find(query)
-      .populate('userId', 'fullName role')
-      .populate('projectId', 'nama')
+    const rawAttendance = (await Attendance.find(query)
+      .populate('userId', 'fullName role profileImage')
+      .populate('projectId', 'nama lokasi')
+      .populate('sessionId', 'photoUrl notes createdAt')
       .sort({ date: -1 })
       .lean())
       .filter(a => a.userId); // Filter out records with deleted users
-    
+
+    const attendance = await attachGroupPhotoProof(rawAttendance);
     res.json(attendance);
   } catch (error) {
     console.error('Get attendance error:', error);
@@ -94,11 +182,18 @@ router.get('/today', auth, async (req, res) => {
   try {
     const today = getTodayStart();
     
-    const attendance = await Attendance.findOne({
+    let attendance = await Attendance.findOne({
       userId: req.user._id,
       date: today,
-    }).lean();
+    })
+      .populate('sessionId', 'photoUrl notes createdAt')
+      .lean();
     
+    if (attendance) {
+      const [enriched] = await attachGroupPhotoProof([attendance]);
+      attendance = enriched;
+    }
+
     res.json(attendance || null);
   } catch (error) {
     console.error('Get today attendance error:', error);
@@ -135,11 +230,15 @@ router.get('/recap', auth, async (req, res) => {
       }
     }
     
-    const attendance = (await Attendance.find(query)
-      .populate('userId', 'fullName role')
+    const rawAttendance = (await Attendance.find(query)
+      .populate('userId', 'fullName role profileImage')
+      .populate('projectId', 'nama lokasi')
+      .populate('sessionId', 'photoUrl notes createdAt')
       .sort({ date: -1 })
       .lean())
       .filter(a => a.userId); // Filter out records with deleted users
+
+    const attendance = await attachGroupPhotoProof(rawAttendance);
     
     // Calculate summary
     const summary = {
