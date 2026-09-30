@@ -45,6 +45,8 @@ interface AttendanceRecord {
   projectId?: { _id: string; nama: string; lokasi?: string };
   sessionId?: { _id: string; photoUrl?: string; notes?: string; createdAt?: string };
   status: string;
+  notes?: string;
+  overtimeHours?: number;
   permit?: { reason: string; evidence: string; status: string };
   invalidatedBy?: { fullName: string };
   invalidatedAt?: string;
@@ -891,6 +893,11 @@ export default function AttendanceLogs() {
                             <p className="text-[11px] text-text-muted m-0 truncate">
                               {record.projectId?.nama ? `📍 ${record.projectId.nama}` : '—'}
                             </p>
+                            {record.notes && (
+                              <p className="text-[10px] text-text-muted italic m-0 mt-0.5 max-w-[200px] truncate" title={record.notes}>
+                                📝 {record.notes}
+                              </p>
+                            )}
                           </td>
 
                           {/* Times */}
@@ -1112,6 +1119,12 @@ export default function AttendanceLogs() {
                         </span>
                       )}
                     </div>
+
+                    {record.notes && (
+                      <div className="px-3 py-1.5 rounded-lg bg-bg-secondary/70 border border-border-light text-xs text-text-muted italic mb-3">
+                        📝 {record.notes}
+                      </div>
+                    )}
 
                     {/* Photo Evidence Bar (Quick Preview) */}
                     {photos.length > 0 && (

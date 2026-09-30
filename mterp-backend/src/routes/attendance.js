@@ -204,7 +204,7 @@ router.get('/today', auth, async (req, res) => {
 // GET /api/attendance/recap - Get attendance recap/summary
 router.get('/recap', auth, async (req, res) => {
   try {
-    const { startDate, endDate, userId } = req.query;
+    const { startDate, endDate, userId, projectId } = req.query;
     
     let query = {};
     
@@ -213,6 +213,10 @@ router.get('/recap', auth, async (req, res) => {
       query.userId = req.user._id;
     } else if (userId) {
       query.userId = userId;
+    }
+
+    if (projectId) {
+      query.projectId = projectId;
     }
     
     // Date range filter — use timezone-aware parser so dates match stored values
@@ -231,7 +235,7 @@ router.get('/recap', auth, async (req, res) => {
     }
     
     const rawAttendance = (await Attendance.find(query)
-      .populate('userId', 'fullName role profileImage')
+      .populate('userId', 'fullName role position profileImage')
       .populate('projectId', 'nama lokasi')
       .populate('sessionId', 'photoUrl notes createdAt')
       .sort({ date: -1 })
@@ -258,8 +262,10 @@ router.get('/recap', auth, async (req, res) => {
         summary.totalHours += hours;
       }
       summary.wageMultiplierTotal += a.wageMultiplier || 1;
-      // Sum overtime hours
-      if (a.overtimePay > 0 && a.hourlyRate > 0) {
+      // Sum overtime hours (use stored overtimeHours if available, otherwise calculate)
+      if (a.overtimeHours !== undefined && a.overtimeHours !== null && a.overtimeHours > 0) {
+        summary.totalOvertimeHours += a.overtimeHours;
+      } else if (a.overtimePay > 0 && a.hourlyRate > 0) {
         summary.totalOvertimeHours += a.overtimePay / a.hourlyRate;
       } else if (a.overtimePay > 0 && a.dailyRate > 0) {
         summary.totalOvertimeHours += a.overtimePay / (a.dailyRate / 8);
@@ -477,7 +483,7 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
 });
 
 // GET /api/attendance/recap-table - Tabular attendance recap for supervisors
-router.get('/recap-table', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.get('/recap-table', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'site_manager', 'admin_project', 'asset_admin'), async (req, res) => {
   try {
     const { startDate, endDate, projectId, search, page = 1, limit = 10 } = req.query;
 
@@ -539,16 +545,27 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
 
       // Calculate overtime hours for this record
       let overtimeHours = 0;
-      if (record.overtimePay > 0 && record.hourlyRate > 0) {
+      if (record.overtimeHours !== undefined && record.overtimeHours !== null && record.overtimeHours > 0) {
+        overtimeHours = record.overtimeHours;
+      } else if (record.overtimePay > 0 && record.hourlyRate > 0) {
         overtimeHours = Math.round((record.overtimePay / record.hourlyRate) * 10) / 10;
       } else if (record.overtimePay > 0 && record.dailyRate > 0) {
         overtimeHours = Math.round((record.overtimePay / (record.dailyRate / 8)) * 10) / 10;
       }
 
       workerMap[uid].days[dateKey] = {
+        attendanceId: record._id,
         status: record.status,
         score,
         overtimeHours,
+        checkInTime: record.checkIn?.time,
+        checkOutTime: record.checkOut?.time,
+        projectId: record.projectId?._id || record.projectId,
+        projectName: record.projectId?.nama,
+        dailyRate: record.dailyRate || 0,
+        overtimePay: record.overtimePay || 0,
+        notes: record.notes || '',
+        permitReason: record.permit?.reason || '',
       };
       workerMap[uid].totalScore += score;
       if (record.dailyRate > 0) workerMap[uid].dailyRate = record.dailyRate;
@@ -576,14 +593,19 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
     // 7. Sort by fullName
     workers.sort((a, b) => a.fullName.localeCompare(b.fullName));
 
-    // 8. Calculate summary BEFORE pagination
+    // 8. Calculate summary BEFORE pagination with accurate status weighting
     const totalWorkforce = workers.length;
     const totalPossibleDays = totalWorkforce * dateColumns.length;
     const totalActualScore = workers.reduce((sum, w) => sum + w.totalScore, 0);
     const avgAttendance = totalPossibleDays > 0 ? Math.round((totalActualScore / totalPossibleDays) * 1000) / 10 : 0;
     const pendingPayroll = allRecords
       .filter(r => (r.paymentStatus || 'Unpaid') === 'Unpaid')
-      .reduce((sum, r) => sum + (r.dailyRate || 0) + (r.overtimePay || 0), 0);
+      .reduce((sum, r) => {
+        if (r.status === 'Absent' || r.status === 'Permit') return sum;
+        const daily = r.status === 'Half-day' ? Math.round((r.dailyRate || 0) / 2) : (r.dailyRate || 0);
+        const ot = r.overtimePay || 0;
+        return sum + daily + ot;
+      }, 0);
     const totalOvertimeHours = Math.round(workers.reduce((sum, w) => sum + (w.totalOvertimeHours || 0), 0) * 10) / 10;
 
     // 9. Paginate
@@ -618,7 +640,7 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
 });
 
 // GET /api/attendance/recap-table/export-excel
-router.get('/recap-table/export-excel', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.get('/recap-table/export-excel', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'site_manager', 'admin_project', 'asset_admin'), async (req, res) => {
   try {
     const ExcelJS = require('exceljs');
     const { startDate, endDate, projectId, search } = req.query;
@@ -767,12 +789,19 @@ router.put('/:id/rate', auth, authorize('owner', 'president_director', 'operatio
     // Priority: 1. Manual Override (from body) 2. Auto-calculation (if wageType is overtime)
     if (overtimePay !== undefined) {
        attendance.overtimePay = Number(overtimePay);
+       if (req.body.overtimeHours !== undefined) {
+         attendance.overtimeHours = Number(req.body.overtimeHours);
+       } else if (attendance.hourlyRate > 0) {
+         attendance.overtimeHours = Math.round((attendance.overtimePay / attendance.hourlyRate) * 10) / 10;
+       }
     } else if (attendance.wageType.startsWith('overtime') && attendance.checkIn?.time && attendance.checkOut?.time) {
        const hours = Math.max(0, (new Date(attendance.checkOut.time) - new Date(attendance.checkIn.time)) / (1000 * 60 * 60));
+       attendance.overtimeHours = Math.round(hours * 10) / 10;
        attendance.overtimePay = Math.round(hours * attendance.hourlyRate * attendance.wageMultiplier);
     } else {
        // If not overtime type and no manual override, default to 0
        attendance.overtimePay = 0;
+       attendance.overtimeHours = 0;
     }
 
     await attendance.save();
@@ -858,9 +887,19 @@ router.put('/:id/invalidate', auth, authorize('owner', 'president_director', 'op
 });
 
 // PUT /api/attendance/recap-table/adjust - Fast inline attendance adjustment for recap matrix
-router.put('/recap-table/adjust', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.put('/recap-table/adjust', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'site_manager', 'admin_project', 'asset_admin'), async (req, res) => {
   try {
-    const { userId, date, status, overtimeHours } = req.body;
+    const {
+      userId,
+      date,
+      status,
+      overtimeHours,
+      checkInTime,
+      checkOutTime,
+      projectId,
+      dailyRate,
+      notes,
+    } = req.body;
 
     if (!userId || !date) {
       return res.status(400).json({ msg: 'userId and date are required' });
@@ -884,37 +923,109 @@ router.put('/recap-table/adjust', auth, authorize('owner', 'president_director',
     });
 
     const targetUser = await User.findById(userId).select('dailyRate');
-    const userDailyRate = targetUser?.dailyRate || 0;
-    const userHourlyRate = userDailyRate > 0 ? userDailyRate / 8 : 0;
+    const existingRate = record?.dailyRate || 0;
+    const userDailyRate = (dailyRate !== undefined && Number(dailyRate) >= 0)
+      ? Number(dailyRate)
+      : (existingRate > 0 ? existingRate : (targetUser?.dailyRate || 150000));
+    const userHourlyRate = userDailyRate > 0 ? Math.round(userDailyRate / 8) : 18750;
+    const otHours = Math.max(0, Number(overtimeHours) || 0);
+    const calculatedOtPay = Math.round(otHours * userHourlyRate * 1.5);
+
+    // Parse checkIn and checkOut Date objects in WIB timezone
+    let checkInDate = null;
+    let checkOutDate = null;
+
+    const targetStatus = status || record?.status || 'Present';
+    if (['Present', 'Late', 'Half-day'].includes(targetStatus)) {
+      const inTimeStr = checkInTime || (targetStatus === 'Late' ? '09:30' : '08:00');
+      const outTimeStr = checkOutTime || (targetStatus === 'Half-day' ? '12:00' : '17:00');
+
+      if (/^\d{1,2}:\d{2}$/.test(inTimeStr)) {
+        const [h, m] = inTimeStr.split(':').map(Number);
+        const padH = String(h).padStart(2, '0');
+        const padM = String(m).padStart(2, '0');
+        checkInDate = new Date(`${date}T${padH}:${padM}:00+07:00`);
+      }
+      if (/^\d{1,2}:\d{2}$/.test(outTimeStr)) {
+        const [h, m] = outTimeStr.split(':').map(Number);
+        const padH = String(h).padStart(2, '0');
+        const padM = String(m).padStart(2, '0');
+        checkOutDate = new Date(`${date}T${padH}:${padM}:00+07:00`);
+      }
+    }
 
     if (record) {
       if (status) record.status = status;
-      if (overtimeHours !== undefined) {
-        const otHours = Math.max(0, Number(overtimeHours) || 0);
-        const hourlyRate = record.hourlyRate || userHourlyRate;
-        record.overtimePay = Math.round(otHours * hourlyRate * (record.wageMultiplier || 1.5));
+      record.dailyRate = targetStatus === 'Absent' ? 0 : (targetStatus === 'Half-day' ? Math.round(userDailyRate / 2) : userDailyRate);
+      record.hourlyRate = userHourlyRate;
+      record.overtimeHours = targetStatus === 'Absent' ? 0 : otHours;
+      record.overtimePay = targetStatus === 'Absent' ? 0 : calculatedOtPay;
+      record.wageType = otHours > 0 ? 'overtime' : 'daily';
+      record.wageMultiplier = 1;
+
+      if (projectId) {
+        record.projectId = projectId;
       }
+      if (notes !== undefined) {
+        record.notes = notes;
+      }
+
+      if (targetStatus === 'Absent') {
+        record.checkIn = undefined;
+        record.checkOut = undefined;
+      } else if (targetStatus === 'Permit') {
+        record.checkIn = undefined;
+        record.checkOut = undefined;
+        record.permit = {
+          reason: notes || 'Izin / Sakit via Rekapitulasi',
+          status: 'Approved',
+        };
+      } else {
+        if (!record.checkIn) record.checkIn = {};
+        if (checkInDate) record.checkIn.time = checkInDate;
+
+        if (!record.checkOut) record.checkOut = {};
+        if (checkOutDate) record.checkOut.time = checkOutDate;
+      }
+
       record.invalidatedBy = undefined;
       record.invalidatedAt = undefined;
       await record.save();
     } else {
-      const otHours = Math.max(0, Number(overtimeHours) || 0);
       record = new Attendance({
         userId,
         date: startOfTargetDay,
-        status: status || 'Present',
-        dailyRate: userDailyRate,
+        status: targetStatus,
+        dailyRate: targetStatus === 'Absent' ? 0 : (targetStatus === 'Half-day' ? Math.round(userDailyRate / 2) : userDailyRate),
         hourlyRate: userHourlyRate,
-        wageMultiplier: 1.5,
-        overtimePay: Math.round(otHours * userHourlyRate * 1.5),
+        overtimeHours: targetStatus === 'Absent' ? 0 : otHours,
+        overtimePay: targetStatus === 'Absent' ? 0 : calculatedOtPay,
+        wageType: otHours > 0 ? 'overtime' : 'daily',
+        wageMultiplier: 1,
         paymentStatus: 'Unpaid',
+        projectId: projectId || undefined,
+        notes: notes || undefined,
+        permit: targetStatus === 'Permit' ? {
+          reason: notes || 'Izin / Sakit via Rekapitulasi',
+          status: 'Approved',
+        } : undefined,
+        checkIn: ['Present', 'Late', 'Half-day'].includes(targetStatus) && checkInDate ? {
+          time: checkInDate,
+        } : undefined,
+        checkOut: ['Present', 'Late', 'Half-day'].includes(targetStatus) && checkOutDate ? {
+          time: checkOutDate,
+        } : undefined,
       });
       await record.save();
     }
 
+    const populatedRecord = await Attendance.findById(record._id)
+      .populate('userId', 'fullName role position profileImage')
+      .populate('projectId', 'nama lokasi');
+
     res.json({
       msg: 'Attendance adjusted successfully',
-      record,
+      record: populatedRecord,
     });
   } catch (error) {
     console.error('Adjust attendance error:', error);

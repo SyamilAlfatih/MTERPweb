@@ -45,6 +45,10 @@ const attendanceSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  overtimeHours: {
+    type: Number,
+    default: 0,
+  },
   overtimePay: {
     type: Number,
     default: 0,
