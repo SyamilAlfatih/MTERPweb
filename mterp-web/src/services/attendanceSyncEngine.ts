@@ -104,12 +104,31 @@ export async function syncPendingAttendance(): Promise<AttendanceSyncResult> {
 
         switch (record.type) {
           case 'SELF_CHECKIN': {
-            await api.post('/attendance/checkin', {
-              projectId: record.projectId,
+            const payload: any = {
+              projectId: record.projectId || undefined,
+              workType: record.workType || undefined,
+              officeLocation: record.officeLocation || undefined,
+              notes: record.notes || undefined,
               lat: record.lat,
               lng: record.lng,
               clientTime: record.recordedAt,
-            });
+            };
+            if (record.photoBase64) {
+              const formData = new FormData();
+              const file = base64ToFile(
+                record.photoBase64,
+                `selfie_checkin_${record.localUuid}.jpg`
+              );
+              formData.append('photo', file);
+              Object.entries(payload).forEach(([k, v]) => {
+                if (v !== undefined) formData.append(k, String(v));
+              });
+              await api.post('/attendance/checkin', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+              });
+            } else {
+              await api.post('/attendance/checkin', payload);
+            }
             break;
           }
 
@@ -124,6 +143,8 @@ export async function syncPendingAttendance(): Promise<AttendanceSyncResult> {
             }
             if (record.lat) formData.append('lat', String(record.lat));
             if (record.lng) formData.append('lng', String(record.lng));
+            if (record.workSummary) formData.append('workSummary', record.workSummary);
+            if (record.notes) formData.append('notes', record.notes);
             formData.append('clientTime', record.recordedAt);
 
             await api.put('/attendance/checkout', formData, {
@@ -142,6 +163,7 @@ export async function syncPendingAttendance(): Promise<AttendanceSyncResult> {
               formData.append('evidence', file);
             }
             formData.append('reason', record.reason || 'Izin');
+            if (record.permitType) formData.append('permitType', record.permitType);
             formData.append('clientTime', record.recordedAt);
 
             await api.post('/attendance/permit', formData, {

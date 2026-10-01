@@ -28,6 +28,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
+  Building2,
   X,
   Layers,
 } from 'lucide-react';
@@ -156,6 +157,26 @@ const ALL_DASHBOARD_CARDS: DashboardCardDef[] = [
     gradientFrom: '#059669',
     gradientTo: '#10B981',
     roles: ['worker', 'tukang', 'helper', 'foreman'],
+  },
+  {
+    id: 'office-presence-primary',
+    type: 'primary',
+    category: 'admin',
+    icon: Building2,
+    defaultLabel: 'Presensi Kantor & Manajemen',
+    defaultSub: 'Check-in WFO, WFH, Dinas Luar & Kehadiran Tim',
+    route: '/office-attendance',
+    gradientFrom: '#312e81',
+    gradientTo: '#4f46e5',
+    roles: [
+      'owner',
+      'president_director',
+      'operational_director',
+      'director',
+      'admin_project',
+      'asset_admin',
+      'device_admin',
+    ],
   },
 
   // Quick Cards
@@ -531,9 +552,23 @@ export default function Home() {
     });
   }, [displayedQuickCards, activeCategory, searchQuery, t]);
 
-  // Route resolver (attendance manager vs worker)
+  // Route resolver (office/management vs site supervisor vs field worker)
   const isWorkerRole = ['worker', 'tukang', 'helper'].includes(userRole);
-  const attendanceRoute = isWorkerRole ? '/attendance' : '/group-attendance';
+  const isOfficeManagementRole = [
+    'owner',
+    'president_director',
+    'operational_director',
+    'director',
+    'admin_project',
+    'asset_admin',
+    'device_admin',
+  ].includes(userRole);
+
+  const attendanceRoute = isOfficeManagementRole
+    ? '/office-attendance'
+    : isWorkerRole
+    ? '/attendance'
+    : '/group-attendance';
 
   const getCardRoute = (card: DashboardCardDef) => {
     if (card.id === 'attendance') {

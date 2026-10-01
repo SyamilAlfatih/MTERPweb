@@ -24,6 +24,7 @@ import Approvals from './pages/Approvals';
 import Tasks from './pages/Tasks';
 import Attendance from './pages/Attendance';
 import GroupAttendance from './pages/GroupAttendance';
+import OfficeAttendance from './pages/OfficeAttendance';
 import AttendanceLogs from './pages/AttendanceLogs';
 import DailyReport from './pages/DailyReport';
 import Profile from './pages/Profile';
@@ -92,6 +93,7 @@ function App() {
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/attendance" element={<Attendance />} />
                 <Route path="/group-attendance" element={<GroupAttendance />} />
+                <Route path="/office-attendance" element={<OfficeAttendance />} />
                 <Route path="/attendance-logs" element={<AttendanceLogs />} />
                 <Route path="/attendance-recap" element={<AttendanceRecap />} />
                 <Route path="/daily-report" element={<DailyReport />} />

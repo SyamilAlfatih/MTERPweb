@@ -4,7 +4,7 @@ import {
   Download, FileSpreadsheet, Search, Filter, ChevronDown,
   ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock,
   Users, TrendingUp, Wallet, Loader, Calendar, Minus,
-  X, Plus, Edit3, Building, Check, DollarSign, AlertCircle,
+  X, Plus, Edit3, Building, Check, DollarSign, AlertCircle, Layers,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/api';
@@ -28,6 +28,9 @@ interface DayAttendanceData {
   dailyRate?: number;
   overtimePay?: number;
   notes?: string;
+  workType?: string;
+  officeLocation?: string;
+  workSummary?: string;
   permitReason?: string;
 }
 
@@ -80,6 +83,7 @@ export default function AttendanceRecap() {
   const [loading, setLoading] = useState(true);
 
   // Filters
+  const [workforceFilter, setWorkforceFilter] = useState<'all' | 'office' | 'field'>('all');
   const [selectedProject, setSelectedProject] = useState('');
   const [startDate, setStartDate] = useState(() => {
     const todayStr = todayWIB();
@@ -112,6 +116,7 @@ export default function AttendanceRecap() {
           search: search || undefined,
           page,
           limit: 10,
+          workforceType: workforceFilter !== 'all' ? workforceFilter : undefined,
         },
       });
       setWorkers(response.data.workers);
@@ -127,7 +132,7 @@ export default function AttendanceRecap() {
 
   useEffect(() => {
     fetchData(true);
-  }, [startDate, endDate, selectedProject, page]);
+  }, [startDate, endDate, selectedProject, page, workforceFilter]);
 
   // Debounced search
   useEffect(() => {
@@ -509,6 +514,7 @@ export default function AttendanceRecap() {
           endDate,
           projectId: selectedProject || undefined,
           search: search || undefined,
+          workforceType: workforceFilter !== 'all' ? workforceFilter : undefined,
         },
         responseType: 'blob',
       });
@@ -619,7 +625,60 @@ export default function AttendanceRecap() {
       </div>
 
       {/* Filters Bar */}
-      <Card className="p-5 border-2 border-border-light shadow-sm">
+      <Card className="p-5 border-2 border-border-light shadow-sm space-y-4">
+        {/* Workforce Category Segmented Selector */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border-light">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
+              Kategori Tenaga Kerja:
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-bg-secondary p-1 rounded-xl border border-border-light">
+            <button
+              onClick={() => {
+                setWorkforceFilter('all');
+                setPage(1);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                workforceFilter === 'all'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <Users size={14} />
+              <span>Semua Tenaga Kerja</span>
+            </button>
+            <button
+              onClick={() => {
+                setWorkforceFilter('office');
+                setPage(1);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                workforceFilter === 'office'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <Building size={14} />
+              <span>🏢 Kantor & Manajemen</span>
+            </button>
+            <button
+              onClick={() => {
+                setWorkforceFilter('field');
+                setPage(1);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                workforceFilter === 'field'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <Layers size={14} />
+              <span>👷 Tim Lapangan / Proyek</span>
+            </button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Project Selection */}
           <div className="space-y-1.5">
@@ -807,6 +866,17 @@ export default function AttendanceRecap() {
                         >
                           <div className="flex flex-col items-center gap-0.5">
                             {renderStatusIcon(dayData)}
+                            {dayData?.workType && dayData.workType !== 'Project' && (
+                              <span className={`text-[8px] font-black uppercase tracking-tight px-1 rounded leading-none ${
+                                dayData.workType === 'WFH'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : dayData.workType === 'Dinas'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {dayData.workType}
+                              </span>
+                            )}
                             {(dayData?.overtimeHours || 0) > 0 && (
                               <span className="text-[9px] font-black font-mono text-amber-600 leading-none tabular-nums">
                                 +{dayData!.overtimeHours.toFixed(1)}h

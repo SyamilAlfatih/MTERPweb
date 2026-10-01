@@ -68,6 +68,24 @@ const attendanceSchema = new mongoose.Schema({
     ref: 'AttendanceSession',
   },
   notes: String,
+  workType: {
+    type: String,
+    enum: ['WFO', 'WFH', 'Dinas', 'Project'],
+    default: 'Project',
+  },
+  officeLocation: {
+    type: String,
+    default: '',
+  },
+  workSummary: {
+    type: String,
+    default: '',
+  },
+  category: {
+    type: String,
+    enum: ['site', 'office'],
+    default: 'site',
+  },
   status: {
     type: String,
     enum: ['Present', 'Absent', 'Late', 'Half-day', 'Permit'],
@@ -76,6 +94,10 @@ const attendanceSchema = new mongoose.Schema({
   permit: {
     reason: String,
     evidence: String,
+    permitType: {
+      type: String,
+      default: 'Izin',
+    },
     status: {
       type: String,
       enum: ['Pending', 'Approved', 'Rejected'],

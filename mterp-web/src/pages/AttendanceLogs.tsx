@@ -44,6 +44,10 @@ interface AttendanceRecord {
   paidAt?: string;
   projectId?: { _id: string; nama: string; lokasi?: string };
   sessionId?: { _id: string; photoUrl?: string; notes?: string; createdAt?: string };
+  workType?: string;
+  officeLocation?: string;
+  workSummary?: string;
+  category?: string;
   status: string;
   notes?: string;
   overtimeHours?: number;
@@ -91,6 +95,25 @@ const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }
   Absent: { color: '#DC2626', bg: '#FEE2E2', label: 'Tidak Hadir' },
   Permit: { color: '#7C3AED', bg: '#EDE9FE', label: 'Izin / Sakit' },
   'Half-day': { color: '#6366F1', bg: '#EEF2FF', label: 'Setengah Hari' },
+};
+
+const OFFICE_ROLES = [
+  'owner',
+  'president_director',
+  'operational_director',
+  'director',
+  'admin_project',
+  'asset_admin',
+  'device_admin'
+];
+
+const isOfficeRecord = (record: AttendanceRecord): boolean => {
+  if (!record) return false;
+  if (record.category === 'office') return true;
+  if (record.workType && ['WFO', 'WFH', 'Dinas'].includes(record.workType)) return true;
+  const role = record.userId?.role;
+  if (role && OFFICE_ROLES.includes(role)) return true;
+  return false;
 };
 
 const getRecordPhotos = (record: AttendanceRecord): PhotoEvidenceItem[] => {
@@ -206,6 +229,8 @@ export default function AttendanceLogs() {
   const [layoutMode, setLayoutMode] = useState<'table' | 'cards'>('table');
 
   // Filters
+  const [workforceCategory, setWorkforceCategory] = useState<'all' | 'office' | 'field'>('all');
+  const [workTypeFilter, setWorkTypeFilter] = useState<'all' | 'WFO' | 'WFH' | 'Dinas'>('all');
   const [dateRange, setDateRange] = useState<'week' | 'month' | 'custom'>('week');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -282,6 +307,8 @@ export default function AttendanceLogs() {
     try {
       const params: Record<string, string> = { startDate, endDate };
       if (selectedUser) params.userId = selectedUser;
+      if (workforceCategory !== 'all') params.workforceType = workforceCategory;
+      if (workTypeFilter !== 'all') params.workType = workTypeFilter;
       const response = await api.get('/attendance/recap', { params });
       let fetchedRecords = response.data.records || [];
       if (paymentStatus !== 'All') {
@@ -301,7 +328,7 @@ export default function AttendanceLogs() {
   useEffect(() => {
     if (startDate && endDate) fetchRecords();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, selectedUser, paymentStatus]);
+  }, [startDate, endDate, selectedUser, paymentStatus, workforceCategory, workTypeFilter]);
 
   const handleDateRangeChange = (range: 'week' | 'month' | 'custom') => {
     setDateRange(range);
@@ -322,9 +349,17 @@ export default function AttendanceLogs() {
     }
   };
 
-  // Client-side filtering for project, status, and photos
+  // Client-side filtering for workforce, workType, project, status, and photos
   const filteredRecords = useMemo(() => {
     let result = records;
+    if (workforceCategory === 'office') {
+      result = result.filter(r => isOfficeRecord(r));
+    } else if (workforceCategory === 'field') {
+      result = result.filter(r => !isOfficeRecord(r));
+    }
+    if (workTypeFilter !== 'all') {
+      result = result.filter(r => r.workType === workTypeFilter);
+    }
     if (selectedProject) {
       result = result.filter(r => {
         const pId = typeof r.projectId === 'string' ? r.projectId : r.projectId?._id;
@@ -338,7 +373,7 @@ export default function AttendanceLogs() {
       result = result.filter(r => getRecordPhotos(r).length > 0);
     }
     return result;
-  }, [records, selectedProject, statusFilter, photoOnly]);
+  }, [records, workforceCategory, workTypeFilter, selectedProject, statusFilter, photoOnly]);
 
   const permitRecords = useMemo(() => {
     return filteredRecords.filter(r => r.status === 'Permit');
@@ -659,6 +694,8 @@ export default function AttendanceLogs() {
           </div>
           <button
             onClick={() => {
+              setWorkforceCategory('all');
+              setWorkTypeFilter('all');
               setSelectedUser('');
               setSelectedProject('');
               setStatusFilter('All');
@@ -670,6 +707,76 @@ export default function AttendanceLogs() {
           >
             Reset Filter
           </button>
+        </div>
+
+        {/* Workforce Category Segmented Control */}
+        <div className="space-y-2">
+          <label className="block text-[10px] font-bold text-text-muted uppercase tracking-wider">
+            Kategori Tenaga Kerja
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              onClick={() => {
+                setWorkforceCategory('all');
+                setWorkTypeFilter('all');
+              }}
+              className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                workforceCategory === 'all'
+                  ? 'bg-primary text-white border-primary shadow-sm'
+                  : 'bg-bg-secondary text-text-muted border-border-light hover:text-text-primary'
+              }`}
+            >
+              <Users size={15} />
+              <span>Semua Tenaga Kerja</span>
+            </button>
+            <button
+              onClick={() => setWorkforceCategory('office')}
+              className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                workforceCategory === 'office'
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                  : 'bg-bg-secondary text-text-muted border-border-light hover:text-text-primary'
+              }`}
+            >
+              <Building size={15} />
+              <span>🏢 Kantor & Manajemen</span>
+            </button>
+            <button
+              onClick={() => {
+                setWorkforceCategory('field');
+                setWorkTypeFilter('all');
+              }}
+              className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                workforceCategory === 'field'
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                  : 'bg-bg-secondary text-text-muted border-border-light hover:text-text-primary'
+              }`}
+            >
+              <Layers size={15} />
+              <span>👷 Tim Lapangan & Proyek</span>
+            </button>
+          </div>
+
+          {/* Sub-filters for Office: WFO / WFH / Dinas */}
+          {workforceCategory === 'office' && (
+            <div className="flex items-center gap-2 pt-1 flex-wrap">
+              <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
+                Moda Kerja:
+              </span>
+              {(['all', 'WFO', 'WFH', 'Dinas'] as const).map(wt => (
+                <button
+                  key={wt}
+                  onClick={() => setWorkTypeFilter(wt)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                    workTypeFilter === wt
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-bg-white text-text-muted border-border-light hover:text-text-primary'
+                  }`}
+                >
+                  {wt === 'all' ? 'Semua Moda' : wt === 'WFO' ? '🏢 WFO (Kantor)' : wt === 'WFH' ? '🏠 WFH (Remote)' : '✈️ Dinas Luar'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Date Presets */}
@@ -887,13 +994,31 @@ export default function AttendanceLogs() {
                             </div>
                           </td>
 
-                          {/* Date & Project */}
+                          {/* Date & Project / Office Location */}
                           <td className="py-3.5 px-4">
                             <p className="font-bold text-text-primary m-0">{formatDateDisplay(record.date)}</p>
-                            <p className="text-[11px] text-text-muted m-0 truncate">
-                              {record.projectId?.nama ? `📍 ${record.projectId.nama}` : '—'}
-                            </p>
-                            {record.notes && (
+                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                              {record.workType && (
+                                <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider ${
+                                  record.workType === 'WFO'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : record.workType === 'WFH'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {record.workType}
+                                </span>
+                              )}
+                              <span className="text-[11px] text-text-muted truncate max-w-[200px]">
+                                {record.officeLocation ? `🏢 ${record.officeLocation}` : record.projectId?.nama ? `📍 ${record.projectId.nama}` : '—'}
+                              </span>
+                            </div>
+                            {record.workSummary && (
+                              <p className="text-[10px] text-indigo-700 bg-indigo-50/70 p-1.5 rounded-md m-0 mt-1 max-w-[220px] truncate" title={record.workSummary}>
+                                📋 {record.workSummary}
+                              </p>
+                            )}
+                            {record.notes && !record.workSummary && (
                               <p className="text-[10px] text-text-muted italic m-0 mt-0.5 max-w-[200px] truncate" title={record.notes}>
                                 📝 {record.notes}
                               </p>
@@ -1105,7 +1230,7 @@ export default function AttendanceLogs() {
                       );
                     })()}
 
-                    {/* Time & Project Banner */}
+                    {/* Time & Project / Office Banner */}
                     <div className="p-3 rounded-xl bg-bg-secondary flex items-center justify-between gap-2 mb-3">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-text-primary">
                         <Clock size={14} className="text-text-muted" />
@@ -1113,14 +1238,34 @@ export default function AttendanceLogs() {
                         <span className="text-text-muted font-normal">→</span>
                         <span>{record.checkOut?.time ? formatTimeDisplay(record.checkOut.time) : '--:--'}</span>
                       </div>
-                      {record.projectId?.nama && (
-                        <span className="text-xs text-text-muted font-semibold truncate max-w-[150px]">
-                          📍 {record.projectId.nama}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {record.workType && (
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                            record.workType === 'WFO'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : record.workType === 'WFH'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {record.workType}
+                          </span>
+                        )}
+                        {(record.officeLocation || record.projectId?.nama) && (
+                          <span className="text-xs text-text-muted font-semibold truncate max-w-[140px]" title={record.officeLocation || record.projectId?.nama}>
+                            {record.officeLocation ? `🏢 ${record.officeLocation}` : `📍 ${record.projectId?.nama}`}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    {record.notes && (
+                    {record.workSummary && (
+                      <div className="px-3 py-2 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs text-indigo-900 mb-3 leading-relaxed">
+                        <strong className="block text-[10px] uppercase font-black text-indigo-600 mb-0.5">Catatan Capaian Kerja:</strong>
+                        <p className="m-0 whitespace-pre-wrap">{record.workSummary}</p>
+                      </div>
+                    )}
+
+                    {record.notes && !record.workSummary && (
                       <div className="px-3 py-1.5 rounded-lg bg-bg-secondary/70 border border-border-light text-xs text-text-muted italic mb-3">
                         📝 {record.notes}
                       </div>

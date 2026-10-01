@@ -7,6 +7,28 @@ const { wibDayRange, nowWIB } = require('../utils/date');
 
 const router = express.Router();
 
+const OFFICE_ROLES = [
+  'owner',
+  'president_director',
+  'operational_director',
+  'director',
+  'admin_project',
+  'asset_admin',
+  'device_admin'
+];
+
+/**
+ * Checks whether an attendance record or user belongs to Office & Management
+ */
+const isOfficeRecord = (record) => {
+  if (!record) return false;
+  if (record.category === 'office') return true;
+  if (record.workType && ['WFO', 'WFH', 'Dinas'].includes(record.workType)) return true;
+  const role = record.userId?.role || record.role;
+  if (role && OFFICE_ROLES.includes(role)) return true;
+  return false;
+};
+
 // GET /api/attendance/projects - All active projects for check-in (available to all roles)
 router.get('/projects', auth, async (req, res) => {
   try {
@@ -149,7 +171,7 @@ async function attachGroupPhotoProof(records) {
 // GET /api/attendance - Get attendance records
 router.get('/', auth, async (req, res) => {
   try {
-    const { userId, startDate, endDate } = req.query;
+    const { userId, startDate, endDate, workforceType, workType } = req.query;
     
     let query = {};
     
@@ -178,13 +200,24 @@ router.get('/', auth, async (req, res) => {
       }
     }
     
-    const rawAttendance = (await Attendance.find(query)
+    let rawAttendance = (await Attendance.find(query)
       .populate('userId', 'fullName role profileImage')
       .populate('projectId', 'nama lokasi')
       .populate('sessionId', 'photoUrl notes createdAt')
       .sort({ date: -1 })
       .lean())
       .filter(a => a.userId); // Filter out records with deleted users
+
+    // Workforce filtering (Office & Management vs Field Workforce)
+    if (workforceType === 'office') {
+      rawAttendance = rawAttendance.filter(a => isOfficeRecord(a));
+    } else if (workforceType === 'field') {
+      rawAttendance = rawAttendance.filter(a => !isOfficeRecord(a));
+    }
+
+    if (workType && workType !== 'all') {
+      rawAttendance = rawAttendance.filter(a => a.workType === workType);
+    }
 
     const attendance = await attachGroupPhotoProof(rawAttendance);
     res.json(attendance);
@@ -221,7 +254,7 @@ router.get('/today', auth, async (req, res) => {
 // GET /api/attendance/recap - Get attendance recap/summary
 router.get('/recap', auth, async (req, res) => {
   try {
-    const { startDate, endDate, userId, projectId } = req.query;
+    const { startDate, endDate, userId, projectId, workforceType, workType } = req.query;
     
     let query = {};
     
@@ -251,13 +284,24 @@ router.get('/recap', auth, async (req, res) => {
       }
     }
     
-    const rawAttendance = (await Attendance.find(query)
+    let rawAttendance = (await Attendance.find(query)
       .populate('userId', 'fullName role position profileImage')
       .populate('projectId', 'nama lokasi')
       .populate('sessionId', 'photoUrl notes createdAt')
       .sort({ date: -1 })
       .lean())
       .filter(a => a.userId); // Filter out records with deleted users
+
+    // Workforce filtering (Office & Management vs Field Workforce)
+    if (workforceType === 'office') {
+      rawAttendance = rawAttendance.filter(a => isOfficeRecord(a));
+    } else if (workforceType === 'field') {
+      rawAttendance = rawAttendance.filter(a => !isOfficeRecord(a));
+    }
+
+    if (workType && workType !== 'all') {
+      rawAttendance = rawAttendance.filter(a => a.workType === workType);
+    }
 
     const attendance = await attachGroupPhotoProof(rawAttendance);
     
@@ -321,9 +365,9 @@ router.get('/users', auth, authorize('owner', 'president_director', 'operational
 });
 
 // POST /api/attendance/checkin - Check in with time & project validation
-router.post('/checkin', auth, async (req, res) => {
+router.post('/checkin', auth, uploadLimiter, upload.single('photo'), async (req, res) => {
   try {
-    const { projectId, lat, lng, clientTime } = req.body;
+    const { projectId, lat, lng, clientTime, workType, officeLocation, notes } = req.body;
     
     // Parse client time or current time
     let recordTime = nowWIB();
@@ -334,6 +378,8 @@ router.post('/checkin', auth, async (req, res) => {
       }
     }
 
+    const isOfficeUser = OFFICE_ROLES.includes(req.user.role) || ['WFO', 'WFH', 'Dinas'].includes(workType);
+
     // 1. Time Validation (08:00 - 16:00) - evaluate at recordTime in WIB timezone
     const localHour = parseInt(
       new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', hour: 'numeric', hourCycle: 'h23' }).format(recordTime),
@@ -341,17 +387,15 @@ router.post('/checkin', auth, async (req, res) => {
     );
     const hour = localHour;
     
-    // Allow supervisor/admin to bypass? For now, strict for everyone or just workers?
-    // User request: "outside of that time worker cant check in"
-    // Assuming strict for workers.
-    if (req.user.role === 'worker') {
+    // Strict time validation only for field workers
+    if (req.user.role === 'worker' || req.user.role === 'tukang' || req.user.role === 'helper') {
       if (hour < 8 || hour >= 16) {
         return res.status(400).json({ msg: 'Check-in is only allowed between 08:00 and 16:00' });
       }
     }
 
-    // 2. Project Validation
-    if (!projectId) {
+    // 2. Project Validation - Required for site workers, optional for office & management
+    if (!isOfficeUser && !projectId) {
       return res.status(400).json({ msg: 'Please select a project to check in' });
     }
     
@@ -366,16 +410,27 @@ router.post('/checkin', auth, async (req, res) => {
     if (attendance && attendance.checkIn?.time) {
       return res.status(400).json({ msg: 'Already checked in today' });
     }
+
+    const checkInPhoto = req.file ? req.file.path : (req.body.photoUrl || undefined);
     
     const checkInData = {
       time: recordTime,
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
+      photo: checkInPhoto,
     };
+
+    const determinedWorkType = workType || (isOfficeUser ? 'WFO' : 'Project');
+    const determinedOfficeLoc = officeLocation || (isOfficeUser ? (determinedWorkType === 'WFH' ? 'Remote (Rumah)' : determinedWorkType === 'Dinas' ? 'Dinas Luar' : 'Kantor Pusat - Jakarta') : '');
+    const determinedCategory = isOfficeUser ? 'office' : 'site';
     
     if (attendance) {
       attendance.checkIn = checkInData;
-      attendance.projectId = projectId;
+      if (projectId) attendance.projectId = projectId;
       attendance.status = 'Present';
+      attendance.workType = determinedWorkType;
+      attendance.officeLocation = determinedOfficeLoc;
+      attendance.category = determinedCategory;
+      if (notes) attendance.notes = notes;
     } else {
       attendance = new Attendance({
         userId: req.user._id,
@@ -383,13 +438,20 @@ router.post('/checkin', auth, async (req, res) => {
         checkIn: checkInData,
         wageType: 'daily',
         wageMultiplier: 1,
-        projectId: projectId,
+        projectId: projectId || undefined,
         status: 'Present',
+        workType: determinedWorkType,
+        officeLocation: determinedOfficeLoc,
+        category: determinedCategory,
+        notes: notes || '',
       });
     }
     
     await attendance.save();
-    await attendance.populate('userId', 'fullName');
+    await attendance.populate('userId', 'fullName role position profileImage');
+    if (projectId) {
+      await attendance.populate('projectId', 'nama lokasi');
+    }
     
     res.status(201).json(attendance);
   } catch (error) {
@@ -398,13 +460,17 @@ router.post('/checkin', auth, async (req, res) => {
   }
 });
 
-// POST /api/attendance/permit - Create permit request
+// POST /api/attendance/permit - Create permit request (leave, sick, business trip, etc.)
 router.post('/permit', auth, uploadLimiter, upload.single('evidence'), async (req, res) => {
   try {
-    const { reason, clientTime } = req.body;
+    const { reason, clientTime, permitType } = req.body;
+    const isOffice = OFFICE_ROLES.includes(req.user.role);
     
-    if (!reason || !req.file) {
-      return res.status(400).json({ msg: 'Reason and evidence photo are required' });
+    if (!reason) {
+      return res.status(400).json({ msg: 'Reason is required' });
+    }
+    if (!req.file && !isOffice) {
+      return res.status(400).json({ msg: 'Evidence photo is required' });
     }
 
     let recordTime = nowWIB();
@@ -423,26 +489,27 @@ router.post('/permit', auth, uploadLimiter, upload.single('evidence'), async (re
       date: today,
     });
 
+    const permitData = {
+      reason,
+      evidence: req.file ? req.file.path : undefined,
+      permitType: permitType || 'Izin',
+      status: 'Pending',
+    };
+
     if (attendance) {
       if (attendance.checkIn?.time) {
         return res.status(400).json({ msg: 'Cannot request permit, you are already checked in.' });
       }
       attendance.status = 'Permit';
-      attendance.permit = {
-        reason,
-        evidence: req.file.path,
-        status: 'Pending',
-      };
+      attendance.category = isOffice ? 'office' : 'site';
+      attendance.permit = permitData;
     } else {
       attendance = new Attendance({
         userId: req.user._id,
         date: today,
         status: 'Permit',
-        permit: {
-          reason,
-          evidence: req.file.path,
-          status: 'Pending',
-        },
+        category: isOffice ? 'office' : 'site',
+        permit: permitData,
       });
     }
 
@@ -454,10 +521,10 @@ router.post('/permit', auth, uploadLimiter, upload.single('evidence'), async (re
   }
 });
 
-// PUT /api/attendance/checkout - Check out (with selfie photo required)
+// PUT /api/attendance/checkout - Check out (with selfie photo supported & daily workSummary)
 router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req, res) => {
   try {
-    const { lat, lng, clientTime } = req.body;
+    const { lat, lng, clientTime, workSummary, notes } = req.body;
     
     let recordTime = nowWIB();
     if (clientTime) {
@@ -482,18 +549,26 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
       return res.status(400).json({ msg: 'Already checked out today' });
     }
     
-    if (!req.file) {
+    const isOffice = OFFICE_ROLES.includes(req.user.role) || attendance.category === 'office';
+    if (!req.file && !isOffice) {
       return res.status(400).json({ msg: 'Selfie photo is required for check-out' });
     }
     
     attendance.checkOut = {
       time: recordTime,
-      photo: req.file.path,
+      photo: req.file ? req.file.path : (attendance.checkOut?.photo || undefined),
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
     };
+
+    if (workSummary) {
+      attendance.workSummary = workSummary;
+    }
+    if (notes) {
+      attendance.notes = attendance.notes ? `${attendance.notes} | ${notes}` : notes;
+    }
     
     await attendance.save();
-    await attendance.populate('userId', 'fullName');
+    await attendance.populate('userId', 'fullName role position profileImage');
 
     // Auto-close supervisor's sessions today if all workers have already left
     try {
@@ -527,10 +602,76 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
   }
 });
 
+// GET /api/attendance/office-today - Get today's office and management staff presence overview
+router.get('/office-today', auth, async (req, res) => {
+  try {
+    const today = getTodayStart();
+
+    // Find all users who are office/management
+    const officeUsers = await User.find({
+      role: { $in: OFFICE_ROLES },
+      isVerified: true,
+    })
+      .select('_id fullName username role position profileImage phone email')
+      .sort({ fullName: 1 })
+      .lean();
+
+    const officeUserIds = officeUsers.map(u => u._id);
+
+    // Fetch attendance for these users today or any attendance with category='office'
+    const todayRecords = await Attendance.find({
+      date: today,
+      $or: [
+        { userId: { $in: officeUserIds } },
+        { category: 'office' },
+      ],
+    })
+      .populate('userId', '_id fullName username role position profileImage phone email')
+      .lean();
+
+    const recordMap = new Map();
+    todayRecords.forEach(rec => {
+      const uId = (rec.userId?._id || rec.userId)?.toString();
+      if (uId) recordMap.set(uId, rec);
+    });
+
+    const staffList = officeUsers.map(u => {
+      const record = recordMap.get(u._id.toString()) || null;
+      return {
+        user: u,
+        record,
+        status: record ? record.status : 'Absent',
+        workType: record?.workType || (record ? 'WFO' : '-'),
+        officeLocation: record?.officeLocation || '',
+        checkInTime: record?.checkIn?.time || null,
+        checkInPhoto: record?.checkIn?.photo || null,
+        checkOutTime: record?.checkOut?.time || null,
+        checkOutPhoto: record?.checkOut?.photo || null,
+        workSummary: record?.workSummary || '',
+      };
+    });
+
+    const summary = {
+      totalOfficeStaff: officeUsers.length,
+      present: staffList.filter(s => s.status === 'Present' || s.checkInTime).length,
+      wfoCount: staffList.filter(s => s.workType === 'WFO' && s.checkInTime).length,
+      wfhCount: staffList.filter(s => s.workType === 'WFH' && s.checkInTime).length,
+      dinasCount: staffList.filter(s => s.workType === 'Dinas' && s.checkInTime).length,
+      permitCount: staffList.filter(s => s.status === 'Permit').length,
+      absentCount: staffList.filter(s => !s.checkInTime && s.status !== 'Permit').length,
+    };
+
+    res.json({ staff: staffList, summary });
+  } catch (error) {
+    console.error('Get office-today error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 // GET /api/attendance/recap-table - Tabular attendance recap for supervisors
 router.get('/recap-table', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'site_manager', 'admin_project', 'asset_admin'), async (req, res) => {
   try {
-    const { startDate, endDate, projectId, search, page = 1, limit = 10 } = req.query;
+    const { startDate, endDate, projectId, search, page = 1, limit = 10, workforceType } = req.query;
 
     if (!startDate || !endDate) {
       return res.status(400).json({ msg: 'startDate and endDate are required' });
@@ -548,11 +689,18 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
     if (projectId) attendanceQuery.projectId = projectId;
 
     // 2. Fetch all attendance records in range
-    const allRecords = (await Attendance.find(attendanceQuery)
+    let allRecords = (await Attendance.find(attendanceQuery)
       .populate('userId', 'fullName role position')
       .populate('projectId', 'nama')
       .lean())
       .filter(a => a.userId); // Filter out records with deleted users
+
+    // Workforce filtering (Office & Management vs Field Workforce)
+    if (workforceType === 'office') {
+      allRecords = allRecords.filter(a => isOfficeRecord(a));
+    } else if (workforceType === 'field') {
+      allRecords = allRecords.filter(a => !isOfficeRecord(a));
+    }
 
     // 3. Generate date columns array
     const dateColumns = [];
@@ -610,6 +758,9 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
         dailyRate: record.dailyRate || 0,
         overtimePay: record.overtimePay || 0,
         notes: record.notes || '',
+        workType: record.workType || '',
+        officeLocation: record.officeLocation || '',
+        workSummary: record.workSummary || '',
         permitReason: record.permit?.reason || '',
       };
       workerMap[uid].totalScore += score;
@@ -688,7 +839,7 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
 router.get('/recap-table/export-excel', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'site_manager', 'admin_project', 'asset_admin'), async (req, res) => {
   try {
     const ExcelJS = require('exceljs');
-    const { startDate, endDate, projectId, search } = req.query;
+    const { startDate, endDate, projectId, search, workforceType } = req.query;
 
     if (!startDate || !endDate) {
       return res.status(400).json({ msg: 'startDate and endDate are required' });
@@ -703,11 +854,18 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'president_dire
     };
     if (projectId) attendanceQuery.projectId = projectId;
 
-    const allRecords = (await Attendance.find(attendanceQuery)
+    let allRecords = (await Attendance.find(attendanceQuery)
       .populate('userId', 'fullName role position')
       .populate('projectId', 'nama')
       .lean())
       .filter(a => a.userId); // Filter out records with deleted users
+
+    // Workforce filtering (Office & Management vs Field Workforce)
+    if (workforceType === 'office') {
+      allRecords = allRecords.filter(a => isOfficeRecord(a));
+    } else if (workforceType === 'field') {
+      allRecords = allRecords.filter(a => !isOfficeRecord(a));
+    }
 
     const dateColumns = [];
     const start = new Date(startDate);

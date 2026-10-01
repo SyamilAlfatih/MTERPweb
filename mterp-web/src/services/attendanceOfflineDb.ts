@@ -24,6 +24,10 @@ export interface OfflineAttendanceRecord {
   workerIds?: string[]; // for GROUP_SESSION
   workerNames?: string[]; // for GROUP_SESSION display
   notes?: string;
+  workType?: string; // 'WFO' | 'WFH' | 'Dinas' | 'Project'
+  officeLocation?: string;
+  workSummary?: string; // Daily activity summary on check-out
+  permitType?: string; // 'Cuti' | 'Izin' | 'Sakit' | 'Dinas Luar'
   reason?: string; // for PERMIT, LEAVE_HOUR, CLOSE
   leaveHour?: string; // for LEAVE_HOUR, CLOSE (HH:mm)
   targetSessionId?: string; // for LATE_ADD, LEAVE_HOUR, CLOSE (Mongo ID or localUuid)
