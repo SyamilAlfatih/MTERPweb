@@ -33,8 +33,21 @@ interface AttendanceRecord {
   _id: string;
   userId: { _id: string; fullName: string; role: string; profileImage?: string };
   date: string;
-  checkIn?: { time: string; photo?: string; isGroupPhoto?: boolean };
-  checkOut?: { time: string; photo?: string };
+  checkIn?: {
+    time: string;
+    photo?: string;
+    isGroupPhoto?: boolean;
+    location?: { lat: number; lng: number };
+    distanceToOffice?: number;
+    geofenceStatus?: 'in_radius' | 'out_of_range' | 'exempt_wfh' | 'exempt_dinas' | string;
+  };
+  checkOut?: {
+    time: string;
+    photo?: string;
+    location?: { lat: number; lng: number };
+    distanceToOffice?: number;
+    geofenceStatus?: 'in_radius' | 'out_of_range' | 'exempt_wfh' | 'exempt_dinas' | string;
+  };
   wageType: string;
   wageMultiplier: number;
   dailyRate: number;
@@ -231,6 +244,7 @@ export default function AttendanceLogs() {
   // Filters
   const [workforceCategory, setWorkforceCategory] = useState<'all' | 'office' | 'field'>('all');
   const [workTypeFilter, setWorkTypeFilter] = useState<'all' | 'WFO' | 'WFH' | 'Dinas'>('all');
+  const [geofenceFilter, setGeofenceFilter] = useState<'all' | 'in_radius' | 'out_of_range'>('all');
   const [dateRange, setDateRange] = useState<'week' | 'month' | 'custom'>('week');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -349,7 +363,7 @@ export default function AttendanceLogs() {
     }
   };
 
-  // Client-side filtering for workforce, workType, project, status, and photos
+  // Client-side filtering for workforce, workType, geofence, project, status, and photos
   const filteredRecords = useMemo(() => {
     let result = records;
     if (workforceCategory === 'office') {
@@ -359,6 +373,11 @@ export default function AttendanceLogs() {
     }
     if (workTypeFilter !== 'all') {
       result = result.filter(r => r.workType === workTypeFilter);
+    }
+    if (geofenceFilter === 'in_radius') {
+      result = result.filter(r => r.checkIn?.geofenceStatus === 'in_radius');
+    } else if (geofenceFilter === 'out_of_range') {
+      result = result.filter(r => r.checkIn?.geofenceStatus === 'out_of_range');
     }
     if (selectedProject) {
       result = result.filter(r => {
@@ -373,7 +392,7 @@ export default function AttendanceLogs() {
       result = result.filter(r => getRecordPhotos(r).length > 0);
     }
     return result;
-  }, [records, workforceCategory, workTypeFilter, selectedProject, statusFilter, photoOnly]);
+  }, [records, workforceCategory, workTypeFilter, geofenceFilter, selectedProject, statusFilter, photoOnly]);
 
   const permitRecords = useMemo(() => {
     return filteredRecords.filter(r => r.status === 'Permit');
@@ -696,6 +715,7 @@ export default function AttendanceLogs() {
             onClick={() => {
               setWorkforceCategory('all');
               setWorkTypeFilter('all');
+              setGeofenceFilter('all');
               setSelectedUser('');
               setSelectedProject('');
               setStatusFilter('All');
@@ -775,6 +795,21 @@ export default function AttendanceLogs() {
                   {wt === 'all' ? 'Semua Moda' : wt === 'WFO' ? '🏢 WFO (Kantor)' : wt === 'WFH' ? '🏠 WFH (Remote)' : '✈️ Dinas Luar'}
                 </button>
               ))}
+
+              <div className="h-4 w-px bg-border-light mx-1" />
+              <button
+                type="button"
+                onClick={() => setGeofenceFilter(prev => prev === 'out_of_range' ? 'all' : 'out_of_range')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 ${
+                  geofenceFilter === 'out_of_range'
+                    ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-sm'
+                    : 'bg-bg-white text-text-muted border-border-light hover:text-text-primary'
+                }`}
+                title="Filter hanya presensi WFO yang terdeteksi di luar radius kantor"
+              >
+                <AlertTriangle size={12} className={geofenceFilter === 'out_of_range' ? 'text-amber-600' : ''} />
+                <span>Out-of-Range ({records.filter(r => r.checkIn?.geofenceStatus === 'out_of_range').length})</span>
+              </button>
             </div>
           )}
         </div>
@@ -1012,6 +1047,28 @@ export default function AttendanceLogs() {
                               <span className="text-[11px] text-text-muted truncate max-w-[200px]">
                                 {record.officeLocation ? `🏢 ${record.officeLocation}` : record.projectId?.nama ? `📍 ${record.projectId.nama}` : '—'}
                               </span>
+
+                              {/* Geofence Status Badge */}
+                              {record.checkIn?.geofenceStatus === 'in_radius' && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-0.5">
+                                  <span>🟢 In-Radius</span>
+                                  {record.checkIn.distanceToOffice !== undefined && (
+                                    <span>({record.checkIn.distanceToOffice}m)</span>
+                                  )}
+                                </span>
+                              )}
+                              {record.checkIn?.geofenceStatus === 'out_of_range' && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-50 text-amber-700 border border-amber-200 inline-flex items-center gap-0.5" title="Di luar radius resmi kantor 150m">
+                                  <span>⚠️ Out-of-Range</span>
+                                  {record.checkIn.distanceToOffice !== undefined && (
+                                    <span>(
+                                      {record.checkIn.distanceToOffice > 1000
+                                        ? `${(record.checkIn.distanceToOffice / 1000).toFixed(1)}km`
+                                        : `${record.checkIn.distanceToOffice}m`}
+                                    )</span>
+                                  )}
+                                </span>
+                              )}
                             </div>
                             {record.workSummary && (
                               <p className="text-[10px] text-indigo-700 bg-indigo-50/70 p-1.5 rounded-md m-0 mt-1 max-w-[220px] truncate" title={record.workSummary}>
@@ -1253,6 +1310,16 @@ export default function AttendanceLogs() {
                         {(record.officeLocation || record.projectId?.nama) && (
                           <span className="text-xs text-text-muted font-semibold truncate max-w-[140px]" title={record.officeLocation || record.projectId?.nama}>
                             {record.officeLocation ? `🏢 ${record.officeLocation}` : `📍 ${record.projectId?.nama}`}
+                          </span>
+                        )}
+                        {record.checkIn?.geofenceStatus === 'in_radius' && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            🟢 In-Radius ({record.checkIn.distanceToOffice}m)
+                          </span>
+                        )}
+                        {record.checkIn?.geofenceStatus === 'out_of_range' && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-50 text-amber-700 border border-amber-200">
+                            ⚠️ Out-of-Range ({record.checkIn.distanceToOffice !== undefined && (record.checkIn.distanceToOffice > 1000 ? `${(record.checkIn.distanceToOffice/1000).toFixed(1)}km` : `${record.checkIn.distanceToOffice}m`)})
                           </span>
                         )}
                       </div>

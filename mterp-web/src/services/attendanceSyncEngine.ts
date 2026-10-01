@@ -108,6 +108,8 @@ export async function syncPendingAttendance(): Promise<AttendanceSyncResult> {
               projectId: record.projectId || undefined,
               workType: record.workType || undefined,
               officeLocation: record.officeLocation || undefined,
+              distanceToOffice: record.distanceToOffice,
+              geofenceStatus: record.geofenceStatus,
               notes: record.notes || undefined,
               lat: record.lat,
               lng: record.lng,

@@ -857,11 +857,10 @@ export default function OfficeAttendance() {
             <button
               type="button"
               onClick={() => setActiveTab('presence')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                activeTab === 'presence'
-                  ? 'bg-white text-indigo-950 shadow-md'
-                  : 'text-white/80 hover:text-white hover:bg-white/10'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${activeTab === 'presence'
+                ? 'bg-white text-indigo-950 shadow-md'
+                : 'text-white/80 hover:text-white hover:bg-white/10'
+                }`}
             >
               <Clock size={15} />
               <span>Presensi Saya</span>
@@ -873,11 +872,10 @@ export default function OfficeAttendance() {
                 setActiveTab('team');
                 loadTeamData();
               }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                activeTab === 'team'
-                  ? 'bg-white text-indigo-950 shadow-md'
-                  : 'text-white/80 hover:text-white hover:bg-white/10'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${activeTab === 'team'
+                ? 'bg-white text-indigo-950 shadow-md'
+                : 'text-white/80 hover:text-white hover:bg-white/10'
+                }`}
             >
               <Users size={15} />
               <span>Kehadiran Tim Kantor</span>
@@ -1062,17 +1060,15 @@ export default function OfficeAttendance() {
                     <button
                       type="button"
                       onClick={() => setWorkType('WFO')}
-                      className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
-                        workType === 'WFO'
-                          ? 'border-emerald-600 bg-emerald-50/50 shadow-sm ring-2 ring-emerald-500/20'
-                          : 'border-border-light hover:border-emerald-500/40 bg-bg-white'
-                      }`}
+                      className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${workType === 'WFO'
+                        ? 'border-emerald-600 bg-emerald-50/50 shadow-sm ring-2 ring-emerald-500/20'
+                        : 'border-border-light hover:border-emerald-500/40 bg-bg-white'
+                        }`}
                     >
                       <div className="flex items-center justify-between w-full mb-3">
                         <div
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                            workType === 'WFO' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-bg-secondary text-text-muted'
-                          }`}
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${workType === 'WFO' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-bg-secondary text-text-muted'
+                            }`}
                         >
                           <Building2 size={20} />
                         </div>
@@ -1090,17 +1086,15 @@ export default function OfficeAttendance() {
                     <button
                       type="button"
                       onClick={() => setWorkType('WFH')}
-                      className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
-                        workType === 'WFH'
-                          ? 'border-blue-600 bg-blue-50/50 shadow-sm ring-2 ring-blue-500/20'
-                          : 'border-border-light hover:border-blue-500/40 bg-bg-white'
-                      }`}
+                      className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${workType === 'WFH'
+                        ? 'border-blue-600 bg-blue-50/50 shadow-sm ring-2 ring-blue-500/20'
+                        : 'border-border-light hover:border-blue-500/40 bg-bg-white'
+                        }`}
                     >
                       <div className="flex items-center justify-between w-full mb-3">
                         <div
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                            workType === 'WFH' ? 'bg-blue-600 text-white shadow-sm' : 'bg-bg-secondary text-text-muted'
-                          }`}
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${workType === 'WFH' ? 'bg-blue-600 text-white shadow-sm' : 'bg-bg-secondary text-text-muted'
+                            }`}
                         >
                           <Home size={20} />
                         </div>
@@ -1118,17 +1112,15 @@ export default function OfficeAttendance() {
                     <button
                       type="button"
                       onClick={() => setWorkType('Dinas')}
-                      className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
-                        workType === 'Dinas'
-                          ? 'border-amber-600 bg-amber-50/50 shadow-sm ring-2 ring-amber-500/20'
-                          : 'border-border-light hover:border-amber-500/40 bg-bg-white'
-                      }`}
+                      className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${workType === 'Dinas'
+                        ? 'border-amber-600 bg-amber-50/50 shadow-sm ring-2 ring-amber-500/20'
+                        : 'border-border-light hover:border-amber-500/40 bg-bg-white'
+                        }`}
                     >
                       <div className="flex items-center justify-between w-full mb-3">
                         <div
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                            workType === 'Dinas' ? 'bg-amber-600 text-white shadow-sm' : 'bg-bg-secondary text-text-muted'
-                          }`}
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${workType === 'Dinas' ? 'bg-amber-600 text-white shadow-sm' : 'bg-bg-secondary text-text-muted'
+                            }`}
                         >
                           <Briefcase size={20} />
                         </div>
@@ -1197,7 +1189,7 @@ export default function OfficeAttendance() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold uppercase tracking-wider text-text-muted">
-                      3. Verifikasi Foto Selfie (Opsional)
+                      3. Verifikasi Foto Selfie Wajib
                     </label>
                     {selfiePreview && (
                       <button
@@ -1543,10 +1535,10 @@ export default function OfficeAttendance() {
                     {hasCheckedOut
                       ? 'Sudah Pulang'
                       : hasCheckedIn
-                      ? 'Aktif Bertugas'
-                      : isPermit
-                      ? 'Izin / Cuti'
-                      : 'Belum Hadir'}
+                        ? 'Aktif Bertugas'
+                        : isPermit
+                          ? 'Izin / Cuti'
+                          : 'Belum Hadir'}
                   </span>
                 </div>
               </div>
@@ -1698,11 +1690,10 @@ export default function OfficeAttendance() {
                   key={pill.id}
                   type="button"
                   onClick={() => setTeamFilter(pill.id as any)}
-                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer border ${
-                    teamFilter === pill.id
-                      ? 'bg-primary text-white border-primary shadow-xs'
-                      : 'bg-bg-white text-text-secondary border-border-light hover:bg-bg-secondary'
-                  }`}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer border ${teamFilter === pill.id
+                    ? 'bg-primary text-white border-primary shadow-xs'
+                    : 'bg-bg-white text-text-secondary border-border-light hover:bg-bg-secondary'
+                    }`}
                 >
                   {pill.label}
                 </button>
@@ -1757,13 +1748,12 @@ export default function OfficeAttendance() {
 
                     {isPresent ? (
                       <span
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 ${
-                          item.workType === 'WFO'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : item.workType === 'WFH'
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 ${item.workType === 'WFO'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : item.workType === 'WFH'
                             ? 'bg-blue-50 text-blue-700 border border-blue-200'
                             : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}
+                          }`}
                       >
                         {item.workType}
                       </span>
@@ -1863,19 +1853,18 @@ export default function OfficeAttendance() {
                       key={type}
                       type="button"
                       onClick={() => setPermitType(type)}
-                      className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer ${
-                        permitType === type
-                          ? 'border-purple-600 bg-purple-50 text-purple-700 shadow-2xs'
-                          : 'border-border-light bg-bg-secondary/40 text-text-secondary hover:bg-bg-secondary'
-                      }`}
+                      className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer ${permitType === type
+                        ? 'border-purple-600 bg-purple-50 text-purple-700 shadow-2xs'
+                        : 'border-border-light bg-bg-secondary/40 text-text-secondary hover:bg-bg-secondary'
+                        }`}
                     >
                       {type === 'Cuti'
                         ? 'Cuti Tahunan'
                         : type === 'Izin'
-                        ? 'Izin Pribadi'
-                        : type === 'Sakit'
-                        ? 'Sakit'
-                        : 'Dinas Luar'}
+                          ? 'Izin Pribadi'
+                          : type === 'Sakit'
+                            ? 'Sakit'
+                            : 'Dinas Luar'}
                     </button>
                   ))}
                 </div>

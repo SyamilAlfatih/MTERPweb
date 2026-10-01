@@ -1,5 +1,18 @@
 const mongoose = require('mongoose');
 
+// GeoJSON Point Schema (standard [longitude, latitude] coordinates)
+const pointSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['Point'],
+    default: 'Point',
+  },
+  coordinates: {
+    type: [Number], // [longitude, latitude]
+    required: true,
+  },
+}, { _id: false });
+
 const attendanceSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -19,6 +32,14 @@ const attendanceSchema = new mongoose.Schema({
       lat: Number,
       lng: Number,
     },
+    geoPoint: pointSchema,
+    distanceToOffice: Number, // distance in meters to office location
+    geofenceStatus: {
+      type: String,
+      enum: ['in_radius', 'out_of_range', 'exempt_wfh', 'exempt_dinas'],
+      default: 'in_radius',
+    },
+    isGroupPhoto: Boolean,
   },
   checkOut: {
     time: Date,
@@ -26,6 +47,13 @@ const attendanceSchema = new mongoose.Schema({
     location: {
       lat: Number,
       lng: Number,
+    },
+    geoPoint: pointSchema,
+    distanceToOffice: Number,
+    geofenceStatus: {
+      type: String,
+      enum: ['in_radius', 'out_of_range', 'exempt_wfh', 'exempt_dinas'],
+      default: 'in_radius',
     },
   },
   wageType: {
@@ -121,5 +149,7 @@ const attendanceSchema = new mongoose.Schema({
 attendanceSchema.index({ userId: 1, date: 1 }, { unique: true });
 // Compound index for sorting
 attendanceSchema.index({ userId: 1, date: -1 });
+// Spatial 2dsphere index for GeoJSON proximity & geofencing queries
+attendanceSchema.index({ 'checkIn.geoPoint': '2dsphere' }, { sparse: true });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);

@@ -29,6 +29,34 @@ const isOfficeRecord = (record) => {
   return false;
 };
 
+// Head Office PT Mega Tama Enerco (Official Geofence coordinates)
+const HEAD_OFFICE = {
+  name: 'Head Office PT Mega Tama Enerco',
+  lat: -7.175077420272807,
+  lng: 107.57089981757514,
+  radiusMeters: 150, // 150 meters standard geofence boundary
+};
+
+/**
+ * Calculates distance in meters between two coordinates via Haversine formula
+ */
+function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
+  if (lat1 === undefined || lon1 === undefined || lat2 === undefined || lon2 === undefined) return null;
+  const R = 6371e3; // Earth radius in meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) *
+    Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return Math.round(R * c);
+}
+
 // GET /api/attendance/projects - All active projects for check-in (available to all roles)
 router.get('/projects', auth, async (req, res) => {
   try {
@@ -413,15 +441,45 @@ router.post('/checkin', auth, uploadLimiter, upload.single('photo'), async (req,
 
     const checkInPhoto = req.file ? req.file.path : (req.body.photoUrl || undefined);
     
+    const determinedWorkType = workType || (isOfficeUser ? 'WFO' : 'Project');
+    const determinedOfficeLoc = officeLocation || (isOfficeUser ? (determinedWorkType === 'WFH' ? 'Remote (Rumah)' : determinedWorkType === 'Dinas' ? 'Dinas Luar' : HEAD_OFFICE.name) : '');
+    const determinedCategory = isOfficeUser ? 'office' : 'site';
+
+    // GeoJSON Point & Geofence Verification
+    let geoPoint = undefined;
+    let distanceToOffice = undefined;
+    let geofenceStatus = 'in_radius';
+
+    if (lat && lng) {
+      const numLat = Number(lat);
+      const numLng = Number(lng);
+      geoPoint = {
+        type: 'Point',
+        coordinates: [numLng, numLat], // GeoJSON standard: [longitude, latitude]
+      };
+
+      if (determinedWorkType === 'WFH') {
+        geofenceStatus = 'exempt_wfh';
+      } else if (determinedWorkType === 'Dinas') {
+        geofenceStatus = 'exempt_dinas';
+      } else if (isOfficeUser || determinedWorkType === 'WFO') {
+        distanceToOffice = calculateDistanceMeters(numLat, numLng, HEAD_OFFICE.lat, HEAD_OFFICE.lng);
+        if (distanceToOffice !== null && distanceToOffice <= HEAD_OFFICE.radiusMeters) {
+          geofenceStatus = 'in_radius';
+        } else {
+          geofenceStatus = 'out_of_range';
+        }
+      }
+    }
+
     const checkInData = {
       time: recordTime,
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
+      geoPoint,
+      distanceToOffice,
+      geofenceStatus,
       photo: checkInPhoto,
     };
-
-    const determinedWorkType = workType || (isOfficeUser ? 'WFO' : 'Project');
-    const determinedOfficeLoc = officeLocation || (isOfficeUser ? (determinedWorkType === 'WFH' ? 'Remote (Rumah)' : determinedWorkType === 'Dinas' ? 'Dinas Luar' : 'Kantor Pusat - Jakarta') : '');
-    const determinedCategory = isOfficeUser ? 'office' : 'site';
     
     if (attendance) {
       attendance.checkIn = checkInData;
@@ -554,10 +612,39 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
       return res.status(400).json({ msg: 'Selfie photo is required for check-out' });
     }
     
+    let checkOutGeoPoint = undefined;
+    let checkOutDistance = undefined;
+    let checkOutGeofenceStatus = 'in_radius';
+
+    if (lat && lng) {
+      const numLat = Number(lat);
+      const numLng = Number(lng);
+      checkOutGeoPoint = {
+        type: 'Point',
+        coordinates: [numLng, numLat],
+      };
+
+      if (attendance.workType === 'WFH') {
+        checkOutGeofenceStatus = 'exempt_wfh';
+      } else if (attendance.workType === 'Dinas') {
+        checkOutGeofenceStatus = 'exempt_dinas';
+      } else if (isOffice || attendance.workType === 'WFO') {
+        checkOutDistance = calculateDistanceMeters(numLat, numLng, HEAD_OFFICE.lat, HEAD_OFFICE.lng);
+        if (checkOutDistance !== null && checkOutDistance <= HEAD_OFFICE.radiusMeters) {
+          checkOutGeofenceStatus = 'in_radius';
+        } else {
+          checkOutGeofenceStatus = 'out_of_range';
+        }
+      }
+    }
+
     attendance.checkOut = {
       time: recordTime,
       photo: req.file ? req.file.path : (attendance.checkOut?.photo || undefined),
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
+      geoPoint: checkOutGeoPoint,
+      distanceToOffice: checkOutDistance,
+      geofenceStatus: checkOutGeofenceStatus,
     };
 
     if (workSummary) {
@@ -648,6 +735,8 @@ router.get('/office-today', auth, async (req, res) => {
         checkOutTime: record?.checkOut?.time || null,
         checkOutPhoto: record?.checkOut?.photo || null,
         workSummary: record?.workSummary || '',
+        distanceToOffice: record?.checkIn?.distanceToOffice,
+        geofenceStatus: record?.checkIn?.geofenceStatus,
       };
     });
 
@@ -661,7 +750,7 @@ router.get('/office-today', auth, async (req, res) => {
       absentCount: staffList.filter(s => !s.checkInTime && s.status !== 'Permit').length,
     };
 
-    res.json({ staff: staffList, summary });
+    res.json({ staff: staffList, summary, headOffice: HEAD_OFFICE });
   } catch (error) {
     console.error('Get office-today error:', error);
     res.status(500).json({ msg: 'Server error' });

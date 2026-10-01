@@ -26,6 +26,8 @@ export interface OfflineAttendanceRecord {
   notes?: string;
   workType?: string; // 'WFO' | 'WFH' | 'Dinas' | 'Project'
   officeLocation?: string;
+  distanceToOffice?: number;
+  geofenceStatus?: string;
   workSummary?: string; // Daily activity summary on check-out
   permitType?: string; // 'Cuti' | 'Izin' | 'Sakit' | 'Dinas Luar'
   reason?: string; // for PERMIT, LEAVE_HOUR, CLOSE
