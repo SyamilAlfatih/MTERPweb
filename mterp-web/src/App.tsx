@@ -5,6 +5,7 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { SidebarProvider } from './contexts/SidebarContext';
 import { SwakelolaProvider } from './contexts/SwakelolaContext';
 import { initOfflineSyncListeners } from './services/syncEngine';
+import { initAttendanceSyncListeners } from './services/attendanceSyncEngine';
 import AppLayout from './components/layout/AppLayout';
 
 // Pages
@@ -55,8 +56,12 @@ function AuthRedirectHandler() {
 
 function App() {
   useEffect(() => {
-    const cleanup = initOfflineSyncListeners();
-    return cleanup;
+    const cleanupSwakelola = initOfflineSyncListeners();
+    const cleanupAttendance = initAttendanceSyncListeners();
+    return () => {
+      cleanupSwakelola();
+      cleanupAttendance();
+    };
   }, []);
 
   return (

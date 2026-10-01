@@ -14,6 +14,20 @@ import { Card, Button, Alert, Input, CostInput } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import { useImageCompression } from '../utils/useImageCompression';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
+import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttendanceBanner';
+import {
+  queueOfflineAttendance,
+  fileToBase64,
+  cacheAttendanceProjects,
+  getCachedAttendanceProjects,
+  cacheProjectWorkers,
+  getCachedProjectWorkers,
+  cacheTodayAttendance,
+  getCachedTodayAttendance,
+  cacheTodaySessions,
+  getCachedTodaySessions,
+  addOfflineWorker,
+} from '../services/attendanceSyncEngine';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -50,6 +64,7 @@ interface ActiveSession {
   closedAt?: string;
   closedBy?: { _id: string; fullName: string } | string;
   createdAt?: string;
+  isOffline?: boolean;
 }
 
 interface AttendanceRecord {
@@ -62,6 +77,7 @@ interface AttendanceRecord {
   projectId?: { _id: string; nama: string } | string;
   dailyRate?: number;
   paymentStatus?: string;
+  isOffline?: boolean;
 }
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
@@ -116,6 +132,13 @@ export default function GroupAttendance() {
   const [loadingWorkers, setLoadingWorkers] = useState(false);
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+
+  // ── Offline Worker Quick-Add & Preview ──
+  const [showAddWorkerModal, setShowAddWorkerModal] = useState(false);
+  const [newWorkerName, setNewWorkerName] = useState('');
+  const [newWorkerRole, setNewWorkerRole] = useState('tukang');
+  const [addingWorker, setAddingWorker] = useState(false);
+  const [showProjectWorkersPreview, setShowProjectWorkersPreview] = useState(false);
 
   // ── Step 3: Submit ──
   const [notes, setNotes] = useState('');
@@ -401,11 +424,27 @@ export default function GroupAttendance() {
     try {
       const response = await api.get('/attendance/projects');
       setProjects(response.data);
-      if (response.data?.length > 0 && !selfProjectId) {
-        setSelfProjectId(response.data[0]._id);
+      await cacheAttendanceProjects(response.data);
+      if (response.data?.length > 0) {
+        if (!selectedProjectId) setSelectedProjectId(response.data[0]._id);
+        if (!selfProjectId) setSelfProjectId(response.data[0]._id);
       }
+      // Also fetch and cache company-wide workers pool
+      api.get('/attendance/workers').then(workersRes => {
+        if (workersRes.data && workersRes.data.length > 0) {
+          cacheProjectWorkers('__all__', workersRes.data);
+        }
+      }).catch(() => {});
     } catch (err) {
-      console.error('Failed to fetch projects', err);
+      console.warn('Failed to fetch projects, checking offline cache', err);
+      const cached = await getCachedAttendanceProjects();
+      if (cached.length > 0) {
+        setProjects(cached);
+        if (!selectedProjectId) setSelectedProjectId(cached[0]._id);
+        if (!selfProjectId) setSelfProjectId(cached[0]._id);
+      } else {
+        setProjects([]);
+      }
     } finally {
       setLoadingProjects(false);
     }
@@ -418,9 +457,15 @@ export default function GroupAttendance() {
       const response = await api.get(`/attendance-session?date=${today}&limit=50`);
       const sessions = response.data?.sessions || [];
       setTodaySessions(sessions);
+      cacheTodaySessions(sessions);
     } catch (err) {
-      console.error('Failed to fetch today sessions', err);
-      setTodaySessions([]);
+      console.warn('Failed to fetch today sessions, checking offline cache', err);
+      const cached = await getCachedTodaySessions();
+      if (cached.length > 0) {
+        setTodaySessions(cached);
+      } else {
+        setTodaySessions([]);
+      }
     } finally {
       setLoadingTodaySessions(false);
     }
@@ -431,8 +476,17 @@ export default function GroupAttendance() {
     try {
       const response = await api.get('/attendance/today');
       setSelfRecord(response.data || null);
+      if (user?._id) {
+        cacheTodayAttendance(user._id, response.data || null);
+      }
     } catch (err) {
-      console.error('Failed to fetch self attendance', err);
+      console.warn('Failed to fetch self attendance, checking offline cache', err);
+      if (user?._id) {
+        const cached = await getCachedTodayAttendance(user._id);
+        if (cached) {
+          setSelfRecord(cached);
+        }
+      }
     } finally {
       setLoadingSelf(false);
     }
@@ -468,19 +522,31 @@ export default function GroupAttendance() {
       const assignedWorkers: WorkerItem[] = (project.assignedTo || [])
         .filter((u: any) => u && u._id)
         .map((u: any): WorkerItem => ({
-          _id: u._id,
+          _id: String(u._id),
           fullName: u.fullName || 'Unknown',
           role: u.role || 'worker',
           position: u.position || u.role || 'worker',
         }))
         .sort((a: WorkerItem, b: WorkerItem) => a.fullName.localeCompare(b.fullName));
       setWorkers(assignedWorkers);
+      cacheProjectWorkers(projectId, assignedWorkers);
       if (!preserveSelection) {
         setSelectedWorkerIds(new Set());
       }
     } catch (err) {
-      console.error('Failed to fetch project workers', err);
-      setWorkers([]);
+      console.warn('Failed to fetch project workers, checking offline cache', err);
+      const cached = await getCachedProjectWorkers(projectId);
+      if (cached.length > 0) {
+        const mapped = cached.map(c => ({
+          _id: String(c._id),
+          fullName: c.fullName,
+          role: c.role,
+          position: c.position || c.role,
+        })).sort((a, b) => a.fullName.localeCompare(b.fullName));
+        setWorkers(mapped);
+      } else {
+        setWorkers([]);
+      }
     } finally {
       setLoadingWorkers(false);
     }
@@ -507,33 +573,145 @@ export default function GroupAttendance() {
   };
 
   const toggleWorker = (workerId: string) => {
+    const id = String(workerId);
     setSelectedWorkerIds(prev => {
       const next = new Set(prev);
-      if (next.has(workerId)) next.delete(workerId);
-      else next.add(workerId);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
   const toggleAll = () => {
-    if (selectedWorkerIds.size === filteredWorkers.length && filteredWorkers.length > 0) {
+    const allFilteredSelected =
+      filteredWorkers.length > 0 &&
+      filteredWorkers.every(w => selectedWorkerIds.has(String(w._id)));
+
+    if (allFilteredSelected) {
       setSelectedWorkerIds(prev => {
         const next = new Set(prev);
-        filteredWorkers.forEach(w => next.delete(w._id));
+        filteredWorkers.forEach(w => next.delete(String(w._id)));
         return next;
       });
     } else {
       setSelectedWorkerIds(prev => {
         const next = new Set(prev);
-        filteredWorkers.forEach(w => next.add(w._id));
+        filteredWorkers.forEach(w => next.add(String(w._id)));
         return next;
       });
+    }
+  };
+
+  const handleAddOfflineWorker = async () => {
+    if (!newWorkerName.trim()) return;
+    setAddingWorker(true);
+    try {
+      const created = await addOfflineWorker(selectedProjectId, {
+        fullName: newWorkerName.trim(),
+        role: newWorkerRole,
+        position: newWorkerRole,
+      });
+
+      const workerItem: WorkerItem = {
+        _id: String(created._id),
+        fullName: created.fullName,
+        role: created.role,
+        position: created.position,
+      };
+
+      setWorkers(prev => {
+        const exists = prev.some(w => w._id === workerItem._id);
+        if (exists) return prev;
+        return [...prev, workerItem].sort((a, b) => a.fullName.localeCompare(b.fullName));
+      });
+
+      // Auto-select the newly added worker
+      setSelectedWorkerIds(prev => new Set(prev).add(workerItem._id));
+
+      setNewWorkerName('');
+      setShowAddWorkerModal(false);
+      setAlertData({
+        visible: true,
+        type: 'success',
+        title: 'Pekerja Ditambahkan',
+        message: `Pekerja "${workerItem.fullName}" berhasil ditambahkan dan dicentang hadir.`,
+      });
+    } catch (e: any) {
+      console.error('Error adding offline worker', e);
+    } finally {
+      setAddingWorker(false);
     }
   };
 
   const handleSubmit = async () => {
     if (!photo || !selectedProjectId || selectedWorkerIds.size === 0) return;
     setSubmitting(true);
+
+    if (!navigator.onLine) {
+      try {
+        const photoBase64 = await fileToBase64(photo);
+        const localUuid = `offline_sess_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const nowIso = new Date().toISOString();
+        const workerNames = Array.from(selectedWorkerIds).map(id => {
+          const w = workers.find(item => item._id === id);
+          return w ? w.fullName : 'Worker';
+        });
+
+        await queueOfflineAttendance({
+          localUuid,
+          type: 'GROUP_SESSION',
+          userId: user?._id || '',
+          userName: user?.fullName || '',
+          projectId: selectedProjectId,
+          projectName: selectedProject?.nama || 'Proyek',
+          workerIds: Array.from(selectedWorkerIds),
+          workerNames,
+          notes,
+          photoBase64,
+          recordedAt: nowIso,
+        });
+
+        const localSession: ActiveSession = {
+          _id: localUuid,
+          supervisorId: user ? { _id: user._id, fullName: user.fullName, role: user.role } : '',
+          projectId: selectedProject ? selectedProject : { _id: selectedProjectId, nama: 'Proyek' },
+          date: nowIso,
+          photoUrl: photoPreview || '',
+          workerIds: Array.from(selectedWorkerIds),
+          lateWorkerIds: [],
+          leaveRecords: [],
+          notes,
+          status: 'active',
+          createdAt: nowIso,
+          isOffline: true,
+        };
+
+        setTodaySessions(prev => [localSession, ...prev]);
+        setCurrentActiveSession(localSession);
+        setResult({
+          session: { _id: localUuid },
+          created: selectedWorkerIds.size,
+          conflicts: [],
+        });
+        setAlertData({
+          visible: true,
+          type: 'success',
+          title: 'Absensi Tersimpan (Offline)',
+          message: `${selectedWorkerIds.size} pekerja diabsen secara offline. Data tersimpan di memori perangkat dan akan disinkronkan saat tersambung internet.`,
+        });
+      } catch (offlineErr: any) {
+        setAlertData({
+          visible: true,
+          type: 'error',
+          title: 'Gagal Simpan Offline',
+          message: offlineErr.message || 'Gagal menyimpan sesi offline.',
+        });
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append('groupPhoto', photo);
@@ -563,12 +741,74 @@ export default function GroupAttendance() {
         message: response.data.msg,
       });
     } catch (err: any) {
-      setAlertData({
-        visible: true,
-        type: 'error',
-        title: 'Gagal Submit',
-        message: err.response?.data?.msg || 'Terjadi kesalahan. Coba lagi.',
-      });
+      if (!err.response) {
+        try {
+          const photoBase64 = await fileToBase64(photo);
+          const localUuid = `offline_sess_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          const nowIso = new Date().toISOString();
+          const workerNames = Array.from(selectedWorkerIds).map(id => {
+            const w = workers.find(item => item._id === id);
+            return w ? w.fullName : 'Worker';
+          });
+
+          await queueOfflineAttendance({
+            localUuid,
+            type: 'GROUP_SESSION',
+            userId: user?._id || '',
+            userName: user?.fullName || '',
+            projectId: selectedProjectId,
+            projectName: selectedProject?.nama || 'Proyek',
+            workerIds: Array.from(selectedWorkerIds),
+            workerNames,
+            notes,
+            photoBase64,
+            recordedAt: nowIso,
+          });
+
+          const localSession: ActiveSession = {
+            _id: localUuid,
+            supervisorId: user ? { _id: user._id, fullName: user.fullName, role: user.role } : '',
+            projectId: selectedProject ? selectedProject : { _id: selectedProjectId, nama: 'Proyek' },
+            date: nowIso,
+            photoUrl: photoPreview || '',
+            workerIds: Array.from(selectedWorkerIds),
+            lateWorkerIds: [],
+            leaveRecords: [],
+            notes,
+            status: 'active',
+            createdAt: nowIso,
+            isOffline: true,
+          };
+
+          setTodaySessions(prev => [localSession, ...prev]);
+          setCurrentActiveSession(localSession);
+          setResult({
+            session: { _id: localUuid },
+            created: selectedWorkerIds.size,
+            conflicts: [],
+          });
+          setAlertData({
+            visible: true,
+            type: 'success',
+            title: 'Absensi Tersimpan (Offline)',
+            message: 'Koneksi terputus. Sesi absensi grup berhasil disimpan di perangkat.',
+          });
+        } catch {
+          setAlertData({
+            visible: true,
+            type: 'error',
+            title: 'Gagal Submit',
+            message: err.message || 'Terjadi kesalahan jaringan.',
+          });
+        }
+      } else {
+        setAlertData({
+          visible: true,
+          type: 'error',
+          title: 'Gagal Submit',
+          message: err.response?.data?.msg || 'Terjadi kesalahan. Coba lagi.',
+        });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -577,6 +817,39 @@ export default function GroupAttendance() {
   const handleLateAdd = async () => {
     if (!lateWorkerId || !result?.session?._id) return;
     setAddingLate(true);
+    const isLocalSession = result.session._id.startsWith('offline_');
+
+    if (!navigator.onLine || isLocalSession) {
+      const nowIso = new Date().toISOString();
+      await queueOfflineAttendance({
+        localUuid: `off_late_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        type: 'SESSION_LATE_ADD',
+        userId: user?._id || '',
+        userName: user?.fullName || '',
+        projectId: selectedProjectId,
+        targetSessionId: result.session._id,
+        targetWorkerId: lateWorkerId,
+        recordedAt: nowIso,
+      });
+
+      setSelectedWorkerIds(prev => new Set(prev).add(lateWorkerId));
+      if (currentActiveSession) {
+        const updated = {
+          ...currentActiveSession,
+          lateWorkerIds: [
+            ...(currentActiveSession.lateWorkerIds || []),
+            { workerId: lateWorkerId, addedAt: nowIso } as any,
+          ],
+        };
+        setCurrentActiveSession(updated);
+        setTodaySessions(prev => prev.map(s => s._id === updated._id ? updated : s));
+      }
+      setLateWorkerId('');
+      setAlertData({ visible: true, type: 'success', title: 'Tersimpan (Offline)', message: 'Pekerja susulan disimpan di perangkat.' });
+      setAddingLate(false);
+      return;
+    }
+
     try {
       const response = await api.post(
         `/attendance-session/${result.session._id}/late-add`,
@@ -587,10 +860,27 @@ export default function GroupAttendance() {
       setLateWorkerId('');
       fetchTodaySessions();
     } catch (err: any) {
-      setAlertData({
-        visible: true, type: 'error', title: 'Gagal',
-        message: err.response?.data?.msg || 'Gagal menambahkan pekerja',
-      });
+      if (!err.response) {
+        const nowIso = new Date().toISOString();
+        await queueOfflineAttendance({
+          localUuid: `off_late_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          type: 'SESSION_LATE_ADD',
+          userId: user?._id || '',
+          userName: user?.fullName || '',
+          projectId: selectedProjectId,
+          targetSessionId: result.session._id,
+          targetWorkerId: lateWorkerId,
+          recordedAt: nowIso,
+        });
+        setSelectedWorkerIds(prev => new Set(prev).add(lateWorkerId));
+        setLateWorkerId('');
+        setAlertData({ visible: true, type: 'success', title: 'Tersimpan (Offline)', message: 'Koneksi terputus. Pekerja susulan disimpan di perangkat.' });
+      } else {
+        setAlertData({
+          visible: true, type: 'error', title: 'Gagal',
+          message: err.response?.data?.msg || 'Gagal menambahkan pekerja',
+        });
+      }
     } finally {
       setAddingLate(false);
     }
@@ -599,6 +889,7 @@ export default function GroupAttendance() {
   const handleLeaveHour = async () => {
     if (!result?.session?._id) return;
     setRecordingLeave(true);
+    const isLocalSession = result.session._id.startsWith('offline_');
 
     try {
       let workersPayload: { workerId: string; leaveHour: string; reason: string }[] = [];
@@ -621,6 +912,49 @@ export default function GroupAttendance() {
           leaveHour: bulkLeaveHour,
           reason: bulkLeaveReason,
         }));
+      }
+
+      if (!navigator.onLine || isLocalSession) {
+        const nowIso = new Date().toISOString();
+        for (const wp of workersPayload) {
+          await queueOfflineAttendance({
+            localUuid: `off_leave_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            type: 'SESSION_LEAVE_HOUR',
+            userId: user?._id || '',
+            userName: user?.fullName || '',
+            projectId: selectedProjectId,
+            targetSessionId: result.session._id,
+            targetWorkerId: wp.workerId,
+            leaveHour: wp.leaveHour,
+            reason: wp.reason,
+            recordedAt: nowIso,
+          });
+        }
+
+        if (currentActiveSession) {
+          const newLeaves = workersPayload.map(wp => ({
+            workerId: wp.workerId,
+            leaveHour: wp.leaveHour,
+            reason: wp.reason,
+            recordedAt: nowIso,
+          }));
+          const updated = {
+            ...currentActiveSession,
+            leaveRecords: [...(currentActiveSession.leaveRecords || []), ...newLeaves as any],
+          };
+          setCurrentActiveSession(updated);
+          setTodaySessions(prev => prev.map(s => s._id === updated._id ? updated : s));
+        }
+
+        setLeaveWorkerId('');
+        setLeaveHour('');
+        setLeaveReason('');
+        setBulkLeaveWorkerIds(new Set());
+        setBulkLeaveHour('');
+        setBulkLeaveReason('');
+        setAlertData({ visible: true, type: 'success', title: 'Tersimpan (Offline)', message: 'Catatan pulang awal disimpan di perangkat.' });
+        setRecordingLeave(false);
+        return;
       }
 
       const response = await api.post(
@@ -669,6 +1003,45 @@ export default function GroupAttendance() {
   const handleCloseAllAndFinishSession = async () => {
     if (!result?.session?._id) return;
     setClosingSession(true);
+    const isLocalSession = result.session._id.startsWith('offline_');
+
+    if (!navigator.onLine || isLocalSession) {
+      const finalHour = closeLeaveHour || formatWIBTime(new Date());
+      const nowIso = new Date().toISOString();
+      await queueOfflineAttendance({
+        localUuid: `off_close_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        type: 'SESSION_CLOSE',
+        userId: user?._id || '',
+        userName: user?.fullName || '',
+        projectId: selectedProjectId,
+        targetSessionId: result.session._id,
+        leaveHour: finalHour,
+        reason: closeReason || 'Penutupan sesi offline',
+        recordedAt: nowIso,
+      });
+
+      if (currentActiveSession) {
+        const updated: ActiveSession = {
+          ...currentActiveSession,
+          status: 'closed',
+          closedAt: nowIso,
+        };
+        setCurrentActiveSession(updated);
+        setTodaySessions(prev => prev.map(s => s._id === updated._id ? updated : s));
+      }
+      setShowCloseModal(false);
+      setCloseLeaveHour('');
+      setCloseReason('');
+      setAlertData({
+        visible: true,
+        type: 'success',
+        title: 'Sesi Ditutup (Offline)',
+        message: 'Penutupan sesi tersimpan di perangkat dan akan disinkronkan saat online.',
+      });
+      setClosingSession(false);
+      return;
+    }
+
     try {
       const finalHour = closeLeaveHour || formatWIBTime(new Date());
 
@@ -805,6 +1178,41 @@ export default function GroupAttendance() {
       return;
     }
     setSelfSubmitting(true);
+
+    if (!navigator.onLine) {
+      const localUuid = `off_self_in_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const nowIso = new Date().toISOString();
+      const proj = projects.find(p => p._id === selfProjectId);
+      await queueOfflineAttendance({
+        localUuid,
+        type: 'SELF_CHECKIN',
+        userId: user?._id || '',
+        userName: user?.fullName || '',
+        projectId: selfProjectId,
+        projectName: proj?.nama || 'Proyek',
+        recordedAt: nowIso,
+      });
+      const opt = {
+        _id: localUuid,
+        date: nowIso,
+        checkIn: { time: nowIso },
+        wageType: 'daily',
+        status: 'Present',
+        projectId: proj ? { _id: proj._id, nama: proj.nama } : undefined,
+        isOffline: true,
+      };
+      setSelfRecord(opt as any);
+      if (user?._id) cacheTodayAttendance(user._id, opt);
+      setAlertData({
+        visible: true,
+        type: 'success',
+        title: 'Check-In Berhasil! (Offline)',
+        message: `Check-in mandiri tercatat di perangkat pada ${formatWIBTime(new Date())} WIB dan akan disinkronkan saat online.`,
+      });
+      setSelfSubmitting(false);
+      return;
+    }
+
     try {
       await api.post('/attendance/checkin', { projectId: selfProjectId });
       setAlertData({
@@ -816,12 +1224,44 @@ export default function GroupAttendance() {
       await fetchTodaySelfAttendance();
       await fetchRecentHistory();
     } catch (err: any) {
-      setAlertData({
-        visible: true,
-        type: 'error',
-        title: 'Check-In Gagal',
-        message: err.response?.data?.msg || 'Gagal melakukan check-in mandiri.',
-      });
+      if (!err.response) {
+        const localUuid = `off_self_in_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const nowIso = new Date().toISOString();
+        const proj = projects.find(p => p._id === selfProjectId);
+        await queueOfflineAttendance({
+          localUuid,
+          type: 'SELF_CHECKIN',
+          userId: user?._id || '',
+          userName: user?.fullName || '',
+          projectId: selfProjectId,
+          projectName: proj?.nama || 'Proyek',
+          recordedAt: nowIso,
+        });
+        const opt = {
+          _id: localUuid,
+          date: nowIso,
+          checkIn: { time: nowIso },
+          wageType: 'daily',
+          status: 'Present',
+          projectId: proj ? { _id: proj._id, nama: proj.nama } : undefined,
+          isOffline: true,
+        };
+        setSelfRecord(opt as any);
+        if (user?._id) cacheTodayAttendance(user._id, opt);
+        setAlertData({
+          visible: true,
+          type: 'success',
+          title: 'Check-In Berhasil! (Offline)',
+          message: `Koneksi terputus. Check-in mandiri tercatat di perangkat pada ${formatWIBTime(new Date())} WIB.`,
+        });
+      } else {
+        setAlertData({
+          visible: true,
+          type: 'error',
+          title: 'Check-In Gagal',
+          message: err.response?.data?.msg || 'Gagal melakukan check-in mandiri.',
+        });
+      }
     } finally {
       setSelfSubmitting(false);
     }
@@ -833,6 +1273,49 @@ export default function GroupAttendance() {
       return;
     }
     setSelfSubmitting(true);
+
+    if (!navigator.onLine) {
+      try {
+        const photoBase64 = await fileToBase64(selfPhoto);
+        const localUuid = `off_self_out_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const nowIso = new Date().toISOString();
+        await queueOfflineAttendance({
+          localUuid,
+          type: 'SELF_CHECKOUT',
+          userId: user?._id || '',
+          userName: user?.fullName || '',
+          projectId: (selfRecord?.projectId as any)?._id || selfProjectId || '',
+          projectName: (selfRecord?.projectId as any)?.nama || '',
+          recordedAt: nowIso,
+          photoBase64,
+        });
+        const opt = {
+          ...(selfRecord || {
+            _id: localUuid,
+            date: nowIso,
+            status: 'Present',
+          }),
+          checkOut: { time: nowIso, photo: selfPhotoPreview || undefined },
+          isOffline: true,
+        };
+        setSelfRecord(opt as any);
+        if (user?._id) cacheTodayAttendance(user._id, opt);
+        setSelfPhoto(null);
+        setSelfPhotoPreview(null);
+        setAlertData({
+          visible: true,
+          type: 'success',
+          title: 'Check-Out Berhasil! (Offline)',
+          message: `Check-out mandiri tercatat di perangkat pada ${formatWIBTime(new Date())} WIB.`,
+        });
+      } catch (err: any) {
+        setAlertData({ visible: true, type: 'error', title: 'Gagal Simpan Offline', message: err.message });
+      } finally {
+        setSelfSubmitting(false);
+      }
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append('photo', selfPhoto);
@@ -851,12 +1334,56 @@ export default function GroupAttendance() {
       await fetchRecentHistory();
       await fetchTodaySessions();
     } catch (err: any) {
-      setAlertData({
-        visible: true,
-        type: 'error',
-        title: 'Check-Out Gagal',
-        message: err.response?.data?.msg || 'Gagal melakukan check-out mandiri.',
-      });
+      if (!err.response && selfPhoto) {
+        try {
+          const photoBase64 = await fileToBase64(selfPhoto);
+          const localUuid = `off_self_out_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          const nowIso = new Date().toISOString();
+          await queueOfflineAttendance({
+            localUuid,
+            type: 'SELF_CHECKOUT',
+            userId: user?._id || '',
+            userName: user?.fullName || '',
+            projectId: (selfRecord?.projectId as any)?._id || selfProjectId || '',
+            projectName: (selfRecord?.projectId as any)?.nama || '',
+            recordedAt: nowIso,
+            photoBase64,
+          });
+          const opt = {
+            ...(selfRecord || {
+              _id: localUuid,
+              date: nowIso,
+              status: 'Present',
+            }),
+            checkOut: { time: nowIso, photo: selfPhotoPreview || undefined },
+            isOffline: true,
+          };
+          setSelfRecord(opt as any);
+          if (user?._id) cacheTodayAttendance(user._id, opt);
+          setSelfPhoto(null);
+          setSelfPhotoPreview(null);
+          setAlertData({
+            visible: true,
+            type: 'success',
+            title: 'Check-Out Berhasil! (Offline)',
+            message: `Koneksi terputus. Check-out mandiri tercatat di perangkat pada ${formatWIBTime(new Date())} WIB.`,
+          });
+        } catch {
+          setAlertData({
+            visible: true,
+            type: 'error',
+            title: 'Check-Out Gagal',
+            message: err.message || 'Gagal melakukan check-out mandiri.',
+          });
+        }
+      } else {
+        setAlertData({
+          visible: true,
+          type: 'error',
+          title: 'Check-Out Gagal',
+          message: err.response?.data?.msg || 'Gagal melakukan check-out mandiri.',
+        });
+      }
     } finally {
       setSelfSubmitting(false);
     }
@@ -917,6 +1444,48 @@ export default function GroupAttendance() {
       return;
     }
     setSubmittingPermit(true);
+
+    if (!navigator.onLine) {
+      try {
+        const photoBase64 = await fileToBase64(permitPhoto);
+        const localUuid = `off_self_per_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const nowIso = new Date().toISOString();
+        await queueOfflineAttendance({
+          localUuid,
+          type: 'PERMIT',
+          userId: user?._id || '',
+          userName: user?.fullName || '',
+          projectId: selfProjectId || '',
+          reason: permitReason,
+          recordedAt: nowIso,
+          photoBase64,
+        });
+        const opt = {
+          _id: localUuid,
+          date: nowIso,
+          status: 'Permit',
+          isOffline: true,
+        };
+        setSelfRecord(opt as any);
+        if (user?._id) cacheTodayAttendance(user._id, opt);
+        setPermitModal(false);
+        setPermitReason('');
+        setPermitPhoto(null);
+        setPermitPhotoPreview(null);
+        setAlertData({
+          visible: true,
+          type: 'success',
+          title: 'Pengajuan Izin Tersimpan (Offline)',
+          message: 'Pengajuan izin berhasil dicatat di perangkat.',
+        });
+      } catch (err: any) {
+        setAlertData({ visible: true, type: 'error', title: 'Gagal Simpan Offline', message: err.message });
+      } finally {
+        setSubmittingPermit(false);
+      }
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append('reason', permitReason);
@@ -936,12 +1505,55 @@ export default function GroupAttendance() {
       setPermitPhotoPreview(null);
       await fetchTodaySelfAttendance();
     } catch (err: any) {
-      setAlertData({
-        visible: true,
-        type: 'error',
-        title: 'Pengajuan Izin Gagal',
-        message: err.response?.data?.msg || 'Gagal mengajukan izin.',
-      });
+      if (!err.response && permitPhoto) {
+        try {
+          const photoBase64 = await fileToBase64(permitPhoto);
+          const localUuid = `off_self_per_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          const nowIso = new Date().toISOString();
+          await queueOfflineAttendance({
+            localUuid,
+            type: 'PERMIT',
+            userId: user?._id || '',
+            userName: user?.fullName || '',
+            projectId: selfProjectId || '',
+            reason: permitReason,
+            recordedAt: nowIso,
+            photoBase64,
+          });
+          const opt = {
+            _id: localUuid,
+            date: nowIso,
+            status: 'Permit',
+            isOffline: true,
+          };
+          setSelfRecord(opt as any);
+          if (user?._id) cacheTodayAttendance(user._id, opt);
+          setPermitModal(false);
+          setPermitReason('');
+          setPermitPhoto(null);
+          setPermitPhotoPreview(null);
+          setAlertData({
+            visible: true,
+            type: 'success',
+            title: 'Pengajuan Izin Tersimpan (Offline)',
+            message: 'Koneksi terputus. Pengajuan izin berhasil dicatat di perangkat.',
+          });
+        } catch {
+          setAlertData({
+            visible: true,
+            type: 'error',
+            title: 'Pengajuan Izin Gagal',
+            message: err.message || 'Gagal mengajukan izin.',
+          });
+        }
+      } else {
+        setAlertData({
+          visible: true,
+          type: 'error',
+          title: 'Pengajuan Izin Gagal',
+          message: err.response?.data?.msg || 'Gagal mengajukan izin.',
+        });
+      }
     } finally {
       setSubmittingPermit(false);
     }
@@ -970,6 +1582,15 @@ export default function GroupAttendance() {
         title={alertData.title}
         message={alertData.message}
         onClose={() => setAlertData({ ...alertData, visible: false })}
+      />
+
+      {/* Offline sync banner */}
+      <OfflineAttendanceBanner
+        onSyncComplete={() => {
+          fetchTodaySessions();
+          fetchTodaySelfAttendance();
+          fetchRecentHistory();
+        }}
       />
 
       {/* ══════════════ 1. ENTERPRISE ERP HEADER ══════════════ */}
@@ -1121,10 +1742,15 @@ export default function GroupAttendance() {
           </div>
           <div className="min-w-0">
             <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider m-0">Absensi Anda</p>
-            <h3 className="text-base font-extrabold text-text-primary m-0 mt-0.5 truncate">
-              {selfRecord?.checkIn?.time
-                ? (selfRecord.checkOut?.time ? 'Selesai Check-Out' : 'Sedang Bertugas')
-                : (selfRecord?.status === 'Permit' ? 'Status Izin' : 'Belum Check-In')}
+            <h3 className="text-base font-extrabold text-text-primary m-0 mt-0.5 truncate flex items-center gap-1.5">
+              <span>
+                {selfRecord?.checkIn?.time
+                  ? (selfRecord.checkOut?.time ? 'Selesai Check-Out' : 'Sedang Bertugas')
+                  : (selfRecord?.status === 'Permit' ? 'Status Izin' : 'Belum Check-In')}
+              </span>
+              {(selfRecord?.isOffline || selfRecord?._id?.startsWith('offline_')) && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-700 border border-amber-500/30">Offline</span>
+              )}
             </h3>
             <p className="text-[10px] text-purple-600 font-semibold m-0 mt-0.5">
               {getSelfDuration() ? `Durasi: ${getSelfDuration()}` : 'Mandiri Supervisor'}
@@ -1312,6 +1938,11 @@ export default function GroupAttendance() {
                               </h4>
 
                               {/* Status Badge */}
+                              {(session.isOffline || session._id?.startsWith('offline_')) && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-700 border border-amber-500/30 flex items-center gap-1">
+                                  Offline
+                                </span>
+                              )}
                               {isClosed ? (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-200/80 text-slate-700 border border-slate-300 flex items-center gap-1">
                                   <CheckCircle2 size={11} className="text-slate-600" />
@@ -1447,6 +2078,11 @@ export default function GroupAttendance() {
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      {(currentActiveSession?.isOffline || currentActiveSession?._id?.startsWith('offline_')) && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-700 border border-amber-500/30 flex items-center gap-1">
+                          Offline
+                        </span>
+                      )}
                       <p className={`text-[10px] font-black uppercase tracking-wider m-0 px-2 py-0.5 rounded-full ${
                         isCurrentSessionClosed ? 'bg-slate-100 text-slate-800 border border-slate-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                       }`}>
@@ -2013,7 +2649,7 @@ export default function GroupAttendance() {
                       <p className="text-sm">Memuat daftar proyek aktif...</p>
                     </div>
                   ) : projects.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5 max-h-[260px] overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 max-h-[260px] overflow-y-auto pr-1">
                       {projects.map((p) => (
                         <button
                           key={p._id}
@@ -2045,9 +2681,70 @@ export default function GroupAttendance() {
                       ))}
                     </div>
                   ) : (
-                    <div className="p-8 text-center border-2 border-dashed border-border-light rounded-xl text-text-muted mb-5">
+                    <div className="p-8 text-center border-2 border-dashed border-border-light rounded-xl text-text-muted mb-4">
                       <Building size={24} className="mx-auto mb-2 opacity-40" />
                       <p className="text-sm font-medium">Tidak ada proyek aktif</p>
+                    </div>
+                  )}
+
+                  {/* Worker Preview Accordion in Step 1 */}
+                  {selectedProjectId && (
+                    <div className="mb-5 p-3.5 rounded-xl border border-border-light bg-bg-secondary/60">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Users size={16} className="text-primary shrink-0" />
+                          <span className="text-xs font-bold text-text-primary">
+                            Daftar Pekerja Terdaftar: {loadingWorkers ? 'Memuat...' : `${workers.length} Pekerja`}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          id="preview-workers-toggle-btn"
+                          onClick={() => setShowProjectWorkersPreview(prev => !prev)}
+                          className="text-xs font-bold text-primary hover:text-primary-dark transition-colors cursor-pointer"
+                        >
+                          {showProjectWorkersPreview ? 'Tutup Daftar' : 'Cek / Lihat Daftar Nama'}
+                        </button>
+                      </div>
+
+                      {showProjectWorkersPreview && (
+                        <div className="mt-3 pt-3 border-t border-border-light/80 space-y-2 animate-fade-in">
+                          {loadingWorkers ? (
+                            <div className="p-3 text-center text-text-muted text-xs flex items-center justify-center gap-2">
+                              <Loader size={14} className="animate-spin" />
+                              <span>Memuat pekerja...</span>
+                            </div>
+                          ) : workers.length === 0 ? (
+                            <div className="p-3 text-center text-xs text-text-muted">
+                              <p className="m-0">Belum ada pekerja terdaftar untuk proyek ini.</p>
+                              <button
+                                type="button"
+                                onClick={() => setShowAddWorkerModal(true)}
+                                className="mt-2 text-xs font-bold text-primary underline cursor-pointer"
+                              >
+                                + Tambah Nama Pekerja (Offline)
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="max-h-[190px] overflow-y-auto space-y-1.5 pr-1">
+                              {workers.map((w, idx) => (
+                                <div
+                                  key={w._id}
+                                  className="flex items-center justify-between p-2 rounded-lg bg-bg-white border border-border-light text-xs"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-text-muted text-[11px] w-5 text-right font-mono">{idx + 1}.</span>
+                                    <span className="font-semibold text-text-primary truncate">{w.fullName}</span>
+                                  </div>
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-bg-secondary text-text-muted font-medium capitalize shrink-0">
+                                    {w.position || w.role}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -2109,19 +2806,37 @@ export default function GroupAttendance() {
                     </label>
                   )}
 
-                  <button
-                    id="step1-next-btn"
-                    className={`w-full flex items-center justify-center gap-2 p-4 rounded-xl text-sm font-bold text-white bg-primary transition-all cursor-pointer ${
-                      !selectedProjectId || !photo
-                        ? 'opacity-50 cursor-not-allowed'
-                        : 'hover:bg-primary-dark shadow-sm'
-                    }`}
-                    onClick={() => setStep(2)}
-                    disabled={!selectedProjectId || !photo}
-                  >
-                    <span>Lanjut ke Pilih Pekerja</span>
-                    <ChevronRight size={18} />
-                  </button>
+                  <div className="flex gap-2.5">
+                    <button
+                      id="step1-check-workers-btn"
+                      type="button"
+                      onClick={() => setStep(2)}
+                      disabled={!selectedProjectId}
+                      className={`flex-1 flex items-center justify-center gap-1.5 p-3.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                        !selectedProjectId
+                          ? 'border-border-light text-text-muted/50 cursor-not-allowed bg-bg-secondary/40'
+                          : 'border-primary/40 text-primary bg-primary/5 hover:bg-primary/10'
+                      }`}
+                      title="Lihat atau periksa daftar nama pekerja proyek"
+                    >
+                      <Users size={15} />
+                      <span>Cek Pekerja ({workers.length})</span>
+                    </button>
+
+                    <button
+                      id="step1-next-btn"
+                      className={`flex-[2] flex items-center justify-center gap-2 p-3.5 rounded-xl text-sm font-bold text-white bg-primary transition-all cursor-pointer ${
+                        !selectedProjectId || !photo
+                          ? 'opacity-50 cursor-not-allowed'
+                          : 'hover:bg-primary-dark shadow-sm'
+                      }`}
+                      onClick={() => setStep(2)}
+                      disabled={!selectedProjectId || !photo}
+                    >
+                      <span>Lanjut ke Pilih Pekerja</span>
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
                 </Card>
               )}
 
@@ -2133,8 +2848,17 @@ export default function GroupAttendance() {
                       <Users size={20} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-bold text-text-primary m-0">2. Pilih Pekerja yang Hadir</h3>
-                      <p className="text-xs text-text-muted m-0 truncate">{selectedProject?.nama || 'Proyek'}</p>
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <h3 className="text-base font-bold text-text-primary m-0">2. Pilih Pekerja yang Hadir</h3>
+                        {!navigator.onLine && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-800 border border-amber-500/30">
+                            Offline Sync
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-text-muted m-0 truncate">
+                        {selectedProject?.nama || 'Proyek'} • {workers.length} Pekerja Tersinkronisasi
+                      </p>
                     </div>
                     <div className="px-3 py-1.5 rounded-xl text-xs font-black bg-primary-bg text-primary shrink-0">
                       {selectedWorkerIds.size} / {workers.length} Terpilih
@@ -2154,23 +2878,35 @@ export default function GroupAttendance() {
                     />
                   </div>
 
-                  {/* Toggle All */}
-                  <button
-                    id="toggle-all-workers-btn"
-                    onClick={toggleAll}
-                    className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl bg-bg-secondary text-xs font-bold text-text-muted hover:bg-primary-bg hover:text-primary transition-colors w-full cursor-pointer"
-                  >
-                    {selectedWorkerIds.size === filteredWorkers.length && filteredWorkers.length > 0 ? (
-                      <CheckSquare size={16} className="text-primary" />
-                    ) : (
-                      <Square size={16} />
-                    )}
-                    <span>
-                      {selectedWorkerIds.size === filteredWorkers.length && filteredWorkers.length > 0
-                        ? 'Batal Pilih Semua'
-                        : `Pilih Semua (${filteredWorkers.length} pekerja)`}
-                    </span>
-                  </button>
+                  {/* Toggle All & Quick Add Worker */}
+                  <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                    <button
+                      id="toggle-all-workers-btn"
+                      onClick={toggleAll}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-bg-secondary text-xs font-bold text-text-muted hover:bg-primary-bg hover:text-primary transition-colors cursor-pointer"
+                    >
+                      {selectedWorkerIds.size === filteredWorkers.length && filteredWorkers.length > 0 ? (
+                        <CheckSquare size={16} className="text-primary" />
+                      ) : (
+                        <Square size={16} />
+                      )}
+                      <span>
+                        {selectedWorkerIds.size === filteredWorkers.length && filteredWorkers.length > 0
+                          ? 'Batal Pilih Semua'
+                          : `Pilih Semua (${filteredWorkers.length} pekerja)`}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="quick-add-worker-btn"
+                      onClick={() => setShowAddWorkerModal(true)}
+                      className="px-3 py-2 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <UserPlus size={14} />
+                      <span>+ Tambah Pekerja</span>
+                    </button>
+                  </div>
 
                   {/* Worker List */}
                   {loadingWorkers ? (
@@ -2179,10 +2915,23 @@ export default function GroupAttendance() {
                       <p className="text-sm">Memuat daftar pekerja proyek...</p>
                     </div>
                   ) : workers.length === 0 ? (
-                    <div className="p-8 text-center border-2 border-dashed border-border-light rounded-xl text-text-muted">
-                      <Users size={24} className="mx-auto mb-2 opacity-40" />
-                      <p className="text-sm font-medium">Belum ada pekerja di proyek ini</p>
-                      <p className="text-xs mt-1 opacity-70">Assign pekerja di halaman Pengaturan Proyek</p>
+                    <div className="p-8 text-center border-2 border-dashed border-border-light rounded-xl text-text-muted space-y-3">
+                      <Users size={28} className="mx-auto text-text-muted/60" />
+                      <div>
+                        <p className="text-sm font-bold text-text-primary m-0">Belum ada pekerja di proyek ini</p>
+                        <p className="text-xs text-text-muted m-0 mt-1">
+                          Dalam mode offline, Anda dapat menambahkan nama pekerja secara langsung di lapangan.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        id="add-worker-offline-btn"
+                        onClick={() => setShowAddWorkerModal(true)}
+                        className="px-4 py-2.5 rounded-xl bg-primary text-white text-xs font-bold shadow-sm hover:bg-primary-dark transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <UserPlus size={15} />
+                        <span>+ Tambah Nama Pekerja (Offline)</span>
+                      </button>
                     </div>
                   ) : (
                     <div
@@ -2353,15 +3102,22 @@ export default function GroupAttendance() {
                 </div>
               </div>
               {selfRecord?.status && (
-                <span
-                  className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider"
-                  style={{
-                    backgroundColor: STATUS_STYLES[selfRecord.status]?.bg || '#D1FAE5',
-                    color: STATUS_STYLES[selfRecord.status]?.color || '#059669',
-                  }}
-                >
-                  {STATUS_STYLES[selfRecord.status]?.label || selfRecord.status}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  {(selfRecord.isOffline || selfRecord._id?.startsWith('offline_')) && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-700 border border-amber-500/30">
+                      Offline
+                    </span>
+                  )}
+                  <span
+                    className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider"
+                    style={{
+                      backgroundColor: STATUS_STYLES[selfRecord.status]?.bg || '#D1FAE5',
+                      color: STATUS_STYLES[selfRecord.status]?.color || '#059669',
+                    }}
+                  >
+                    {STATUS_STYLES[selfRecord.status]?.label || selfRecord.status}
+                  </span>
+                </div>
               )}
             </div>
 
@@ -2826,6 +3582,90 @@ export default function GroupAttendance() {
                 variant="danger"
                 icon={LogOut}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Tambah Pekerja Offline ── */}
+      {showAddWorkerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-bg-white rounded-2xl border border-border-light shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border-light">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-primary-bg text-primary flex items-center justify-center">
+                  <UserPlus size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text-primary m-0">Tambah Pekerja Lapangan</h3>
+                  <p className="text-[11px] text-text-muted m-0">Tersimpan di perangkat & otomatis masuk presensi</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddWorkerModal(false)}
+                className="w-7 h-7 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-secondary flex items-center justify-center cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
+                  Nama Lengkap Pekerja *
+                </label>
+                <input
+                  id="new-worker-name-input"
+                  type="text"
+                  placeholder="Contoh: Budi Santoso"
+                  value={newWorkerName}
+                  onChange={(e) => setNewWorkerName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-border-light bg-bg-white text-sm text-text-primary focus:outline-none focus:border-primary transition-colors"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-1 block">
+                  Peran / Posisi
+                </label>
+                <select
+                  id="new-worker-role-select"
+                  value={newWorkerRole}
+                  onChange={(e) => setNewWorkerRole(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-border-light bg-bg-white text-sm text-text-primary focus:outline-none focus:border-primary transition-colors"
+                >
+                  <option value="tukang">Tukang</option>
+                  <option value="helper">Helper / Kenek</option>
+                  <option value="worker">Pekerja Lapangan</option>
+                  <option value="foreman">Mandor / Foreman</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddWorkerModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-border-light text-xs font-bold text-text-muted hover:bg-bg-secondary cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                id="submit-add-worker-btn"
+                onClick={handleAddOfflineWorker}
+                disabled={!newWorkerName.trim() || addingWorker}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-primary flex items-center justify-center gap-1.5 cursor-pointer ${
+                  !newWorkerName.trim() || addingWorker
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:bg-primary-dark shadow-sm'
+                }`}
+              >
+                {addingWorker ? <Loader size={14} className="animate-spin" /> : <Check size={14} />}
+                <span>Simpan & Pilih</span>
+              </button>
             </div>
           </div>
         </div>

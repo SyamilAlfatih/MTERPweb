@@ -11,12 +11,29 @@ const router = express.Router();
 router.get('/projects', auth, async (req, res) => {
   try {
     const projects = await Project.find({ status: { $ne: 'Completed' } })
-      .select('_id nama lokasi status')
+      .select('_id nama lokasi status assignedTo')
+      .populate('assignedTo', '_id fullName role position')
       .sort({ createdAt: -1 })
       .lean();
     res.json(projects);
   } catch (error) {
     console.error('Get attendance projects error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// GET /api/attendance/workers - All workers for attendance tagging & offline cache
+router.get('/workers', auth, async (req, res) => {
+  try {
+    const workers = await User.find({
+      role: { $in: ['worker', 'tukang', 'helper', 'foreman', 'supervisor', 'site_manager', 'admin_project', 'asset_admin'] }
+    })
+      .select('_id fullName username role position profileImage')
+      .sort({ fullName: 1 })
+      .lean();
+    res.json(workers);
+  } catch (error) {
+    console.error('Get attendance workers error:', error);
     res.status(500).json({ msg: 'Server error' });
   }
 });
@@ -27,8 +44,8 @@ router.get('/projects', auth, async (req, res) => {
 /**
  * Returns "today" midnight in the WIB timezone, stored as a UTC Date.
  */
-function getTodayStart() {
-  const range = wibDayRange(nowWIB());
+function getTodayStart(dateInput) {
+  const range = wibDayRange(dateInput || nowWIB());
   return range ? range.start : new Date(); // fallback if range is somehow null
 }
 
@@ -306,11 +323,22 @@ router.get('/users', auth, authorize('owner', 'president_director', 'operational
 // POST /api/attendance/checkin - Check in with time & project validation
 router.post('/checkin', auth, async (req, res) => {
   try {
-    const { projectId, lat, lng } = req.body;
+    const { projectId, lat, lng, clientTime } = req.body;
     
-    // 1. Time Validation (08:00 - 16:00) - use WIB timezone consistently
-    const now = nowWIB();
-    const localHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', hour: 'numeric', hourCycle: 'h23' }).format(now), 10);
+    // Parse client time or current time
+    let recordTime = nowWIB();
+    if (clientTime) {
+      const parsed = new Date(clientTime);
+      if (!isNaN(parsed.getTime())) {
+        recordTime = parsed;
+      }
+    }
+
+    // 1. Time Validation (08:00 - 16:00) - evaluate at recordTime in WIB timezone
+    const localHour = parseInt(
+      new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', hour: 'numeric', hourCycle: 'h23' }).format(recordTime),
+      10
+    );
     const hour = localHour;
     
     // Allow supervisor/admin to bypass? For now, strict for everyone or just workers?
@@ -327,7 +355,7 @@ router.post('/checkin', auth, async (req, res) => {
       return res.status(400).json({ msg: 'Please select a project to check in' });
     }
     
-    const today = getTodayStart();
+    const today = getTodayStart(recordTime);
     
     // Check if already checked in today
     let attendance = await Attendance.findOne({
@@ -340,13 +368,14 @@ router.post('/checkin', auth, async (req, res) => {
     }
     
     const checkInData = {
-      time: nowWIB(),
+      time: recordTime,
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
     };
     
     if (attendance) {
       attendance.checkIn = checkInData;
       attendance.projectId = projectId;
+      attendance.status = 'Present';
     } else {
       attendance = new Attendance({
         userId: req.user._id,
@@ -372,13 +401,21 @@ router.post('/checkin', auth, async (req, res) => {
 // POST /api/attendance/permit - Create permit request
 router.post('/permit', auth, uploadLimiter, upload.single('evidence'), async (req, res) => {
   try {
-    const { reason } = req.body;
+    const { reason, clientTime } = req.body;
     
     if (!reason || !req.file) {
       return res.status(400).json({ msg: 'Reason and evidence photo are required' });
     }
 
-    const today = getTodayStart();
+    let recordTime = nowWIB();
+    if (clientTime) {
+      const parsed = new Date(clientTime);
+      if (!isNaN(parsed.getTime())) {
+        recordTime = parsed;
+      }
+    }
+
+    const today = getTodayStart(recordTime);
 
     // Check if record exists
     let attendance = await Attendance.findOne({
@@ -420,9 +457,17 @@ router.post('/permit', auth, uploadLimiter, upload.single('evidence'), async (re
 // PUT /api/attendance/checkout - Check out (with selfie photo required)
 router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req, res) => {
   try {
-    const { lat, lng } = req.body;
+    const { lat, lng, clientTime } = req.body;
     
-    const today = getTodayStart();
+    let recordTime = nowWIB();
+    if (clientTime) {
+      const parsed = new Date(clientTime);
+      if (!isNaN(parsed.getTime())) {
+        recordTime = parsed;
+      }
+    }
+
+    const today = getTodayStart(recordTime);
     
     const attendance = await Attendance.findOne({
       userId: req.user._id,
@@ -442,7 +487,7 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
     }
     
     attendance.checkOut = {
-      time: nowWIB(),
+      time: recordTime,
       photo: req.file.path,
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
     };
@@ -466,7 +511,7 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
         const leftWIds = (sess.leaveRecords || []).map(lr => (lr.workerId?._id || lr.workerId).toString());
         if (allWIds.length > 0 && allWIds.every(id => leftWIds.includes(id))) {
           sess.status = 'closed';
-          sess.closedAt = nowWIB();
+          sess.closedAt = recordTime;
           sess.closedBy = req.user._id;
           await sess.save();
         }

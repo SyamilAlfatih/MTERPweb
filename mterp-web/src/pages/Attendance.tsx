@@ -11,6 +11,15 @@ import { Card, Button, Input, Alert, CostInput } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import { PhotoView } from 'react-photo-view';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
+import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttendanceBanner';
+import {
+  queueOfflineAttendance,
+  fileToBase64,
+  cacheAttendanceProjects,
+  getCachedAttendanceProjects,
+  cacheTodayAttendance,
+  getCachedTodayAttendance,
+} from '../services/attendanceSyncEngine';
 
 interface AttendanceRecord {
   _id: string;
@@ -22,6 +31,7 @@ interface AttendanceRecord {
   projectId?: { _id: string; nama: string };
   dailyRate?: number;
   paymentStatus?: string;
+  isOffline?: boolean;
 }
 
 export default function Attendance() {
@@ -78,9 +88,15 @@ export default function Attendance() {
     try {
       const response = await api.get('/attendance/projects');
       setProjects(response.data);
+      cacheAttendanceProjects(response.data);
     } catch (err) {
-      console.error('Failed to fetch projects', err);
-      setProjects([]);
+      console.warn('Failed to fetch projects, checking offline cache', err);
+      const cached = await getCachedAttendanceProjects();
+      if (cached.length > 0) {
+        setProjects(cached);
+      } else {
+        setProjects([]);
+      }
     } finally {
       setLoadingProjects(false);
     }
@@ -90,8 +106,17 @@ export default function Attendance() {
     try {
       const response = await api.get('/attendance/today');
       setTodayRecord(response.data);
+      if (user?._id) {
+        cacheTodayAttendance(user._id, response.data);
+      }
     } catch (err) {
-      console.error('Failed to fetch today attendance', err);
+      console.warn('Failed to fetch today attendance, checking offline cache', err);
+      if (user?._id) {
+        const cached = await getCachedTodayAttendance(user._id);
+        if (cached) {
+          setTodayRecord(cached);
+        }
+      }
     } finally {
       setFetchingToday(false);
     }
@@ -134,13 +159,84 @@ export default function Attendance() {
       return;
     }
     setLoading(true);
+    const selectedProj = projects.find(p => p._id === selectedProjectId);
+
+    if (!navigator.onLine) {
+      const localUuid = `off_in_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const nowIso = new Date().toISOString();
+      await queueOfflineAttendance({
+        localUuid,
+        type: 'SELF_CHECKIN',
+        userId: user?._id || '',
+        userName: user?.fullName || '',
+        projectId: selectedProjectId,
+        projectName: selectedProj?.nama || 'Proyek',
+        recordedAt: nowIso,
+      });
+
+      const optimistic: AttendanceRecord = {
+        _id: localUuid,
+        date: nowIso,
+        checkIn: { time: nowIso },
+        wageType: 'daily',
+        status: 'Present',
+        projectId: selectedProj ? { _id: selectedProj._id, nama: selectedProj.nama } : undefined,
+        isOffline: true,
+      };
+      setTodayRecord(optimistic);
+      if (user?._id) cacheTodayAttendance(user._id, optimistic);
+
+      setAlertData({
+        visible: true,
+        type: 'success',
+        title: 'Check-In Tersimpan (Offline)',
+        message: 'Presensi check-in berhasil disimpan di perangkat dan akan disinkronkan saat tersambung internet.',
+      });
+      setLoading(false);
+      return;
+    }
+
     try {
       await api.post('/attendance/checkin', { projectId: selectedProjectId });
       setAlertData({ visible: true, type: 'success', title: t('attendance.messages.checkInSuccessTitle'), message: t('attendance.messages.checkInSuccess', { time: formatWIBTime(new Date()) }) });
       await fetchTodayAttendance();
       await fetchRecentHistory();
     } catch (err: any) {
-      setAlertData({ visible: true, type: 'error', title: t('attendance.messages.checkInFailedTitle'), message: err.response?.data?.msg || t('attendance.messages.checkInFailedDefault') });
+      if (!err.response) {
+        // Network error: fallback to offline queue
+        const localUuid = `off_in_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const nowIso = new Date().toISOString();
+        await queueOfflineAttendance({
+          localUuid,
+          type: 'SELF_CHECKIN',
+          userId: user?._id || '',
+          userName: user?.fullName || '',
+          projectId: selectedProjectId,
+          projectName: selectedProj?.nama || 'Proyek',
+          recordedAt: nowIso,
+        });
+
+        const optimistic: AttendanceRecord = {
+          _id: localUuid,
+          date: nowIso,
+          checkIn: { time: nowIso },
+          wageType: 'daily',
+          status: 'Present',
+          projectId: selectedProj ? { _id: selectedProj._id, nama: selectedProj.nama } : undefined,
+          isOffline: true,
+        };
+        setTodayRecord(optimistic);
+        if (user?._id) cacheTodayAttendance(user._id, optimistic);
+
+        setAlertData({
+          visible: true,
+          type: 'success',
+          title: 'Check-In Tersimpan (Offline)',
+          message: 'Koneksi terputus. Presensi check-in berhasil disimpan di perangkat.',
+        });
+      } else {
+        setAlertData({ visible: true, type: 'error', title: t('attendance.messages.checkInFailedTitle'), message: err.response?.data?.msg || t('attendance.messages.checkInFailedDefault') });
+      }
     } finally {
       setLoading(false);
     }
@@ -152,6 +248,58 @@ export default function Attendance() {
       return;
     }
     setLoading(true);
+
+    if (!navigator.onLine) {
+      try {
+        const photoBase64 = await fileToBase64(photo);
+        const localUuid = `off_out_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const nowIso = new Date().toISOString();
+
+        await queueOfflineAttendance({
+          localUuid,
+          type: 'SELF_CHECKOUT',
+          userId: user?._id || '',
+          userName: user?.fullName || '',
+          projectId: (todayRecord?.projectId as any)?._id || selectedProjectId || '',
+          projectName: (todayRecord?.projectId as any)?.nama || '',
+          recordedAt: nowIso,
+          photoBase64,
+        });
+
+        const updated: AttendanceRecord = {
+          ...(todayRecord || {
+            _id: localUuid,
+            date: nowIso,
+            wageType: 'daily',
+            status: 'Present',
+          }),
+          checkOut: { time: nowIso, photo: photoPreview || undefined },
+          isOffline: true,
+        };
+        setTodayRecord(updated);
+        if (user?._id) cacheTodayAttendance(user._id, updated);
+        setPhoto(null);
+        setPhotoPreview(null);
+
+        setAlertData({
+          visible: true,
+          type: 'success',
+          title: 'Check-Out Tersimpan (Offline)',
+          message: 'Foto selfie dan waktu check-out berhasil disimpan di perangkat.',
+        });
+      } catch (err: any) {
+        setAlertData({
+          visible: true,
+          type: 'error',
+          title: 'Gagal Simpan Offline',
+          message: err.message || 'Terjadi kesalahan saat memproses foto selfie.',
+        });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append('photo', photo);
@@ -162,7 +310,49 @@ export default function Attendance() {
       await fetchTodayAttendance();
       await fetchRecentHistory();
     } catch (err: any) {
-      setAlertData({ visible: true, type: 'error', title: t('attendance.messages.checkOutFailedTitle'), message: err.response?.data?.msg || t('attendance.messages.checkOutFailedDefault') });
+      if (!err.response && photo) {
+        try {
+          const photoBase64 = await fileToBase64(photo);
+          const localUuid = `off_out_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          const nowIso = new Date().toISOString();
+          await queueOfflineAttendance({
+            localUuid,
+            type: 'SELF_CHECKOUT',
+            userId: user?._id || '',
+            userName: user?.fullName || '',
+            projectId: (todayRecord?.projectId as any)?._id || selectedProjectId || '',
+            projectName: (todayRecord?.projectId as any)?.nama || '',
+            recordedAt: nowIso,
+            photoBase64,
+          });
+
+          const updated: AttendanceRecord = {
+            ...(todayRecord || {
+              _id: localUuid,
+              date: nowIso,
+              wageType: 'daily',
+              status: 'Present',
+            }),
+            checkOut: { time: nowIso, photo: photoPreview || undefined },
+            isOffline: true,
+          };
+          setTodayRecord(updated);
+          if (user?._id) cacheTodayAttendance(user._id, updated);
+          setPhoto(null);
+          setPhotoPreview(null);
+
+          setAlertData({
+            visible: true,
+            type: 'success',
+            title: 'Check-Out Tersimpan (Offline)',
+            message: 'Koneksi terputus. Presensi check-out disimpan di perangkat.',
+          });
+        } catch {
+          setAlertData({ visible: true, type: 'error', title: t('attendance.messages.checkOutFailedTitle'), message: err.message || t('attendance.messages.checkOutFailedDefault') });
+        }
+      } else {
+        setAlertData({ visible: true, type: 'error', title: t('attendance.messages.checkOutFailedTitle'), message: err.response?.data?.msg || t('attendance.messages.checkOutFailedDefault') });
+      }
     } finally {
       setLoading(false);
     }
@@ -202,6 +392,52 @@ export default function Attendance() {
       return;
     }
     setLoading(true);
+
+    if (!navigator.onLine) {
+      try {
+        const photoBase64 = await fileToBase64(permitPhoto);
+        const localUuid = `off_per_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const nowIso = new Date().toISOString();
+
+        await queueOfflineAttendance({
+          localUuid,
+          type: 'PERMIT',
+          userId: user?._id || '',
+          userName: user?.fullName || '',
+          projectId: selectedProjectId || '',
+          reason: permitReason,
+          recordedAt: nowIso,
+          photoBase64,
+        });
+
+        const updated: AttendanceRecord = {
+          _id: localUuid,
+          date: nowIso,
+          status: 'Permit',
+          wageType: 'daily',
+          isOffline: true,
+        };
+        setTodayRecord(updated);
+        if (user?._id) cacheTodayAttendance(user._id, updated);
+
+        setAlertData({
+          visible: true,
+          type: 'success',
+          title: 'Izin Tersimpan (Offline)',
+          message: 'Pengajuan izin tersimpan di perangkat dan akan disinkronkan saat online.',
+        });
+        setPermitModal(false);
+        setPermitReason('');
+        setPermitPhoto(null);
+        setPermitPhotoPreview(null);
+      } catch (err: any) {
+        setAlertData({ visible: true, type: 'error', title: 'Gagal Simpan Offline', message: err.message });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append('reason', permitReason);
@@ -264,6 +500,13 @@ export default function Attendance() {
         title={alertData.title}
         message={alertData.message}
         onClose={() => setAlertData({ ...alertData, visible: false })}
+      />
+
+      <OfflineAttendanceBanner
+        onSyncComplete={() => {
+          fetchTodayAttendance();
+          fetchRecentHistory();
+        }}
       />
 
       {/* Deprecation Banner for Supervisors */}
@@ -381,6 +624,11 @@ export default function Attendance() {
                     <Building size={12} />
                     <span>{typeof todayRecord.projectId === 'object' ? todayRecord.projectId.nama : ''}</span>
                   </>
+                )}
+                {todayRecord.isOffline && (
+                  <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                    Offline (Menunggu Sinkron)
+                  </span>
                 )}
               </div>
             )}

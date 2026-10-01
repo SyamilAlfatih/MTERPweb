@@ -7,6 +7,7 @@ const { wibDayRange, nowWIB } = require('../utils/date');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 
 const router = express.Router();
 
@@ -18,8 +19,8 @@ const SUPERVISOR_ROLES = [
   'asset_admin', 'foreman',
 ];
 
-function getTodayStart() {
-  const range = wibDayRange(nowWIB());
+function getTodayStart(dateInput) {
+  const range = wibDayRange(dateInput || nowWIB());
   return range ? range.start : new Date();
 }
 
@@ -33,7 +34,7 @@ router.post(
   upload.single('groupPhoto'),
   async (req, res) => {
     try {
-      const { projectId, workerIds, notes } = req.body;
+      const { projectId, workerIds, notes, clientTime } = req.body;
 
       // 1. Validate inputs
       if (!projectId) {
@@ -53,6 +54,24 @@ router.post(
         }
       } else if (Array.isArray(workerIds)) {
         parsedWorkerIds = workerIds;
+      }
+
+      // Resolve any offline worker IDs to valid MongoDB ObjectIds
+      const resolvedWorkerIds = [];
+      for (const wid of parsedWorkerIds) {
+        if (mongoose.Types.ObjectId.isValid(wid)) {
+          resolvedWorkerIds.push(wid);
+        } else {
+          const user = await User.findOne({
+            $or: [{ fullName: String(wid) }, { username: String(wid) }]
+          }).select('_id').lean();
+          if (user) {
+            resolvedWorkerIds.push(user._id);
+          }
+        }
+      }
+      if (resolvedWorkerIds.length > 0) {
+        parsedWorkerIds = resolvedWorkerIds;
       }
 
       if (!parsedWorkerIds.length) {
@@ -83,8 +102,15 @@ router.post(
 
       const photoUrl = `uploads/attendance-sessions/${compressedFilename}`;
 
-      // 4. Get today's date (WIB midnight)
-      const today = getTodayStart();
+      // 4. Get record timestamp & today's date (WIB midnight)
+      let recordTime = nowWIB();
+      if (clientTime) {
+        const parsed = new Date(clientTime);
+        if (!isNaN(parsed.getTime())) {
+          recordTime = parsed;
+        }
+      }
+      const today = getTodayStart(recordTime);
 
       // 5. Create the AttendanceSession document
       const session = await AttendanceSession.create({
@@ -94,6 +120,7 @@ router.post(
         photoUrl,
         workerIds: parsedWorkerIds,
         notes: notes || '',
+        createdAt: recordTime,
       });
 
       // 6. Bulk-upsert individual Attendance records
@@ -125,7 +152,7 @@ router.post(
             {
               $set: {
                 checkIn: {
-                  time: existing.checkIn?.time || nowWIB(),
+                  time: existing.checkIn?.time || recordTime,
                   photo: existing.checkIn?.photo || photoUrl,
                 },
                 status: 'Present',
@@ -140,7 +167,7 @@ router.post(
             userId: workerId,
             date: today,
             checkIn: {
-              time: nowWIB(),
+              time: recordTime,
               photo: photoUrl,
             },
             status: 'Present',
@@ -304,10 +331,17 @@ router.post(
   authorize(...SUPERVISOR_ROLES),
   async (req, res) => {
     try {
-      const { workerId } = req.body;
-
+      const { workerId, clientTime } = req.body;
       if (!workerId) {
         return res.status(400).json({ msg: 'workerId is required' });
+      }
+
+      let recordTime = nowWIB();
+      if (clientTime) {
+        const parsed = new Date(clientTime);
+        if (!isNaN(parsed.getTime())) {
+          recordTime = parsed;
+        }
       }
 
       const session = await AttendanceSession.findById(req.params.id);
@@ -325,11 +359,11 @@ router.post(
       }
 
       // Add to late workers
-      session.lateWorkerIds.push({ workerId, addedAt: nowWIB() });
+      session.lateWorkerIds.push({ workerId, addedAt: recordTime });
       await session.save();
 
       // Create/upsert individual Attendance record
-      const today = getTodayStart();
+      const today = session.date ? getTodayStart(session.date) : getTodayStart(recordTime);
       const existing = await Attendance.findOne({ userId: workerId, date: today });
 
       if (existing && existing.checkIn?.time) {
@@ -345,7 +379,7 @@ router.post(
           {
             $set: {
               checkIn: {
-                time: existing.checkIn?.time || nowWIB(),
+                time: existing.checkIn?.time || recordTime,
                 photo: existing.checkIn?.photo || session.photoUrl,
               },
               status: 'Late',
@@ -359,7 +393,7 @@ router.post(
           userId: workerId,
           date: today,
           checkIn: {
-            time: nowWIB(),
+            time: recordTime,
             photo: session.photoUrl,
           },
           status: 'Late',
@@ -390,11 +424,19 @@ router.post(
   authorize(...SUPERVISOR_ROLES),
   async (req, res) => {
     try {
-      const { workers } = req.body;
+      const { workers, clientTime } = req.body;
       // workers = [{ workerId: "...", leaveHour: "14:30", reason: "..." }, ...]
 
       if (!workers || !Array.isArray(workers) || workers.length === 0) {
         return res.status(400).json({ msg: 'workers array is required with at least one entry' });
+      }
+
+      let recordTime = nowWIB();
+      if (clientTime) {
+        const parsed = new Date(clientTime);
+        if (!isNaN(parsed.getTime())) {
+          recordTime = parsed;
+        }
       }
 
       const session = await AttendanceSession.findById(req.params.id);
@@ -402,7 +444,7 @@ router.post(
         return res.status(404).json({ msg: 'Session not found' });
       }
 
-      const today = getTodayStart();
+      const today = session.date ? getTodayStart(session.date) : getTodayStart(recordTime);
       const results = [];
 
       for (const entry of workers) {
@@ -422,7 +464,7 @@ router.post(
           workerId: entry.workerId,
           leaveHour: entry.leaveHour,
           reason: entry.reason || '',
-          recordedAt: nowWIB(),
+          recordedAt: recordTime,
         });
 
         // Update the individual Attendance record with check-out time
@@ -431,9 +473,6 @@ router.post(
           // Parse leaveHour to create a Date object for today in WIB (UTC+7)
           const [hours, minutes] = entry.leaveHour.split(':').map(Number);
           const leaveDate = new Date(today);
-          // Offset: WIB is UTC+7, so hour in WIB = UTC hour + 7
-          // today (start) is already at WIB midnight (UTC 17:00 prev day)
-          // Simpler: build the ISO string directly in WIB
           const wibDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(today);
           const leaveDateWIB = new Date(`${wibDateStr}T${entry.leaveHour}:00+07:00`);
 
@@ -467,7 +506,7 @@ router.post(
 
       if (allLeft) {
         session.status = 'closed';
-        session.closedAt = nowWIB();
+        session.closedAt = recordTime;
         session.closedBy = req.user._id;
       }
 
@@ -494,13 +533,21 @@ router.post(
   authorize(...SUPERVISOR_ROLES),
   async (req, res) => {
     try {
-      const { defaultLeaveHour, reason } = req.body;
+      const { defaultLeaveHour, reason, clientTime } = req.body;
       const session = await AttendanceSession.findById(req.params.id);
       if (!session) {
         return res.status(404).json({ msg: 'Session not found' });
       }
 
-      const today = getTodayStart();
+      let recordTime = nowWIB();
+      if (clientTime) {
+        const parsed = new Date(clientTime);
+        if (!isNaN(parsed.getTime())) {
+          recordTime = parsed;
+        }
+      }
+
+      const today = session.date ? getTodayStart(session.date) : getTodayStart(recordTime);
       const allWorkerIds = [
         ...session.workerIds.map(id => id.toString()),
         ...session.lateWorkerIds.map(lw => (lw.workerId?._id || lw.workerId).toString()),
@@ -513,7 +560,7 @@ router.post(
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
-      }).format(nowWIB());
+      }).format(recordTime);
 
       if (remainingWorkerIds.length > 0) {
         const [hours] = finalLeaveHour.split(':').map(Number);
@@ -525,7 +572,7 @@ router.post(
             workerId: wId,
             leaveHour: finalLeaveHour,
             reason: reason || 'Clock-out otomatis saat sesi ditutup oleh supervisor',
-            recordedAt: nowWIB(),
+            recordedAt: recordTime,
           });
 
           const attendance = await Attendance.findOne({ userId: wId, date: today });
@@ -538,7 +585,7 @@ router.post(
       }
 
       session.status = 'closed';
-      session.closedAt = nowWIB();
+      session.closedAt = recordTime;
       session.closedBy = req.user._id;
       await session.save();
 
