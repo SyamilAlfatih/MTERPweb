@@ -38,6 +38,26 @@ const HEAD_OFFICE = {
 };
 
 /**
+ * Checks if a string is a legacy dummy office location name
+ */
+function isDummyOfficeLoc(loc) {
+  if (!loc || typeof loc !== 'string') return false;
+  return loc.includes('Jakarta (HQ)') ||
+    loc.includes('Kantor Pusat') ||
+    loc.includes('Kantor Operasional') ||
+    loc.includes('Kantor Perwakilan') ||
+    loc.includes('Kantor Cabang');
+}
+
+/**
+ * Normalizes office location to official Head Office if dummy
+ */
+function cleanOfficeLoc(loc) {
+  if (isDummyOfficeLoc(loc)) return HEAD_OFFICE.name;
+  return loc;
+}
+
+/**
  * Calculates distance in meters between two coordinates via Haversine formula
  */
 function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
@@ -248,7 +268,13 @@ router.get('/', auth, async (req, res) => {
     }
 
     const attendance = await attachGroupPhotoProof(rawAttendance);
-    res.json(attendance);
+    const sanitizedAttendance = attendance.map(a => {
+      if (a.officeLocation && isDummyOfficeLoc(a.officeLocation)) {
+        return { ...a, officeLocation: HEAD_OFFICE.name };
+      }
+      return a;
+    });
+    res.json(sanitizedAttendance);
   } catch (error) {
     console.error('Get attendance error:', error);
     res.status(500).json({ msg: 'Server error' });
@@ -270,6 +296,9 @@ router.get('/today', auth, async (req, res) => {
     if (attendance) {
       const [enriched] = await attachGroupPhotoProof([attendance]);
       attendance = enriched;
+      if (attendance.officeLocation && isDummyOfficeLoc(attendance.officeLocation)) {
+        attendance.officeLocation = HEAD_OFFICE.name;
+      }
     }
 
     res.json(attendance || null);
@@ -442,7 +471,8 @@ router.post('/checkin', auth, uploadLimiter, upload.single('photo'), async (req,
     const checkInPhoto = req.file ? req.file.path : (req.body.photoUrl || undefined);
     
     const determinedWorkType = workType || (isOfficeUser ? 'WFO' : 'Project');
-    const determinedOfficeLoc = officeLocation || (isOfficeUser ? (determinedWorkType === 'WFH' ? 'Remote (Rumah)' : determinedWorkType === 'Dinas' ? 'Dinas Luar' : HEAD_OFFICE.name) : '');
+    const resolvedOfficeInput = (officeLocation && !isDummyOfficeLoc(officeLocation)) ? officeLocation : '';
+    const determinedOfficeLoc = resolvedOfficeInput || (isOfficeUser ? (determinedWorkType === 'WFH' ? 'Remote (Rumah)' : determinedWorkType === 'Dinas' ? 'Dinas Luar' : HEAD_OFFICE.name) : '');
     const determinedCategory = isOfficeUser ? 'office' : 'site';
 
     // GeoJSON Point & Geofence Verification
@@ -729,7 +759,7 @@ router.get('/office-today', auth, async (req, res) => {
         record,
         status: record ? record.status : 'Absent',
         workType: record?.workType || (record ? 'WFO' : '-'),
-        officeLocation: record?.officeLocation || '',
+        officeLocation: cleanOfficeLoc(record?.officeLocation) || '',
         checkInTime: record?.checkIn?.time || null,
         checkInPhoto: record?.checkIn?.photo || null,
         checkOutTime: record?.checkOut?.time || null,
@@ -848,7 +878,7 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
         overtimePay: record.overtimePay || 0,
         notes: record.notes || '',
         workType: record.workType || '',
-        officeLocation: record.officeLocation || '',
+        officeLocation: cleanOfficeLoc(record.officeLocation) || '',
         workSummary: record.workSummary || '',
         permitReason: record.permit?.reason || '',
       };

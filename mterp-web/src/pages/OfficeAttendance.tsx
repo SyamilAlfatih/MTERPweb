@@ -33,6 +33,7 @@ import {
   ExternalLink,
   PlusCircle,
   FileCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PhotoView } from 'react-photo-view';
@@ -57,8 +58,8 @@ type ActiveTab = 'presence' | 'team';
 interface AttendanceRecord {
   _id: string;
   date: string;
-  checkIn?: { time: string; photo?: string; location?: { lat: number; lng: number } };
-  checkOut?: { time: string; photo?: string; location?: { lat: number; lng: number } };
+  checkIn?: { time: string; photo?: string; location?: { lat: number; lng: number }; distanceToOffice?: number; geofenceStatus?: string };
+  checkOut?: { time: string; photo?: string; location?: { lat: number; lng: number }; distanceToOffice?: number; geofenceStatus?: string };
   workType?: WorkType | string;
   officeLocation?: string;
   workSummary?: string;
@@ -105,11 +106,65 @@ interface OfficeTodayResponse {
   };
 }
 
+export interface OfficeGeofenceConfig {
+  name: string;
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  address: string;
+}
+
+export const HEAD_OFFICE: OfficeGeofenceConfig = {
+  name: 'Head Office PT Mega Tama Enerco',
+  lat: -7.175077420272807,
+  lng: 107.57089981757514,
+  radiusMeters: 150, // 150 meter geofence radius
+  address: 'Head Office PT Mega Tama Enerco',
+};
+
+/**
+ * Calculates distance in meters between two coordinates via Haversine formula
+ */
+export function calculateDistanceMeters(
+  lat1?: number, lon1?: number,
+  lat2?: number, lon2?: number
+): number | null {
+  if (lat1 === undefined || lon1 === undefined || lat2 === undefined || lon2 === undefined) return null;
+  const R = 6371e3; // Earth radius in meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) *
+    Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return Math.round(R * c);
+}
+
+/**
+ * Sanitizes office location names to purge legacy dummy values
+ */
+export function cleanOfficeLocation(loc?: string): string {
+  if (!loc) return HEAD_OFFICE.name;
+  if (
+    loc.includes('Jakarta (HQ)') ||
+    loc.includes('Kantor Pusat') ||
+    loc.includes('Kantor Operasional') ||
+    loc.includes('Kantor Perwakilan') ||
+    loc.includes('Kantor Cabang')
+  ) {
+    return HEAD_OFFICE.name;
+  }
+  return loc;
+}
+
 const OFFICE_LOCATIONS: { [key in WorkType]: string[] } = {
   WFO: [
-    'Kantor Pusat - Jakarta (HQ)',
-    'Kantor Operasional & Studio',
-    'Kantor Cabang',
+    HEAD_OFFICE.name,
   ],
   WFH: [
     'Remote Work (Rumah / WFH)',
@@ -150,7 +205,7 @@ export default function OfficeAttendance() {
 
   // Check-in Form States
   const [workType, setWorkType] = useState<WorkType>('WFO');
-  const [officeLocation, setOfficeLocation] = useState<string>('Kantor Pusat - Jakarta (HQ)');
+  const [officeLocation, setOfficeLocation] = useState<string>(HEAD_OFFICE.name);
   const [customLocation, setCustomLocation] = useState<string>('');
   const [workNotes, setWorkNotes] = useState<string>('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -185,6 +240,17 @@ export default function OfficeAttendance() {
   const [permitFile, setPermitFile] = useState<File | null>(null);
   const [permitFilePreview, setPermitFilePreview] = useState<string | null>(null);
   const [permitSubmitting, setPermitSubmitting] = useState(false);
+
+  // Proximity & Geofencing Calculation
+  const distanceToHeadOffice = useMemo(() => {
+    if (!coords) return null;
+    return calculateDistanceMeters(coords.lat, coords.lng, HEAD_OFFICE.lat, HEAD_OFFICE.lng);
+  }, [coords]);
+
+  const isInsideOfficeRadius = useMemo(() => {
+    if (distanceToHeadOffice === null) return null;
+    return distanceToHeadOffice <= HEAD_OFFICE.radiusMeters;
+  }, [distanceToHeadOffice]);
 
   // Toast / Alert Notification
   const [alertData, setAlertData] = useState<{
@@ -339,6 +405,9 @@ export default function OfficeAttendance() {
     setFetchingToday(true);
     try {
       const res = await api.get('/attendance/today');
+      if (res.data && res.data.officeLocation) {
+        res.data.officeLocation = cleanOfficeLocation(res.data.officeLocation);
+      }
       setTodayRecord(res.data);
       if (user?._id && res.data) {
         cacheTodayAttendance(user._id, res.data);
@@ -347,7 +416,12 @@ export default function OfficeAttendance() {
       console.warn('Fetch today attendance failed, fallback to cache', err);
       if (user?._id) {
         const cached = await getCachedTodayAttendance(user._id);
-        if (cached) setTodayRecord(cached);
+        if (cached) {
+          if (cached.officeLocation) {
+            cached.officeLocation = cleanOfficeLocation(cached.officeLocation);
+          }
+          setTodayRecord(cached);
+        }
       }
     } finally {
       setFetchingToday(false);
@@ -401,9 +475,22 @@ export default function OfficeAttendance() {
   // Check In Handler
   const handleCheckIn = async () => {
     setLoadingAction(true);
-    const resolvedLocation =
-      officeLocation === 'Custom' || customLocation ? customLocation : officeLocation;
+    const resolvedLocation = workType === 'WFO'
+      ? HEAD_OFFICE.name
+      : (officeLocation === 'Custom' || customLocation ? customLocation : officeLocation);
     const nowIso = new Date().toISOString();
+
+    const distanceCalc = coords
+      ? calculateDistanceMeters(coords.lat, coords.lng, HEAD_OFFICE.lat, HEAD_OFFICE.lng)
+      : null;
+
+    const geofenceStatus = workType === 'WFH'
+      ? 'exempt_wfh'
+      : workType === 'Dinas'
+      ? 'exempt_dinas'
+      : (distanceCalc !== null && distanceCalc <= HEAD_OFFICE.radiusMeters)
+      ? 'in_radius'
+      : 'out_of_range';
 
     // 1. Offline Mode handling
     if (!navigator.onLine) {
@@ -420,10 +507,12 @@ export default function OfficeAttendance() {
           userId: user?._id || '',
           userName: user?.fullName || '',
           projectId: selectedProjectId || '',
-          projectName: projects.find((p) => p._id === selectedProjectId)?.nama || 'Kantor Pusat',
+          projectName: projects.find((p) => p._id === selectedProjectId)?.nama || HEAD_OFFICE.name,
           recordedAt: nowIso,
           workType,
           officeLocation: resolvedLocation,
+          distanceToOffice: distanceCalc || undefined,
+          geofenceStatus,
           notes: workNotes,
           lat: coords?.lat,
           lng: coords?.lng,
@@ -437,6 +526,8 @@ export default function OfficeAttendance() {
             time: nowIso,
             photo: selfiePreview || undefined,
             location: coords || undefined,
+            distanceToOffice: distanceCalc || undefined,
+            geofenceStatus,
           },
           workType,
           officeLocation: resolvedLocation,
@@ -478,6 +569,8 @@ export default function OfficeAttendance() {
       if (selectedProjectId) formData.append('projectId', selectedProjectId);
       if (coords?.lat) formData.append('lat', String(coords.lat));
       if (coords?.lng) formData.append('lng', String(coords.lng));
+      if (distanceCalc !== null) formData.append('distanceToOffice', String(distanceCalc));
+      formData.append('geofenceStatus', geofenceStatus);
       formData.append('clientTime', nowIso);
       if (selfiePhoto) formData.append('photo', selfiePhoto);
 
@@ -955,7 +1048,7 @@ export default function OfficeAttendance() {
                       </span>
                       <span>&bull;</span>
                       <span className="truncate max-w-[200px]">
-                        📍 {todayRecord?.officeLocation || 'Kantor Pusat'}
+                        📍 {cleanOfficeLocation(todayRecord?.officeLocation)}
                       </span>
                     </p>
                   </div>
@@ -1077,7 +1170,7 @@ export default function OfficeAttendance() {
                       <div>
                         <span className="font-black text-sm text-text-primary block">WFO (Office)</span>
                         <span className="text-[11px] text-text-muted leading-tight block mt-0.5">
-                          Kantor Pusat / Cabang
+                          {HEAD_OFFICE.name}
                         </span>
                       </div>
                     </button>
@@ -1139,22 +1232,29 @@ export default function OfficeAttendance() {
                 {/* 2. Location Selection */}
                 <div className="space-y-3">
                   <label className="text-xs font-bold uppercase tracking-wider text-text-muted block">
-                    2. Lokasi Kantor / Penugasan
+                    {workType === 'WFO' ? '2. Lokasi Kantor Pusat' : '2. Lokasi / Penugasan'}
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <select
-                        value={officeLocation}
-                        onChange={(e) => setOfficeLocation(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-bg-secondary/40 border border-border-light focus:outline-hidden focus:border-primary text-text-primary font-medium"
-                      >
-                        {OFFICE_LOCATIONS[workType].map((loc) => (
-                          <option key={loc} value={loc}>
-                            {loc}
-                          </option>
-                        ))}
-                        <option value="Custom">+ Masukkan Lokasi Lainnya...</option>
-                      </select>
+                      {workType === 'WFO' ? (
+                        <div className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-emerald-50/60 border border-emerald-200/80 text-emerald-950 font-bold flex items-center gap-2">
+                          <Building2 size={16} className="text-emerald-700 shrink-0" />
+                          <span className="truncate">{HEAD_OFFICE.name}</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={officeLocation}
+                          onChange={(e) => setOfficeLocation(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-bg-secondary/40 border border-border-light focus:outline-hidden focus:border-primary text-text-primary font-medium"
+                        >
+                          {OFFICE_LOCATIONS[workType].map((loc) => (
+                            <option key={loc} value={loc}>
+                              {loc}
+                            </option>
+                          ))}
+                          <option value="Custom">+ Masukkan Lokasi Lainnya...</option>
+                        </select>
+                      )}
                     </div>
 
                     {/* Optional Project Attachment */}
@@ -1174,12 +1274,12 @@ export default function OfficeAttendance() {
                     </div>
                   </div>
 
-                  {officeLocation === 'Custom' && (
+                  {workType !== 'WFO' && officeLocation === 'Custom' && (
                     <input
                       type="text"
                       value={customLocation}
                       onChange={(e) => setCustomLocation(e.target.value)}
-                      placeholder="Tuliskan nama lokasi / kantor / tujuan tugas dinas..."
+                      placeholder="Tuliskan nama lokasi / tujuan tugas dinas..."
                       className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-bg-secondary/40 border border-border-light focus:outline-hidden focus:border-primary text-text-primary"
                     />
                   )}
@@ -1309,38 +1409,151 @@ export default function OfficeAttendance() {
                   />
                 </div>
 
-                {/* 5. GPS & Coordinates */}
-                <div className="flex items-center justify-between p-3.5 rounded-2xl bg-bg-secondary/40 border border-border-light text-xs">
-                  <div className="flex items-center gap-2 text-text-secondary">
-                    <MapPin size={16} className={coords ? 'text-emerald-500' : 'text-text-muted'} />
-                    <span>
-                      {gpsLoading ? (
-                        'Mendeteksi titik koordinat GPS...'
-                      ) : coords ? (
-                        <span className="font-mono">
-                          GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                {/* 5. Smart Geofence Verification Radar Widget */}
+                <div className="rounded-2xl border border-border-light bg-bg-secondary/40 p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                        workType === 'WFO'
+                          ? (isInsideOfficeRadius ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-amber-100 text-amber-700 border-amber-300')
+                          : workType === 'WFH'
+                          ? 'bg-blue-100 text-blue-700 border-blue-300'
+                          : 'bg-purple-100 text-purple-700 border-purple-300'
+                      }`}>
+                        <MapPin size={18} />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-text-primary block">
+                          Verifikasi Radius Geofence (GeoJSON)
                         </span>
-                      ) : (
-                        gpsError || 'Koordinat GPS belum terdeteksi'
-                      )}
-                    </span>
+                        <span className="text-[11px] text-text-muted block">
+                          Titik Kantor: <strong>{HEAD_OFFICE.name}</strong> (Radius: {HEAD_OFFICE.radiusMeters}m)
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                      <a
+                        href={`https://www.google.com/maps?q=${HEAD_OFFICE.lat},${HEAD_OFFICE.lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 bg-bg-white px-2.5 py-1 rounded-lg border border-border-light"
+                        title="Buka titik koordinat kantor di Google Maps"
+                      >
+                        <ExternalLink size={12} />
+                        <span>Peta Kantor</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={fetchLocation}
+                        disabled={gpsLoading}
+                        className="text-[11px] font-bold text-text-primary bg-bg-white hover:bg-border-light px-2.5 py-1 rounded-lg border border-border-light flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw size={11} className={gpsLoading ? 'animate-spin' : ''} />
+                        <span>GPS Ulang</span>
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={fetchLocation}
-                    disabled={gpsLoading}
-                    className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw size={13} className={gpsLoading ? 'animate-spin' : ''} />
-                    <span>Perbarui GPS</span>
-                  </button>
+
+                  {/* Geofence Status Pill & Proximity Details */}
+                  {gpsLoading ? (
+                    <div className="p-3 bg-bg-white rounded-xl border border-border-light flex items-center gap-2.5 text-xs text-text-muted">
+                      <RefreshCw size={14} className="animate-spin text-primary" />
+                      <span>Mendeteksi koordinat GPS dan menghitung radius kantor...</span>
+                    </div>
+                  ) : coords ? (
+                    <div className="space-y-2">
+                      {workType === 'WFO' ? (
+                        isInsideOfficeRadius ? (
+                          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-start gap-2.5">
+                            <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                            <div className="space-y-0.5 text-xs">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-emerald-800">
+                                  Terverifikasi di Lokasi Kantor (Dalam Radius)
+                                </span>
+                                <span className="px-2 py-0.2 rounded-full text-[10px] font-black bg-emerald-200 text-emerald-900 border border-emerald-300">
+                                  {distanceToHeadOffice} m dari Head Office
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-emerald-700 m-0">
+                                Posisi GPS Anda valid di dalam area {HEAD_OFFICE.name} (maksimal {HEAD_OFFICE.radiusMeters} meter).
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1">
+                            <div className="flex items-center gap-2 text-xs flex-wrap">
+                              <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                              <span className="font-bold text-amber-800">
+                                Peringatan: Di Luar Radius Kantor (Out-of-Range)
+                              </span>
+                              <span className="px-2 py-0.2 rounded-full text-[10px] font-black bg-amber-200 text-amber-900 border border-amber-300">
+                                {distanceToHeadOffice !== null && distanceToHeadOffice > 1000
+                                  ? `${(distanceToHeadOffice / 1000).toFixed(2)} km dari HQ`
+                                  : `${distanceToHeadOffice} m dari HQ`}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-amber-800 m-0 leading-relaxed">
+                              Anda terdeteksi di luar batas radius {HEAD_OFFICE.radiusMeters}m. Sesuai <strong>Kebijakan Fleksibel (Soft Policy)</strong>, Anda tetap dapat melakukan check-in, dan presensi akan ditandai sebagai <strong>Out-of-Range</strong> untuk peninjauan HR/Manajemen. Mohon pastikan rencana kerja diisi pada catatan.
+                            </p>
+                          </div>
+                        )
+                      ) : workType === 'WFH' ? (
+                        <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 flex items-center gap-2.5 text-xs">
+                          <Home size={15} className="text-blue-600 shrink-0" />
+                          <div>
+                            <span className="font-bold text-blue-800">Moda WFH (Remote Work) Aktif</span>
+                            <p className="text-[11px] text-blue-700 m-0">
+                              Batas kantor dibebaskan. Titik GPS ({coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}) tersimpan untuk audit lokasi kerja remote.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-900 flex items-center gap-2.5 text-xs">
+                          <Briefcase size={15} className="text-purple-600 shrink-0" />
+                          <div>
+                            <span className="font-bold text-purple-800">Moda Perjalanan Dinas Luar Aktif</span>
+                            <p className="text-[11px] text-purple-700 m-0">
+                              Batas kantor dibebaskan. Titik GPS tersimpan sebagai bukti verifikasi kunjungan dinas/klien.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* GPS Readout Coordinates */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-text-muted px-1 gap-1">
+                        <span className="font-mono">
+                          GPS Terdeteksi: {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
+                        </span>
+                        <span className="font-mono text-text-muted/80">
+                          Target HQ: {HEAD_OFFICE.lat.toFixed(6)}, {HEAD_OFFICE.lng.toFixed(6)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-bg-white border border-border-light text-xs text-text-muted flex items-center justify-between">
+                      <span>{gpsError || 'Koordinat GPS belum terdeteksi. Silakan klik tombol perbarui GPS.'}</span>
+                      <button
+                        type="button"
+                        onClick={fetchLocation}
+                        className="text-xs text-primary font-bold hover:underline cursor-pointer"
+                      >
+                        Deteksi GPS
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Submit Check-In Button */}
                 <Button
                   type="button"
-                  title={`Konfirmasi Check-In (${workType})`}
-                  variant="primary"
+                  title={
+                    workType === 'WFO' && isInsideOfficeRadius === false
+                      ? 'Konfirmasi Check-In WFO (Catat Out-of-Range)'
+                      : `Konfirmasi Check-In (${workType})`
+                  }
+                  variant={workType === 'WFO' && isInsideOfficeRadius === false ? 'outline' : 'primary'}
                   size="large"
                   onClick={handleCheckIn}
                   loading={loadingAction}
@@ -1527,7 +1740,7 @@ export default function OfficeAttendance() {
                 </div>
                 <div className="flex items-center justify-between text-text-secondary">
                   <span>Unit Kerja</span>
-                  <span className="font-bold text-text-primary">Kantor Pusat (HQ)</span>
+                  <span className="font-bold text-text-primary">{HEAD_OFFICE.name}</span>
                 </div>
                 <div className="flex items-center justify-between text-text-secondary">
                   <span>Status Hari Ini</span>
@@ -1786,7 +1999,7 @@ export default function OfficeAttendance() {
                       )}
                       {item.officeLocation && (
                         <div className="text-[11px] text-text-muted truncate pt-1">
-                          📍 {item.officeLocation}
+                          📍 {cleanOfficeLocation(item.officeLocation)}
                         </div>
                       )}
                       {item.workSummary && (
