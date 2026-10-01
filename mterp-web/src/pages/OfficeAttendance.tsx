@@ -299,8 +299,23 @@ export default function OfficeAttendance() {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setIsCameraActive(false);
   };
+
+  // Attach stream to video element AFTER React renders it (fixes black camera)
+  useEffect(() => {
+    if (isCameraActive && videoRef.current && mediaStreamRef.current) {
+      const video = videoRef.current;
+      video.srcObject = mediaStreamRef.current;
+      video.play().catch((e) => {
+        // Ignore AbortError from rapid start/stop toggles
+        if (e.name !== 'AbortError') console.warn('Video play error:', e);
+      });
+    }
+  }, [isCameraActive]);
 
   const startCamera = async () => {
     setCameraError(null);
@@ -308,16 +323,15 @@ export default function OfficeAttendance() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Kamera tidak didukung pada browser ini.');
       }
+      // Stop any existing stream first
       stopCameraStream();
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
         audio: false,
       });
       mediaStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
+      // setIsCameraActive triggers useEffect which attaches stream to the video element
+      // after React renders the <video> tag into the DOM
       setIsCameraActive(true);
     } catch (err: any) {
       console.warn('Camera stream error:', err);
