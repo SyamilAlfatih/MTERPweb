@@ -79,13 +79,22 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // ── Core framework ────────────────────────────────────────────────
+          'vendor-react':  ['react', 'react-dom', 'react-router-dom'],
+          // ── Visualisation ─────────────────────────────────────────────────
           'vendor-charts': ['chart.js', 'react-chartjs-2', 'recharts'],
-          'vendor-pdf': ['jspdf', 'jspdf-autotable', 'pdfjs-dist'],
-          'vendor-ui': ['lucide-react', 'react-photo-view', 'qrcode'],
-          'vendor-anim': ['gsap'],
-          'vendor-i18n': ['i18next', 'react-i18next', 'i18next-browser-languagedetector', 'i18next-http-backend'],
+          // ── PDF / export ──────────────────────────────────────────────────
+          'vendor-pdf':    ['jspdf', 'jspdf-autotable', 'pdfjs-dist'],
+          // ── UI utilities ──────────────────────────────────────────────────
+          'vendor-ui':     ['lucide-react', 'react-photo-view', 'qrcode'],
+          // ── Animation ─────────────────────────────────────────────────────
+          'vendor-anim':   ['gsap'],
+          // ── i18n ──────────────────────────────────────────────────────────
+          'vendor-i18n':   ['i18next', 'react-i18next', 'i18next-browser-languagedetector', 'i18next-http-backend'],
         },
+        // Give every dynamic-import page its own named chunk file
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
         assetFileNames: (assetInfo) => {
           if (assetInfo.name && assetInfo.name.endsWith('.mjs')) {
             return 'assets/[name]-[hash].js';
@@ -94,6 +103,7 @@ export default defineConfig({
         },
       },
     },
-    chunkSizeWarningLimit: 1500,
+    // pdf.worker is legitimately large — suppress its warning
+    chunkSizeWarningLimit: 2000,
   },
 })
