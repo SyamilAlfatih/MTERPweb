@@ -13,6 +13,10 @@ import {
     Eye,
     X,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
+    ArrowRight,
+    PenLine,
     Shield,
     CreditCard,
     Loader2,
@@ -213,6 +217,8 @@ export default function SlipGaji() {
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'authorized' | 'issued'>('all');
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const filterStartRef = useRef<HTMLInputElement>(null);
+    const filterEndRef = useRef<HTMLInputElement>(null);
 
     // Projects list
     const [projects, setProjects] = useState<any[]>([]);
@@ -485,6 +491,39 @@ export default function SlipGaji() {
             setFilterEnd(range.endDate);
         }
     };
+
+    const handleOpenStartDatePicker = () => {
+        try {
+            if (filterStartRef.current && typeof filterStartRef.current.showPicker === 'function') {
+                filterStartRef.current.showPicker();
+            } else {
+                filterStartRef.current?.focus();
+            }
+        } catch {
+            filterStartRef.current?.focus();
+        }
+    };
+
+    const handleOpenEndDatePicker = () => {
+        try {
+            if (filterEndRef.current && typeof filterEndRef.current.showPicker === 'function') {
+                filterEndRef.current.showPicker();
+            } else {
+                filterEndRef.current?.focus();
+            }
+        } catch {
+            filterEndRef.current?.focus();
+        }
+    };
+
+    const isCurrentPeriod = useMemo(() => {
+        if (payrollCategory === 'management') {
+            const cur = getManagementMonthRange(todayWIB(), managementCutoffDay);
+            return filterStart === cur.startDate && filterEnd === cur.endDate;
+        }
+        const cur = getProjectWeekRange(todayWIB(), filterCutoffStart, filterCutoffEnd);
+        return filterStart === cur.startDate && filterEnd === cur.endDate;
+    }, [payrollCategory, filterStart, filterEnd, managementCutoffDay, filterCutoffStart, filterCutoffEnd]);
 
     const handleCategoryChange = (cat: 'all' | 'field' | 'management') => {
         setPayrollCategory(cat);
@@ -856,44 +895,84 @@ export default function SlipGaji() {
             {/* Action Bar — Date Range Filter & Project Filter & Category Tabs */}
             <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
-                    {/* Period navigation buttons & Date Pill */}
-                    <div className="flex items-center gap-1.5">
+                    {/* Period navigation buttons & Date Range Pill with Interactive Pen Trigger */}
+                    <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
                         <button
                             type="button"
-                            className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0 cursor-pointer shadow-xs"
+                            className="w-8 h-8 border border-border-light rounded-lg bg-bg-white text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary active:scale-95 shrink-0 cursor-pointer shadow-xs"
                             onClick={() => shiftPeriod(-1)}
                             title={payrollCategory === 'management' ? 'Bulan Sebelumnya' : 'Minggu Sebelumnya'}
+                            aria-label={payrollCategory === 'management' ? 'Bulan Sebelumnya' : 'Minggu Sebelumnya'}
                         >
-                            ◀
+                            <ChevronLeft size={16} strokeWidth={2.2} />
                         </button>
-                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md bg-bg-white shadow-xs">
-                            <Calendar size={14} className="text-primary shrink-0" />
-                            <input
-                                type="date"
-                                className="border-none bg-transparent text-[0.8em] font-medium text-text-primary outline-none w-[120px] cursor-pointer"
-                                value={filterStart}
-                                onChange={(e) => setFilterStart(e.target.value)}
-                            />
-                            <span className="text-text-muted text-[0.85em]">—</span>
-                            <input
-                                type="date"
-                                className="border-none bg-transparent text-[0.8em] font-medium text-text-primary outline-none w-[120px] cursor-pointer"
-                                value={filterEnd}
-                                onChange={(e) => setFilterEnd(e.target.value)}
-                            />
+
+                        <div className="flex items-center gap-1.5 px-2 py-1 border border-border-light rounded-lg bg-bg-white shadow-xs focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                            {/* Start Date Pill with Pen Logo (No Text) */}
+                            <div className="flex items-center gap-1 bg-slate-50 hover:bg-slate-100/90 focus-within:bg-white rounded-md px-1.5 py-0.5 border border-slate-200/90 transition-colors group">
+                                <button
+                                    type="button"
+                                    onClick={handleOpenStartDatePicker}
+                                    className="p-1 rounded text-primary hover:bg-primary/10 active:scale-95 transition-all cursor-pointer shrink-0"
+                                    title="Pilih Tanggal Mulai"
+                                    aria-label="Pilih Tanggal Mulai"
+                                >
+                                    <PenLine size={13} className="text-primary shrink-0 transition-transform group-hover:scale-110" strokeWidth={2.2} />
+                                </button>
+                                <input
+                                    ref={filterStartRef}
+                                    type="date"
+                                    className="border-none bg-transparent text-xs font-bold text-slate-800 outline-none w-[114px] cursor-pointer tabular-nums"
+                                    value={filterStart}
+                                    onChange={(e) => setFilterStart(e.target.value)}
+                                    onClick={(e) => { try { (e.currentTarget as HTMLInputElement).showPicker?.(); } catch {} }}
+                                    title="Tanggal Mulai (Klik untuk ubah)"
+                                />
+                            </div>
+
+                            <ArrowRight size={12} className="text-slate-400 shrink-0" strokeWidth={2.2} />
+
+                            {/* End Date Pill with Pen Logo (No Text) */}
+                            <div className="flex items-center gap-1 bg-slate-50 hover:bg-slate-100/90 focus-within:bg-white rounded-md px-1.5 py-0.5 border border-slate-200/90 transition-colors group">
+                                <button
+                                    type="button"
+                                    onClick={handleOpenEndDatePicker}
+                                    className="p-1 rounded text-primary hover:bg-primary/10 active:scale-95 transition-all cursor-pointer shrink-0"
+                                    title="Pilih Tanggal Akhir"
+                                    aria-label="Pilih Tanggal Akhir"
+                                >
+                                    <PenLine size={13} className="text-primary shrink-0 transition-transform group-hover:scale-110" strokeWidth={2.2} />
+                                </button>
+                                <input
+                                    ref={filterEndRef}
+                                    type="date"
+                                    className="border-none bg-transparent text-xs font-bold text-slate-800 outline-none w-[114px] cursor-pointer tabular-nums"
+                                    value={filterEnd}
+                                    onChange={(e) => setFilterEnd(e.target.value)}
+                                    onClick={(e) => { try { (e.currentTarget as HTMLInputElement).showPicker?.(); } catch {} }}
+                                    title="Tanggal Akhir (Klik untuk ubah)"
+                                />
+                            </div>
                         </div>
+
                         <button
                             type="button"
-                            className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0 cursor-pointer shadow-xs"
+                            className="w-8 h-8 border border-border-light rounded-lg bg-bg-white text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary active:scale-95 shrink-0 cursor-pointer shadow-xs"
                             onClick={() => shiftPeriod(1)}
                             title={payrollCategory === 'management' ? 'Bulan Berikutnya' : 'Minggu Berikutnya'}
+                            aria-label={payrollCategory === 'management' ? 'Bulan Berikutnya' : 'Minggu Berikutnya'}
                         >
-                            ▶
+                            <ChevronRight size={16} strokeWidth={2.2} />
                         </button>
+
                         <button
                             type="button"
                             onClick={resetToCurrentPeriod}
-                            className="px-2.5 py-1.5 border border-border rounded-md bg-bg-white text-[0.8em] font-semibold text-text-secondary hover:bg-bg-secondary cursor-pointer shadow-xs transition-colors"
+                            className={`px-2.5 py-1.5 border rounded-lg text-xs font-bold cursor-pointer shadow-xs transition-all ${
+                                isCurrentPeriod
+                                    ? 'bg-primary text-white border-primary shadow-sm ring-1 ring-primary'
+                                    : 'bg-bg-white border-border-light text-text-secondary hover:bg-bg-secondary hover:text-primary hover:border-primary/50'
+                            }`}
                             title="Reset ke siklus periode saat ini"
                         >
                             {payrollCategory === 'management' ? 'Bulan Ini' : 'Minggu Ini'}

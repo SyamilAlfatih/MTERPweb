@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Download, FileSpreadsheet, Search, Filter, ChevronDown,
-  ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock,
+  ChevronLeft, ChevronRight, ArrowRight, PenLine, CheckCircle, XCircle, Clock,
   Users, TrendingUp, Wallet, Loader, Calendar, Minus,
   X, Plus, Edit3, Building, Check, DollarSign, AlertCircle, Layers,
   Briefcase, ArrowLeft, RefreshCw, Sparkles, Table as TableIcon,
@@ -130,6 +130,32 @@ export default function AttendanceRecap() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const startDateInputRef = useRef<HTMLInputElement>(null);
+  const endDateInputRef = useRef<HTMLInputElement>(null);
+
+  const handleOpenStartDatePicker = () => {
+    try {
+      if (startDateInputRef.current && typeof startDateInputRef.current.showPicker === 'function') {
+        startDateInputRef.current.showPicker();
+      } else {
+        startDateInputRef.current?.focus();
+      }
+    } catch {
+      startDateInputRef.current?.focus();
+    }
+  };
+
+  const handleOpenEndDatePicker = () => {
+    try {
+      if (endDateInputRef.current && typeof endDateInputRef.current.showPicker === 'function') {
+        endDateInputRef.current.showPicker();
+      } else {
+        endDateInputRef.current?.focus();
+      }
+    } catch {
+      endDateInputRef.current?.focus();
+    }
+  };
 
   // Project Cutoff config modal state
   const [configModal, setConfigModal] = useState(false);
@@ -855,44 +881,80 @@ export default function AttendanceRecap() {
         {/* Top Filter Bar: Date Range + Week Shift + Project Filter + Cutoff Cycle Indicator */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Period Shift & Unified Date Pill */}
-            <div className="flex items-center gap-1.5">
+            {/* Period Shift & Unified Date Pill with Interactive Pen Trigger */}
+            <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
               <button
                 type="button"
                 onClick={() => shiftPeriod(-1)}
-                className="w-8 h-8 border border-border rounded-lg bg-bg-white text-xs font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary cursor-pointer shadow-xs"
+                className="w-8 h-8 border border-border-light rounded-lg bg-bg-white text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary active:scale-95 cursor-pointer shadow-xs"
                 title={workforceFilter === 'office' ? "Bulan Sebelumnya" : "Siklus Minggu Sebelumnya"}
+                aria-label={workforceFilter === 'office' ? "Bulan Sebelumnya" : "Siklus Minggu Sebelumnya"}
               >
-                ◀
+                <ChevronLeft size={16} strokeWidth={2.2} />
               </button>
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-lg bg-bg-white shadow-xs">
-                <Calendar size={14} className="text-indigo-600 shrink-0" />
-                <input
-                  type="date"
-                  className="border-none bg-transparent text-xs font-semibold text-text-primary outline-none w-[116px] cursor-pointer"
-                  value={startDate}
-                  onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-                />
-                <span className="text-text-muted text-xs font-bold">—</span>
-                <input
-                  type="date"
-                  className="border-none bg-transparent text-xs font-semibold text-text-primary outline-none w-[116px] cursor-pointer"
-                  value={endDate}
-                  onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-                />
+
+              <div className="flex items-center gap-1.5 px-2 py-1 border border-border-light rounded-lg bg-bg-white shadow-xs focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                {/* Start Date Pill with Pen Logo (No Text) */}
+                <div className="flex items-center gap-1 bg-slate-50 hover:bg-slate-100/90 focus-within:bg-white rounded-md px-1.5 py-0.5 border border-slate-200/90 transition-colors group">
+                  <button
+                    type="button"
+                    onClick={handleOpenStartDatePicker}
+                    className="p-1 rounded text-indigo-700 hover:bg-indigo-50 active:scale-95 transition-all cursor-pointer shrink-0"
+                    title="Pilih Tanggal Mulai"
+                    aria-label="Pilih Tanggal Mulai"
+                  >
+                    <PenLine size={13} className="text-indigo-700 shrink-0 transition-transform group-hover:scale-110" strokeWidth={2.2} />
+                  </button>
+                  <input
+                    ref={startDateInputRef}
+                    type="date"
+                    className="border-none bg-transparent text-xs font-bold text-slate-800 outline-none w-[114px] cursor-pointer tabular-nums"
+                    value={startDate}
+                    onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                    onClick={(e) => { try { (e.currentTarget as HTMLInputElement).showPicker?.(); } catch {} }}
+                    title="Tanggal Mulai (Klik untuk ubah)"
+                  />
+                </div>
+
+                <ArrowRight size={12} className="text-slate-400 shrink-0" strokeWidth={2.2} />
+
+                {/* End Date Pill with Pen Logo (No Text) */}
+                <div className="flex items-center gap-1 bg-slate-50 hover:bg-slate-100/90 focus-within:bg-white rounded-md px-1.5 py-0.5 border border-slate-200/90 transition-colors group">
+                  <button
+                    type="button"
+                    onClick={handleOpenEndDatePicker}
+                    className="p-1 rounded text-indigo-700 hover:bg-indigo-50 active:scale-95 transition-all cursor-pointer shrink-0"
+                    title="Pilih Tanggal Akhir"
+                    aria-label="Pilih Tanggal Akhir"
+                  >
+                    <PenLine size={13} className="text-indigo-700 shrink-0 transition-transform group-hover:scale-110" strokeWidth={2.2} />
+                  </button>
+                  <input
+                    ref={endDateInputRef}
+                    type="date"
+                    className="border-none bg-transparent text-xs font-bold text-slate-800 outline-none w-[114px] cursor-pointer tabular-nums"
+                    value={endDate}
+                    onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                    onClick={(e) => { try { (e.currentTarget as HTMLInputElement).showPicker?.(); } catch {} }}
+                    title="Tanggal Akhir (Klik untuk ubah)"
+                  />
+                </div>
               </div>
+
               <button
                 type="button"
                 onClick={() => shiftPeriod(1)}
-                className="w-8 h-8 border border-border rounded-lg bg-bg-white text-xs font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary cursor-pointer shadow-xs"
+                className="w-8 h-8 border border-border-light rounded-lg bg-bg-white text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary active:scale-95 cursor-pointer shadow-xs"
                 title={workforceFilter === 'office' ? "Bulan Berikutnya" : "Siklus Minggu Berikutnya"}
+                aria-label={workforceFilter === 'office' ? "Bulan Berikutnya" : "Siklus Minggu Berikutnya"}
               >
-                ▶
+                <ChevronRight size={16} strokeWidth={2.2} />
               </button>
+
               <button
                 type="button"
                 onClick={resetToCurrentPeriod}
-                className="px-2.5 py-1.5 border border-border rounded-lg bg-bg-white text-xs font-semibold text-text-secondary hover:bg-bg-secondary cursor-pointer shadow-xs transition-colors"
+                className="px-2.5 py-1.5 border border-border-light rounded-lg bg-bg-white text-xs font-bold text-text-secondary hover:bg-bg-secondary hover:text-primary cursor-pointer shadow-xs transition-colors"
                 title="Kembali ke siklus saat ini"
               >
                 {workforceFilter === 'office' ? 'Bulan Ini' : 'Minggu Ini'}
