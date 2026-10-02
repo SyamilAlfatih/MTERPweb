@@ -28,6 +28,9 @@ import {
     List,
     CheckSquare,
     Square,
+    Building,
+    Users,
+    RefreshCw,
 } from 'lucide-react';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,27 +39,21 @@ import { useFocusTrap } from '../hooks/useFocusTrap';
 import { useDataGridKeyboard } from '../hooks/useDataGridKeyboard';
 import { useTranslation } from 'react-i18next';
 import { exportSlipToPdf } from '../utils/exportSlipPdf';
-import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
+import {
+    formatDate as formatWIBDate,
+    todayWIB,
+    wibDate,
+    DAY_NAMES,
+    MONTH_NAMES,
+    getProjectWeekRange,
+    getManagementMonthRange,
+    shiftMonthRange,
+    getStoredManagementCutoffDay,
+    setStoredManagementCutoffDay,
+    DEFAULT_MANAGEMENT_CUTOFF_DAY,
+} from '../utils/date';
 
 /* ---- helpers ---- */
-const getWeekRange = (refDateStr = todayWIB()) => {
-    const [y, m, d] = refDateStr.split('-').map(Number);
-    const date = new Date(Date.UTC(y, m - 1, d));
-    const day = date.getUTCDay(); // 0=Sun
-    const sunday = new Date(date);
-    sunday.setUTCDate(date.getUTCDate() - day);
-    const saturday = new Date(sunday);
-    saturday.setUTCDate(sunday.getUTCDate() + 6);
-    return { startDate: sunday, endDate: saturday };
-};
-
-const toInputDate = (d: Date) => {
-    const y = d.getUTCFullYear();
-    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    return `${y}-${m}-${dd}`;
-};
-
 const formatDateShort = (iso: string) => formatWIBDate(iso, { day: 'numeric', month: 'short', year: 'numeric' });
 const formatDateRange = (s: string, e: string) => `${formatDateShort(s)} — ${formatDateShort(e)}`;
 const formatRp = (v: number) => `Rp ${new Intl.NumberFormat('id-ID').format(v || 0)}`;
@@ -202,10 +199,16 @@ export default function SlipGaji() {
         visible: false, type: 'success', title: '', message: '',
     });
 
-    // Filter by date range (default: current week Mon→Sat)
-    const weekRange = getWeekRange();
-    const [filterStart, setFilterStart] = useState(toInputDate(weekRange.startDate));
-    const [filterEnd, setFilterEnd] = useState(toInputDate(weekRange.endDate));
+    // Workforce / Period mode: 'all' | 'field' | 'management'
+    const [payrollCategory, setPayrollCategory] = useState<'all' | 'field' | 'management'>('all');
+    const [managementCutoffDay, setManagementCutoffDay] = useState<number>(() => getStoredManagementCutoffDay());
+    const [mgmtCutoffModal, setMgmtCutoffModal] = useState(false);
+    const [editMgmtCutoffDay, setEditMgmtCutoffDay] = useState(managementCutoffDay);
+
+    // Initial weekly range based on standard Monday-Saturday
+    const initialWeekly = getProjectWeekRange(todayWIB(), 1, 6);
+    const [filterStart, setFilterStart] = useState(initialWeekly.startDate);
+    const [filterEnd, setFilterEnd] = useState(initialWeekly.endDate);
     const [filterProject, setFilterProject] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'authorized' | 'issued'>('all');
@@ -213,6 +216,14 @@ export default function SlipGaji() {
 
     // Projects list
     const [projects, setProjects] = useState<any[]>([]);
+
+    // Selected project object & cutoff configuration for main filter
+    const filterProjectObj = useMemo(() => {
+        return projects.find((p: any) => p._id === filterProject);
+    }, [projects, filterProject]);
+
+    const filterCutoffStart = filterProjectObj?.payrollConfig?.cutoffStartDay ?? 1;
+    const filterCutoffEnd = filterProjectObj?.payrollConfig?.cutoffEndDay ?? 6;
 
     // Generate modal & user selector state
     const [genModal, setGenModal] = useState(false);
@@ -223,15 +234,14 @@ export default function SlipGaji() {
     const [userRoleCategory, setUserRoleCategory] = useState<'all' | 'field' | 'supervisor' | 'management'>('all');
     const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
     const userDropdownRef = useRef<HTMLDivElement>(null);
-    const [genStart, setGenStart] = useState(toInputDate(weekRange.startDate));
-    const [genEnd, setGenEnd] = useState(toInputDate(weekRange.endDate));
+    const [genStart, setGenStart] = useState(initialWeekly.startDate);
+    const [genEnd, setGenEnd] = useState(initialWeekly.endDate);
     const [genBonus, setGenBonus] = useState(0);
     const [genDeductions, setGenDeductions] = useState(0);
     const [genNotes, setGenNotes] = useState('');
     const [generating, setGenerating] = useState(false);
 
     // Project Cutoff config modal state
-    const DAY_NAMES = useMemo(() => ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'], []);
     const [configModal, setConfigModal] = useState(false);
     const [configProjId, setConfigProjId] = useState('');
     const [configStartDay, setConfigStartDay] = useState(1);
@@ -335,9 +345,9 @@ export default function SlipGaji() {
 
     // Body scroll lock while any modal is open
     useEffect(() => {
-        document.body.style.overflow = (genModal || detailModal || authModal) ? 'hidden' : '';
+        document.body.style.overflow = (genModal || detailModal || authModal || configModal || mgmtCutoffModal) ? 'hidden' : '';
         return () => { document.body.style.overflow = ''; };
-    }, [genModal, detailModal, authModal]);
+    }, [genModal, detailModal, authModal, configModal, mgmtCutoffModal]);
 
     // Close user picker dropdown when clicking outside
     useEffect(() => {
@@ -356,7 +366,7 @@ export default function SlipGaji() {
             if (
                 (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) &&
                 !['INPUT', 'TEXTAREA', 'SELECT'].includes((document.activeElement?.tagName || '')) &&
-                !genModal && !detailModal && !authModal
+                !genModal && !detailModal && !authModal && !configModal && !mgmtCutoffModal
             ) {
                 e.preventDefault();
                 searchInputRef.current?.focus();
@@ -364,19 +374,21 @@ export default function SlipGaji() {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [genModal, detailModal, authModal]);
+    }, [genModal, detailModal, authModal, configModal, mgmtCutoffModal]);
 
-    // Escape key closes modals (priority: auth > detail > generate)
+    // Escape key closes modals (priority: auth > detail > generate > config > mgmt)
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== 'Escape') return;
             if (authModal) setAuthModal(false);
             else if (detailModal) setDetailModal(false);
             else if (genModal) setGenModal(false);
+            else if (configModal) setConfigModal(false);
+            else if (mgmtCutoffModal) setMgmtCutoffModal(false);
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [authModal, detailModal, genModal]);
+    }, [authModal, detailModal, genModal, configModal, mgmtCutoffModal]);
 
     // Fetch preview data when worker/project/dates change in generate modal
     useEffect(() => {
@@ -429,14 +441,84 @@ export default function SlipGaji() {
         });
     }, [genWorker, genStart, genEnd, genModal]);
 
-    /* ---- quick week navigation ---- */
-    const shiftWeek = (dir: number) => {
-        const [y, m, d] = filterStart.split('-').map(Number);
-        const s = new Date(Date.UTC(y, m - 1, d));
-        s.setUTCDate(s.getUTCDate() + dir * 7);
-        const range = getWeekRange(toInputDate(s));
-        setFilterStart(toInputDate(range.startDate));
-        setFilterEnd(toInputDate(range.endDate));
+    /* ---- project filter change with strict cutoff auto-sync ---- */
+    const handleFilterProjectChange = (pId: string) => {
+        setFilterProject(pId);
+        if (payrollCategory === 'management') {
+            const mRange = getManagementMonthRange(todayWIB(), managementCutoffDay);
+            setFilterStart(mRange.startDate);
+            setFilterEnd(mRange.endDate);
+        } else {
+            const proj = projects.find((p: any) => p._id === pId);
+            const sDay = proj?.payrollConfig?.cutoffStartDay ?? 1;
+            const eDay = proj?.payrollConfig?.cutoffEndDay ?? 6;
+            const range = getProjectWeekRange(todayWIB(), sDay, eDay);
+            setFilterStart(range.startDate);
+            setFilterEnd(range.endDate);
+        }
+    };
+
+    /* ---- period navigation (strict weekly project cutoff or monthly management) ---- */
+    const shiftPeriod = (dir: number) => {
+        if (payrollCategory === 'management') {
+            const range = shiftMonthRange(filterStart, dir, managementCutoffDay);
+            setFilterStart(range.startDate);
+            setFilterEnd(range.endDate);
+        } else {
+            const [y, m, d] = (filterStart || todayWIB()).split('-').map(Number);
+            const s = new Date(Date.UTC(y, m - 1, d));
+            s.setUTCDate(s.getUTCDate() + dir * 7);
+            const range = getProjectWeekRange(s, filterCutoffStart, filterCutoffEnd);
+            setFilterStart(range.startDate);
+            setFilterEnd(range.endDate);
+        }
+    };
+
+    const resetToCurrentPeriod = () => {
+        if (payrollCategory === 'management') {
+            const range = getManagementMonthRange(todayWIB(), managementCutoffDay);
+            setFilterStart(range.startDate);
+            setFilterEnd(range.endDate);
+        } else {
+            const range = getProjectWeekRange(todayWIB(), filterCutoffStart, filterCutoffEnd);
+            setFilterStart(range.startDate);
+            setFilterEnd(range.endDate);
+        }
+    };
+
+    const handleCategoryChange = (cat: 'all' | 'field' | 'management') => {
+        setPayrollCategory(cat);
+        if (cat === 'management') {
+            const range = getManagementMonthRange(todayWIB(), managementCutoffDay);
+            setFilterStart(range.startDate);
+            setFilterEnd(range.endDate);
+        } else {
+            const range = getProjectWeekRange(todayWIB(), filterCutoffStart, filterCutoffEnd);
+            setFilterStart(range.startDate);
+            setFilterEnd(range.endDate);
+        }
+    };
+
+    const openMgmtCutoffConfig = () => {
+        setEditMgmtCutoffDay(managementCutoffDay);
+        setMgmtCutoffModal(true);
+    };
+
+    const handleSaveMgmtCutoff = () => {
+        setStoredManagementCutoffDay(editMgmtCutoffDay);
+        setManagementCutoffDay(editMgmtCutoffDay);
+        if (payrollCategory === 'management') {
+            const range = getManagementMonthRange(todayWIB(), editMgmtCutoffDay);
+            setFilterStart(range.startDate);
+            setFilterEnd(range.endDate);
+        }
+        setMgmtCutoffModal(false);
+        setAlertData({
+            visible: true,
+            type: 'success',
+            title: 'Konfigurasi Cut-Off Bulanan Tersimpan',
+            message: `Siklus penggajian bulanan staf manajemen diperbarui (Cut-Off Tanggal ${editMgmtCutoffDay}).`,
+        });
     };
 
     /* ---- actions ---- */
@@ -471,6 +553,11 @@ export default function SlipGaji() {
                 cutoffEndDay: configEndDay,
             });
             await fetchProjects();
+            if (filterProject === configProjId && payrollCategory !== 'management') {
+                const range = getProjectWeekRange(todayWIB(), configStartDay, configEndDay);
+                setFilterStart(range.startDate);
+                setFilterEnd(range.endDate);
+            }
             if (genProject === configProjId) {
                 const res = await api.get('/slipgaji/week', { params: { projectId: configProjId } });
                 if (res.data?.startStr && res.data?.endStr) {
@@ -499,7 +586,8 @@ export default function SlipGaji() {
 
     const openGenerateModal = () => {
         setGenWorker('');
-        setGenProject(filterProject !== 'all' && filterProject !== 'unassigned' ? filterProject : '');
+        const initialProj = filterProject !== 'all' && filterProject !== 'unassigned' ? filterProject : '';
+        setGenProject(initialProj);
         setWorkerProjects([]);
         setUserSearchQuery('');
         setUserRoleCategory('all');
@@ -507,6 +595,18 @@ export default function SlipGaji() {
         setGenBonus(0);
         setGenDeductions(0);
         setGenNotes('');
+        if (payrollCategory === 'management') {
+            const mRange = getManagementMonthRange(todayWIB(), managementCutoffDay);
+            setGenStart(mRange.startDate);
+            setGenEnd(mRange.endDate);
+        } else {
+            const proj = projects.find((p: any) => p._id === initialProj);
+            const sDay = proj?.payrollConfig?.cutoffStartDay ?? 1;
+            const eDay = proj?.payrollConfig?.cutoffEndDay ?? 6;
+            const range = getProjectWeekRange(todayWIB(), sDay, eDay);
+            setGenStart(range.startDate);
+            setGenEnd(range.endDate);
+        }
         setGenModal(true);
     };
 
@@ -693,9 +793,14 @@ export default function SlipGaji() {
                     if (sProjId !== filterProject) return false;
                 }
             }
+            if (payrollCategory === 'field') {
+                if (!isFieldRole(s.workerId?.role)) return false;
+            } else if (payrollCategory === 'management') {
+                if (!isManagementRole(s.workerId?.role) && !isSupervisorRole(s.workerId?.role)) return false;
+            }
             return matchesSlipSearch(s, searchQuery, statusFilter);
         });
-    }, [slips, searchQuery, statusFilter, filterProject]);
+    }, [slips, searchQuery, statusFilter, filterProject, payrollCategory]);
 
     const { gridProps, getRowProps, getCellProps } = useDataGridKeyboard(
         filteredSlips.length,
@@ -736,7 +841,7 @@ export default function SlipGaji() {
 
             {/* Header */}
             <div className="flex items-center gap-3 mb-6">
-                <button className="w-9 h-9 border border-border bg-bg-white rounded-md flex items-center justify-center text-text-primary transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0" onClick={() => navigate(-1)}>
+                <button className="w-9 h-9 border border-border bg-bg-white rounded-md flex items-center justify-center text-text-primary transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0 cursor-pointer" onClick={() => navigate(-1)}>
                     <ArrowLeft size={20} />
                 </button>
                 <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-teal-600 to-teal-400 flex items-center justify-center shadow-[0_4px_14px_rgba(13,148,136,0.35)] shrink-0">
@@ -748,25 +853,60 @@ export default function SlipGaji() {
                 </div>
             </div>
 
-            {/* Action Bar — Date Range Filter & Project Filter */}
+            {/* Action Bar — Date Range Filter & Project Filter & Category Tabs */}
             <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0" onClick={() => shiftWeek(-1)}>◀</button>
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md bg-bg-white">
-                        <Calendar size={14} />
-                        <input type="date" className="border-none bg-transparent text-[0.8em] font-medium text-text-primary outline-none w-[120px] cursor-pointer" value={filterStart} onChange={(e) => setFilterStart(e.target.value)} />
-                        <span className="text-text-muted text-[0.85em]">—</span>
-                        <input type="date" className="border-none bg-transparent text-[0.8em] font-medium text-text-primary outline-none w-[120px] cursor-pointer" value={filterEnd} onChange={(e) => setFilterEnd(e.target.value)} />
+                    {/* Period navigation buttons & Date Pill */}
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0 cursor-pointer shadow-xs"
+                            onClick={() => shiftPeriod(-1)}
+                            title={payrollCategory === 'management' ? 'Bulan Sebelumnya' : 'Minggu Sebelumnya'}
+                        >
+                            ◀
+                        </button>
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md bg-bg-white shadow-xs">
+                            <Calendar size={14} className="text-primary shrink-0" />
+                            <input
+                                type="date"
+                                className="border-none bg-transparent text-[0.8em] font-medium text-text-primary outline-none w-[120px] cursor-pointer"
+                                value={filterStart}
+                                onChange={(e) => setFilterStart(e.target.value)}
+                            />
+                            <span className="text-text-muted text-[0.85em]">—</span>
+                            <input
+                                type="date"
+                                className="border-none bg-transparent text-[0.8em] font-medium text-text-primary outline-none w-[120px] cursor-pointer"
+                                value={filterEnd}
+                                onChange={(e) => setFilterEnd(e.target.value)}
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0 cursor-pointer shadow-xs"
+                            onClick={() => shiftPeriod(1)}
+                            title={payrollCategory === 'management' ? 'Bulan Berikutnya' : 'Minggu Berikutnya'}
+                        >
+                            ▶
+                        </button>
+                        <button
+                            type="button"
+                            onClick={resetToCurrentPeriod}
+                            className="px-2.5 py-1.5 border border-border rounded-md bg-bg-white text-[0.8em] font-semibold text-text-secondary hover:bg-bg-secondary cursor-pointer shadow-xs transition-colors"
+                            title="Reset ke siklus periode saat ini"
+                        >
+                            {payrollCategory === 'management' ? 'Bulan Ini' : 'Minggu Ini'}
+                        </button>
                     </div>
-                    <button className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0" onClick={() => shiftWeek(1)}>▶</button>
 
                     {/* Filter by Project */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md bg-bg-white ml-1">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md bg-bg-white shadow-xs">
                         <Briefcase size={14} className="text-text-muted shrink-0" />
                         <select
                             value={filterProject}
-                            onChange={(e) => setFilterProject(e.target.value)}
-                            className="border-none bg-transparent text-[0.8em] font-semibold text-text-primary outline-none cursor-pointer pr-1"
+                            onChange={(e) => handleFilterProjectChange(e.target.value)}
+                            className="border-none bg-transparent text-[0.8em] font-semibold text-text-primary outline-none cursor-pointer pr-1 max-w-[200px]"
                         >
                             <option value="all">Semua Proyek ({projects.length})</option>
                             <option value="unassigned">🏢 Kantor / Non-Proyek</option>
@@ -775,8 +915,86 @@ export default function SlipGaji() {
                             ))}
                         </select>
                     </div>
+
+                    {/* Workforce Category Segmented Tabs */}
+                    <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-lg border border-border-light">
+                        <button
+                            type="button"
+                            onClick={() => handleCategoryChange('all')}
+                            className={`px-2.5 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
+                                payrollCategory === 'all'
+                                    ? 'bg-bg-white text-primary shadow-xs'
+                                    : 'text-text-muted hover:text-text-primary'
+                            }`}
+                        >
+                            Semua
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleCategoryChange('field')}
+                            className={`px-2.5 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
+                                payrollCategory === 'field'
+                                    ? 'bg-amber-500 text-white shadow-xs'
+                                    : 'text-text-muted hover:text-text-primary'
+                            }`}
+                        >
+                            👷 Lapangan
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleCategoryChange('management')}
+                            className={`px-2.5 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
+                                payrollCategory === 'management'
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : 'text-text-muted hover:text-text-primary'
+                            }`}
+                        >
+                            🏢 Manajemen
+                        </button>
+                    </div>
+
+                    {/* Cut-Off Cycle Badges & Configuration Triggers */}
+                    {payrollCategory === 'management' ? (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-900 shadow-xs">
+                            <span>
+                                Cut-Off Bulanan: <strong>Tgl {managementCutoffDay}</strong> ({formatDateShort(filterStart)} – {formatDateShort(filterEnd)})
+                            </span>
+                            <button
+                                type="button"
+                                onClick={openMgmtCutoffConfig}
+                                className="text-[11px] font-bold text-indigo-700 hover:text-indigo-950 hover:underline cursor-pointer flex items-center gap-1 pl-1.5 border-l border-indigo-300"
+                                title="Konfigurasi tanggal cut-off bulanan untuk staf manajemen"
+                            >
+                                ⚙️ Atur Cut-Off
+                            </button>
+                        </div>
+                    ) : filterProjectObj ? (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 shadow-xs">
+                            <span>
+                                Siklus Proyek: <strong>{DAY_NAMES[filterCutoffStart]} — {DAY_NAMES[filterCutoffEnd]}</strong>
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => openCutoffConfig(filterProjectObj._id, filterProjectObj.payrollConfig)}
+                                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-950 hover:underline cursor-pointer flex items-center gap-1 pl-1.5 border-l border-emerald-300"
+                                title="Ubah hari cut-off mingguan proyek ini"
+                            >
+                                ⚙️ Atur Cut-Off
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-border-light rounded-lg text-xs text-text-muted shadow-xs">
+                            <span>
+                                Siklus Standar: <strong>{DAY_NAMES[filterCutoffStart]} — {DAY_NAMES[filterCutoffEnd]}</strong>
+                            </span>
+                        </div>
+                    )}
                 </div>
-                <button className="flex items-center gap-1.5 px-5 py-2.5 border-none rounded-md bg-gradient-to-br from-teal-600 to-teal-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(13,148,136,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_6px_18px_rgba(13,148,136,0.35)]" onClick={openGenerateModal}>
+
+                <button
+                    className="flex items-center gap-1.5 px-5 py-2.5 border-none rounded-md bg-gradient-to-br from-teal-600 to-teal-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(13,148,136,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_6px_18px_rgba(13,148,136,0.35)]"
+                    onClick={openGenerateModal}
+                >
                     <Plus size={18} />
                     <span>{t('slipGaji.actions.generate')}</span>
                 </button>
@@ -1544,6 +1762,17 @@ export default function SlipGaji() {
                                                                     setGenWorker(w._id);
                                                                     setIsUserDropdownOpen(false);
                                                                     setUserSearchQuery('');
+                                                                    if (isManagementRole(w.role)) {
+                                                                        const mRange = getManagementMonthRange(todayWIB(), managementCutoffDay);
+                                                                        setGenStart(mRange.startDate);
+                                                                        setGenEnd(mRange.endDate);
+                                                                    } else {
+                                                                        const sDay = selectedProjectObj?.payrollConfig?.cutoffStartDay ?? 1;
+                                                                        const eDay = selectedProjectObj?.payrollConfig?.cutoffEndDay ?? 6;
+                                                                        const range = getProjectWeekRange(todayWIB(), sDay, eDay);
+                                                                        setGenStart(range.startDate);
+                                                                        setGenEnd(range.endDate);
+                                                                    }
                                                                 }}
                                                                 className={`p-2.5 flex items-center justify-between gap-2.5 transition-colors cursor-pointer ${isSelected ? 'bg-primary/5' : 'hover:bg-bg-secondary'
                                                                     }`}
@@ -1581,6 +1810,36 @@ export default function SlipGaji() {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Cycle info banner for selected worker */}
+                            {selectedWorkerObj && (
+                                <div className={`mb-3.5 px-3.5 py-2 rounded-xl text-xs flex items-center justify-between border ${
+                                    isManagementRole(selectedWorkerObj.role)
+                                        ? 'bg-indigo-50/90 border-indigo-200 text-indigo-950'
+                                        : 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
+                                }`}>
+                                    <div className="flex items-center gap-2 font-medium">
+                                        {isManagementRole(selectedWorkerObj.role) ? (
+                                            <>
+                                                <Building size={15} className="text-indigo-600 shrink-0" />
+                                                <span>Siklus Bulanan Manajemen: Cut-Off Tanggal <strong>{managementCutoffDay}</strong></span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Briefcase size={15} className="text-emerald-600 shrink-0" />
+                                                <span>Siklus Mingguan Proyek: <strong>{DAY_NAMES[selectedProjectObj?.payrollConfig?.cutoffStartDay ?? 1]} — {DAY_NAMES[selectedProjectObj?.payrollConfig?.cutoffEndDay ?? 6]}</strong></span>
+                                            </>
+                                        )}
+                                    </div>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                        isManagementRole(selectedWorkerObj.role)
+                                            ? 'bg-indigo-200/60 text-indigo-800'
+                                            : 'bg-emerald-200/60 text-emerald-800'
+                                    }`}>
+                                        {isManagementRole(selectedWorkerObj.role) ? 'Bulanan' : 'Mingguan'}
+                                    </span>
+                                </div>
+                            )}
 
                             <div className="flex gap-3">
                                 <div className="mb-4 flex-1">
@@ -2092,6 +2351,134 @@ export default function SlipGaji() {
                                     onClick={handleSaveProjectCutoff}
                                 >
                                     {configSaving ? <Loader2 size={16} className="animate-spin" /> : 'Simpan Siklus'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ===== Management Monthly Cutoff Modal ===== */}
+            {mgmtCutoffModal && (
+                <div className="modal-overlay" onClick={() => setMgmtCutoffModal(false)}>
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="modal-mgmt-cutoff-title"
+                        className="bg-bg-white rounded-xl w-[90%] max-w-[440px] shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center gap-3 px-5 pt-5 pb-0">
+                            <div className="w-[42px] h-[42px] rounded-lg flex items-center justify-center shrink-0 bg-indigo-100 text-indigo-700">
+                                <Building size={20} />
+                            </div>
+                            <div>
+                                <h3 id="modal-mgmt-cutoff-title" className="text-base font-bold text-text-primary m-0">
+                                    Cut-Off Bulanan Manajemen
+                                </h3>
+                                <p className="text-xs text-text-muted m-0">
+                                    Konfigurasi siklus penggajian staf kantor & direksi
+                                </p>
+                            </div>
+                            <button
+                                className="ml-auto w-8 h-8 border-none bg-bg-secondary rounded-full cursor-pointer flex items-center justify-center text-text-muted transition-colors hover:bg-border"
+                                onClick={() => setMgmtCutoffModal(false)}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="p-5">
+                            <p className="text-xs text-text-muted mb-4 leading-relaxed">
+                                Staf manajemen beroperasi dalam siklus bulanan (bukan mingguan). Tentukan tanggal cut-off setiap bulannya.
+                            </p>
+
+                            {/* Quick Select Presets */}
+                            <div className="mb-4">
+                                <label className="block text-xs font-semibold text-text-secondary mb-1.5">
+                                    Pilihan Cepat
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { day: 25, label: 'Tgl 25', sub: '26 s/d 25' },
+                                        { day: 20, label: 'Tgl 20', sub: '21 s/d 20' },
+                                        { day: 1, label: 'Tgl 1', sub: '1 s/d Akhir' },
+                                    ].map(preset => (
+                                        <button
+                                            key={preset.day}
+                                            type="button"
+                                            onClick={() => setEditMgmtCutoffDay(preset.day)}
+                                            className={`p-2 rounded-lg border text-center transition-all cursor-pointer ${
+                                                editMgmtCutoffDay === preset.day
+                                                    ? 'border-indigo-600 bg-indigo-50/70 text-indigo-900 font-bold'
+                                                    : 'border-border bg-bg-white text-text-secondary hover:bg-bg-secondary'
+                                            }`}
+                                        >
+                                            <div className="text-xs">{preset.label}</div>
+                                            <div className="text-[10px] text-text-muted">{preset.sub}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Custom Day Slider / Input */}
+                            <div className="mb-4">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="text-xs font-semibold text-text-secondary">
+                                        Tanggal Cut-Off (1 – 31)
+                                    </label>
+                                    <span className="text-xs font-bold text-indigo-600 font-mono">
+                                        Tanggal {editMgmtCutoffDay}
+                                    </span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={1}
+                                    max={31}
+                                    value={editMgmtCutoffDay}
+                                    onChange={(e) => setEditMgmtCutoffDay(Number(e.target.value))}
+                                    className="w-full accent-indigo-600 cursor-pointer"
+                                />
+                                <div className="flex justify-between text-[10px] text-text-muted mt-1">
+                                    <span>Tgl 1 (Kalender)</span>
+                                    <span>Tgl 15</span>
+                                    <span>Tgl 25 (Payroll)</span>
+                                    <span>Tgl 31</span>
+                                </div>
+                            </div>
+
+                            {/* Live Calculated Range Preview */}
+                            {(() => {
+                                const previewRange = getManagementMonthRange(todayWIB(), editMgmtCutoffDay);
+                                return (
+                                    <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-lg text-xs text-indigo-950 mb-5 space-y-1">
+                                        <div className="font-semibold text-indigo-900">
+                                            Pratinjau Periode Berjalan:
+                                        </div>
+                                        <div className="font-mono text-[11px] text-indigo-800">
+                                            {formatDateShort(previewRange.startDate)} — {formatDateShort(previewRange.endDate)}
+                                        </div>
+                                        <div className="text-[10px] text-indigo-700">
+                                            {previewRange.label}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    className="flex-1 py-2.5 border border-border bg-bg-white rounded-lg text-sm font-semibold text-text-secondary cursor-pointer hover:bg-bg-secondary"
+                                    onClick={() => setMgmtCutoffModal(false)}
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="button"
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold cursor-pointer shadow-md hover:bg-indigo-700"
+                                    onClick={handleSaveMgmtCutoff}
+                                >
+                                    Simpan Cut-Off
                                 </button>
                             </div>
                         </div>

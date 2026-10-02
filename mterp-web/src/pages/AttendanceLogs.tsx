@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, User, Clock, Filter,
@@ -6,14 +6,27 @@ import {
   Wallet, Loader, FileText, CalendarOff, Eye, Ban, AlertTriangle,
   LayoutGrid, Table as TableIcon, Camera, Image, ShieldCheck,
   RefreshCw, Download, ExternalLink, Sparkles, MapPin, ZoomIn,
-  CheckCircle2, AlertCircle, Layers
+  CheckCircle2, AlertCircle, Layers, Briefcase, Search,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PhotoView } from 'react-photo-view';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, Badge, Button, EmptyState, CostInput } from '../components/shared';
-import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
+import { Card, Button, EmptyState, CostInput } from '../components/shared';
+import {
+  formatDate as formatWIBDate,
+  formatTime as formatWIBTime,
+  todayWIB,
+  wibDate,
+  DAY_NAMES,
+  MONTH_NAMES,
+  getProjectWeekRange,
+  getManagementMonthRange,
+  shiftMonthRange,
+  getStoredManagementCutoffDay,
+  setStoredManagementCutoffDay,
+  DEFAULT_MANAGEMENT_CUTOFF_DAY,
+} from '../utils/date';
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -29,6 +42,10 @@ interface ProjectOption {
   _id: string;
   nama: string;
   lokasi?: string;
+  payrollConfig?: {
+    cutoffStartDay?: number;
+    cutoffEndDay?: number;
+  };
 }
 
 interface AttendanceRecord {
@@ -270,6 +287,144 @@ export default function AttendanceLogs() {
   const [statusFilter, setStatusFilter] = useState<'All' | 'Present' | 'Late' | 'Absent' | 'Permit' | 'Half-day'>('All');
   const [paymentStatus, setPaymentStatus] = useState<'All' | 'Unpaid' | 'Paid'>('All');
   const [photoOnly, setPhotoOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Selected project object & cutoff configuration
+  const selectedProjectObj = useMemo(() => {
+    return projects.find((p) => p._id === selectedProject);
+  }, [projects, selectedProject]);
+
+  const cutoffStartDay = selectedProjectObj?.payrollConfig?.cutoffStartDay ?? 1;
+  const cutoffEndDay = selectedProjectObj?.payrollConfig?.cutoffEndDay ?? 6;
+
+  // Management staff monthly cutoff config
+  const [managementCutoffDay, setManagementCutoffDay] = useState<number>(() => getStoredManagementCutoffDay());
+  const [mgmtCutoffModal, setMgmtCutoffModal] = useState(false);
+  const [editMgmtCutoffDay, setEditMgmtCutoffDay] = useState(managementCutoffDay);
+
+  // Project Cutoff config modal state
+  const [configModal, setConfigModal] = useState(false);
+  const [configProjId, setConfigProjId] = useState('');
+  const [configStartDay, setConfigStartDay] = useState(1);
+  const [configEndDay, setConfigEndDay] = useState(6);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Navigation: Shift period forward or backward (Month for office staff, Week for field)
+  const shiftPeriod = (dir: number) => {
+    if (workforceCategory === 'office' || dateRange === 'month') {
+      const range = shiftMonthRange(startDate || todayWIB(), dir, managementCutoffDay);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      setDateRange('month');
+    } else {
+      const [y, m, d] = (startDate || todayWIB()).split('-').map(Number);
+      const date = new Date(Date.UTC(y, m - 1, d));
+      date.setUTCDate(date.getUTCDate() + dir * 7);
+      const range = getProjectWeekRange(date, cutoffStartDay, cutoffEndDay);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      setDateRange('week');
+    }
+  };
+
+  const shiftWeek = shiftPeriod; // Backward compatibility alias
+
+  // Reset to current period
+  const resetToCurrentPeriod = () => {
+    if (workforceCategory === 'office' || dateRange === 'month') {
+      const range = getManagementMonthRange(todayWIB(), managementCutoffDay);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      setDateRange('month');
+    } else {
+      const range = getProjectWeekRange(todayWIB(), cutoffStartDay, cutoffEndDay);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      setDateRange('week');
+    }
+  };
+
+  const resetToCurrentWeek = resetToCurrentPeriod; // Backward compatibility alias
+
+  // Handle workforce category change: auto-switch to monthly for office staff
+  const handleWorkforceCategoryChange = (cat: 'all' | 'office' | 'field') => {
+    setWorkforceCategory(cat);
+    if (cat === 'office') {
+      setDateRange('month');
+      const mRange = getManagementMonthRange(todayWIB(), managementCutoffDay);
+      setStartDate(mRange.startDate);
+      setEndDate(mRange.endDate);
+    } else if (cat === 'field') {
+      setDateRange('week');
+      const range = getProjectWeekRange(todayWIB(), cutoffStartDay, cutoffEndDay);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+    }
+  };
+
+  // Handle saving management monthly cutoff
+  const handleSaveMgmtCutoff = () => {
+    setStoredManagementCutoffDay(editMgmtCutoffDay);
+    setManagementCutoffDay(editMgmtCutoffDay);
+    if (workforceCategory === 'office' || dateRange === 'month') {
+      const range = getManagementMonthRange(todayWIB(), editMgmtCutoffDay);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+    }
+    setMgmtCutoffModal(false);
+    setToastMessage({ type: 'success', text: `Cut-off bulanan staf manajemen disimpan (Tanggal ${editMgmtCutoffDay})!` });
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Handle project change: auto-align date range to project cutoff cycle
+  const handleProjectChange = (projId: string) => {
+    setSelectedProject(projId);
+    if (projId && dateRange === 'week' && workforceCategory !== 'office') {
+      const proj = projects.find((p) => p._id === projId);
+      const sDay = proj?.payrollConfig?.cutoffStartDay ?? 1;
+      const eDay = proj?.payrollConfig?.cutoffEndDay ?? 6;
+      const range = getProjectWeekRange(todayWIB(), sDay, eDay);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+    }
+  };
+
+  // Open cutoff config modal
+  const openCutoffConfig = (proj: ProjectOption) => {
+    setConfigProjId(proj._id);
+    setConfigStartDay(proj.payrollConfig?.cutoffStartDay ?? 1);
+    setConfigEndDay(proj.payrollConfig?.cutoffEndDay ?? 6);
+    setConfigModal(true);
+  };
+
+  // Save project cutoff configuration
+  const handleSaveCutoffConfig = async () => {
+    if (!configProjId) return;
+    setConfigSaving(true);
+    try {
+      await api.put(`/projects/${configProjId}/payroll-config`, {
+        cutoffStartDay: configStartDay,
+        cutoffEndDay: configEndDay,
+      });
+      await fetchProjects();
+      if (selectedProject === configProjId) {
+        const range = getProjectWeekRange(todayWIB(), configStartDay, configEndDay);
+        setStartDate(range.startDate);
+        setEndDate(range.endDate);
+      }
+      setConfigModal(false);
+      setToastMessage({ type: 'success', text: 'Siklus cut-off proyek berhasil disimpan!' });
+      setTimeout(() => setToastMessage(null), 3500);
+    } catch (err: any) {
+      console.error(err);
+      setToastMessage({ type: 'error', text: err?.response?.data?.msg || 'Gagal menyimpan konfigurasi.' });
+      setTimeout(() => setToastMessage(null), 4000);
+    } finally {
+      setConfigSaving(false);
+    }
+  };
 
   // Wage modal
   const [wageModal, setWageModal] = useState(false);
@@ -316,17 +471,11 @@ export default function AttendanceLogs() {
 
   const isSupervisor = user?.role && ['owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin', 'site_manager'].includes(user.role);
 
-  // Initial Range Setup
+  // Initial Range Setup: aligned to week cutoff
   useEffect(() => {
-    const todayStr = todayWIB();
-    const [y, m, d] = todayStr.split('-').map(Number);
-    const todayD = new Date(Date.UTC(y, m - 1, d));
-
-    const weekStart = new Date(todayD);
-    weekStart.setUTCDate(todayD.getUTCDate() - todayD.getUTCDay());
-
-    setStartDate(weekStart.toISOString().slice(0, 10));
-    setEndDate(todayStr);
+    const range = getProjectWeekRange(todayWIB(), 1, 6);
+    setStartDate(range.startDate);
+    setEndDate(range.endDate);
     fetchUsers();
     fetchProjects();
   }, []);
@@ -384,19 +533,17 @@ export default function AttendanceLogs() {
     const todayD = new Date(Date.UTC(y, m - 1, d));
 
     if (range === 'week') {
-      const weekStart = new Date(todayD);
-      weekStart.setUTCDate(todayD.getUTCDate() - todayD.getUTCDay());
-      setStartDate(weekStart.toISOString().slice(0, 10));
-      setEndDate(todayStr);
+      const rangeRes = getProjectWeekRange(todayWIB(), cutoffStartDay, cutoffEndDay);
+      setStartDate(rangeRes.startDate);
+      setEndDate(rangeRes.endDate);
     } else if (range === 'month') {
-      const monthStart = new Date(todayD);
-      monthStart.setUTCDate(1);
-      setStartDate(monthStart.toISOString().slice(0, 10));
-      setEndDate(todayStr);
+      const mRange = getManagementMonthRange(todayWIB(), managementCutoffDay);
+      setStartDate(mRange.startDate);
+      setEndDate(mRange.endDate);
     }
   };
 
-  // Client-side filtering for workforce, workType, geofence, project, status, and photos
+  // Client-side filtering for workforce, workType, geofence, project, status, photos, and live search
   const filteredRecords = useMemo(() => {
     let result = records;
     if (workforceCategory === 'office') {
@@ -424,8 +571,19 @@ export default function AttendanceLogs() {
     if (photoOnly) {
       result = result.filter(r => getRecordPhotos(r).length > 0);
     }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(r => {
+        const name = (r.userId?.fullName || '').toLowerCase();
+        const role = (r.userId?.role || '').toLowerCase();
+        const proj = (r.projectId?.nama || '').toLowerCase();
+        const otProj = getOtProjName(r, projects).toLowerCase();
+        const notes = (r.notes || '').toLowerCase();
+        return name.includes(q) || role.includes(q) || proj.includes(q) || otProj.includes(q) || notes.includes(q);
+      });
+    }
     return result;
-  }, [records, workforceCategory, workTypeFilter, geofenceFilter, selectedProject, statusFilter, photoOnly]);
+  }, [records, workforceCategory, workTypeFilter, geofenceFilter, selectedProject, statusFilter, photoOnly, searchQuery, projects]);
 
   const permitRecords = useMemo(() => {
     return filteredRecords.filter(r => r.status === 'Permit');
@@ -648,6 +806,32 @@ export default function AttendanceLogs() {
   return (
     <div className="p-6 max-w-7xl mx-auto max-lg:p-4 max-sm:p-3 space-y-6">
 
+      {/* Toast Alert Banner */}
+      {toastMessage && (
+        <div
+          className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs font-semibold shadow-sm animate-in fade-in slide-in-from-top-2 duration-200 ${
+            toastMessage.type === 'success'
+              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+              : 'bg-rose-50 text-rose-900 border-rose-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {toastMessage.type === 'success' ? (
+              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle size={16} className="text-rose-600 shrink-0" />
+            )}
+            <span>{toastMessage.text}</span>
+          </div>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="text-text-muted hover:text-text-primary p-1 cursor-pointer"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* ══════════════ 1. ERP HEADER ══════════════ */}
       <div className="rounded-2xl bg-bg-white border border-border-light p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -660,21 +844,24 @@ export default function AttendanceLogs() {
             >
               <ArrowLeft size={20} />
             </button>
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal-600 via-teal-500 to-emerald-400 flex items-center justify-center shadow-[0_4px_14px_rgba(13,148,136,0.35)] shrink-0 mt-0.5">
+              <Camera size={22} className="text-white" />
+            </div>
             <div>
               <div className="flex items-center gap-2 text-xs font-bold text-text-muted uppercase tracking-wider mb-1">
                 <span>MTERP</span>
                 <span>/</span>
                 <span>Operasional Proyek</span>
                 <span>/</span>
-                <span className="text-primary font-black">Audit & Log Kehadiran</span>
+                <span className="text-teal-700 font-black">Audit & Log Kehadiran</span>
               </div>
               <h1 className="text-2xl font-black text-text-primary tracking-tight m-0 flex items-center gap-2.5">
                 <span>Log & Validasi Kehadiran (ERP)</span>
-                <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-primary/10 text-primary border border-primary/20">
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-teal-50 text-teal-700 border border-teal-200">
                   Site Audit
                 </span>
               </h1>
-              <p className="text-xs text-text-muted m-0 mt-1 max-w-xl">
+              <p className="text-xs text-text-muted m-0 mt-1 max-w-xl leading-relaxed">
                 Audit verifikasi foto bukti check-in/out, rekam jam kerja lapangan, koreksi kehadiran, dan persetujuan upah.
               </p>
             </div>
@@ -837,18 +1024,147 @@ export default function AttendanceLogs() {
         </div>
       )}
 
-      {/* ══════════════ 3. ERP ADVANCED FILTER SUITE ══════════════ */}
+      {/* ══════════════ 3. ERP ADVANCED ACTION & FILTER SUITE ══════════════ */}
       <div className="p-5 rounded-2xl bg-bg-white border border-border-light shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Filter size={16} className="text-primary" />
-            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">
-              Filter Pencarian & Parameter Audit
-            </span>
+        {/* Top Action Bar: Date Range + Week Navigation + Project Cutoff */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Period Shift Controls & Unified Date Range Pill */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => shiftPeriod(-1)}
+                className="w-8 h-8 border border-border rounded-lg bg-bg-white text-xs font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary cursor-pointer shadow-xs"
+                title={workforceCategory === 'office' || dateRange === 'month' ? 'Bulan Sebelumnya' : 'Siklus Minggu Sebelumnya'}
+              >
+                ◀
+              </button>
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-lg bg-bg-white shadow-xs">
+                <Calendar size={14} className="text-teal-600 shrink-0" />
+                <input
+                  type="date"
+                  className="border-none bg-transparent text-xs font-semibold text-text-primary outline-none w-[116px] cursor-pointer"
+                  value={startDate}
+                  onChange={(e) => { setStartDate(e.target.value); setDateRange('custom'); }}
+                />
+                <span className="text-text-muted text-xs font-bold">—</span>
+                <input
+                  type="date"
+                  className="border-none bg-transparent text-xs font-semibold text-text-primary outline-none w-[116px] cursor-pointer"
+                  value={endDate}
+                  onChange={(e) => { setEndDate(e.target.value); setDateRange('custom'); }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => shiftPeriod(1)}
+                className="w-8 h-8 border border-border rounded-lg bg-bg-white text-xs font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary cursor-pointer shadow-xs"
+                title={workforceCategory === 'office' || dateRange === 'month' ? 'Bulan Berikutnya' : 'Siklus Minggu Berikutnya'}
+              >
+                ▶
+              </button>
+            </div>
+
+            {/* Date Range Presets Segment */}
+            <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-xl border border-border-light">
+              <button
+                type="button"
+                onClick={() => handleDateRangeChange('week')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  dateRange === 'week'
+                    ? 'bg-bg-white text-teal-700 shadow-xs'
+                    : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                Minggu Ini
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDateRangeChange('month')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  dateRange === 'month'
+                    ? 'bg-bg-white text-teal-700 shadow-xs'
+                    : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                Bulan Ini
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDateRangeChange('custom')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  dateRange === 'custom'
+                    ? 'bg-bg-white text-teal-700 shadow-xs'
+                    : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                Kustom
+              </button>
+            </div>
+
+            {/* Project Filter */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg bg-bg-white shadow-xs">
+              <Briefcase size={14} className="text-text-muted shrink-0" />
+              <select
+                value={selectedProject}
+                onChange={(e) => handleProjectChange(e.target.value)}
+                className="border-none bg-transparent text-xs font-semibold text-text-primary outline-none cursor-pointer pr-1 max-w-[220px]"
+              >
+                <option value="">🏢 Semua Proyek ({projects.length})</option>
+                {projects.map((p) => (
+                  <option key={p._id} value={p._id}>
+                    🏗️ {p.nama} {p.lokasi ? `(${p.lokasi})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Cut-Off Cycle Badge & Trigger */}
+            {workforceCategory === 'office' || dateRange === 'month' ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50/90 border border-indigo-200 rounded-lg text-xs shadow-xs">
+                <span className="text-[11px] font-semibold text-indigo-900">
+                  Cut-Off Manajemen: <strong className="text-indigo-950 font-bold">Tanggal {managementCutoffDay}</strong> ({formatWIBDate(startDate)} — {formatWIBDate(endDate)})
+                </span>
+                {isSupervisor && (
+                  <button
+                    type="button"
+                    onClick={() => { setEditMgmtCutoffDay(managementCutoffDay); setMgmtCutoffModal(true); }}
+                    className="text-[11px] font-bold text-indigo-700 hover:text-indigo-950 hover:underline cursor-pointer flex items-center gap-1 pl-1.5 border-l border-indigo-300"
+                    title="Ubah tanggal cut-off bulanan untuk staf manajemen"
+                  >
+                    ⚙️ Atur Cut-Off Bulanan
+                  </button>
+                )}
+              </div>
+            ) : selectedProjectObj ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50/90 border border-emerald-200 rounded-lg text-xs shadow-xs">
+                <span className="text-[11px] font-semibold text-emerald-800">
+                  Siklus Proyek: <strong className="text-emerald-950 font-bold">{DAY_NAMES[cutoffStartDay]} — {DAY_NAMES[cutoffEndDay]}</strong>
+                </span>
+                {isSupervisor && (
+                  <button
+                    type="button"
+                    onClick={() => openCutoffConfig(selectedProjectObj)}
+                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer flex items-center gap-1 pl-1.5 border-l border-emerald-300"
+                    title="Ubah hari awal dan hari cut-off untuk proyek ini"
+                  >
+                    ⚙️ Atur Cut-Off
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-border-light rounded-lg text-xs text-text-muted shadow-xs">
+                <span className="text-[11px]">
+                  Siklus Standar: <strong>{DAY_NAMES[cutoffStartDay]} — {DAY_NAMES[cutoffEndDay]}</strong>
+                </span>
+              </div>
+            )}
           </div>
+
           <button
+            type="button"
             onClick={() => {
-              setWorkforceCategory('all');
+              handleWorkforceCategoryChange('all');
               setWorkTypeFilter('all');
               setGeofenceFilter('all');
               setSelectedUser('');
@@ -856,25 +1172,23 @@ export default function AttendanceLogs() {
               setStatusFilter('All');
               setPaymentStatus('All');
               setPhotoOnly(false);
+              setSearchQuery('');
               handleDateRangeChange('week');
             }}
-            className="text-[11px] font-bold text-primary hover:underline cursor-pointer"
+            className="text-xs font-semibold text-primary hover:underline cursor-pointer ml-auto"
           >
             Reset Filter
           </button>
         </div>
 
         {/* Workforce Category Segmented Control */}
-        <div className="space-y-2">
+        <div className="space-y-2 pt-2 border-t border-border-light">
           <label className="block text-[10px] font-bold text-text-muted uppercase tracking-wider">
             Kategori Tenaga Kerja
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
-              onClick={() => {
-                setWorkforceCategory('all');
-                setWorkTypeFilter('all');
-              }}
+              onClick={() => handleWorkforceCategoryChange('all')}
               className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
                 workforceCategory === 'all'
                   ? 'bg-primary text-white border-primary shadow-sm'
@@ -885,7 +1199,7 @@ export default function AttendanceLogs() {
               <span>Semua Tenaga Kerja</span>
             </button>
             <button
-              onClick={() => setWorkforceCategory('office')}
+              onClick={() => handleWorkforceCategoryChange('office')}
               className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
                 workforceCategory === 'office'
                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
@@ -893,13 +1207,10 @@ export default function AttendanceLogs() {
               }`}
             >
               <Building size={15} />
-              <span>🏢 Kantor & Manajemen</span>
+              <span>🏢 Kantor & Manajemen (Bulanan)</span>
             </button>
             <button
-              onClick={() => {
-                setWorkforceCategory('field');
-                setWorkTypeFilter('all');
-              }}
+              onClick={() => handleWorkforceCategoryChange('field')}
               className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
                 workforceCategory === 'field'
                   ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
@@ -907,7 +1218,7 @@ export default function AttendanceLogs() {
               }`}
             >
               <Layers size={15} />
-              <span>👷 Tim Lapangan & Proyek</span>
+              <span>👷 Tim Lapangan & Proyek (Mingguan)</span>
             </button>
           </div>
 
@@ -949,73 +1260,50 @@ export default function AttendanceLogs() {
           )}
         </div>
 
-        {/* Date Presets */}
-        <div>
-          <div className="grid grid-cols-3 gap-2">
-            {(['week', 'month', 'custom'] as const).map(r => (
-              <button
-                key={r}
-                className={`py-2 px-3 rounded-xl text-xs font-bold uppercase transition-all border cursor-pointer ${
-                  dateRange === r
-                    ? 'bg-primary text-white border-primary shadow-sm'
-                    : 'bg-bg-secondary text-text-muted border-border-light hover:text-text-primary'
-                }`}
-                onClick={() => handleDateRangeChange(r)}
-              >
-                {r === 'week' ? 'Minggu Ini' : r === 'month' ? 'Bulan Ini' : 'Rentang Kustom'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {dateRange === 'custom' && (
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <div>
-              <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Tanggal Mulai</label>
+        {/* Search & Detailed Dropdowns Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-2 border-t border-border-light">
+          {/* Live Search */}
+          <div className="relative">
+            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Cari Karyawan / Log</label>
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
               <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full p-2.5 border border-border-light rounded-xl text-xs font-bold text-text-primary focus:border-primary outline-none bg-bg-white"
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Nama, peran, proyek..."
+                className="w-full pl-8 pr-12 py-2 border border-border-light rounded-xl text-xs font-semibold text-text-primary outline-none focus:border-primary bg-bg-white placeholder:text-text-muted"
               />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Tanggal Akhir</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full p-2.5 border border-border-light rounded-xl text-xs font-bold text-text-primary focus:border-primary outline-none bg-bg-white"
-              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="w-4 h-4 flex items-center justify-center rounded-full bg-border-light text-text-muted hover:bg-border hover:text-text-primary transition-colors cursor-pointer"
+                    title="Hapus pencarian"
+                  >
+                    <X size={10} />
+                  </button>
+                ) : (
+                  <kbd className="hidden sm:inline-flex items-center px-1 py-0.5 text-[9px] font-mono font-medium text-text-muted bg-bg-secondary border border-border-light rounded pointer-events-none">
+                    /
+                  </kbd>
+                )}
+              </div>
             </div>
           </div>
-        )}
 
-        {/* Dropdown Filters Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1 border-t border-border-light">
           {/* Worker */}
           <div>
             <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Pekerja</label>
             <select
               value={selectedUser}
               onChange={(e) => setSelectedUser(e.target.value)}
-              className="w-full p-2.5 border border-border-light rounded-xl bg-bg-white text-xs font-bold text-text-primary outline-none focus:border-primary cursor-pointer"
+              className="w-full p-2 border border-border-light rounded-xl bg-bg-white text-xs font-semibold text-text-primary outline-none focus:border-primary cursor-pointer"
             >
               <option value="">Semua Pekerja</option>
               {users.map(u => <option key={u._id} value={u._id}>{u.fullName}</option>)}
-            </select>
-          </div>
-
-          {/* Project */}
-          <div>
-            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Proyek</label>
-            <select
-              value={selectedProject}
-              onChange={(e) => setSelectedProject(e.target.value)}
-              className="w-full p-2.5 border border-border-light rounded-xl bg-bg-white text-xs font-bold text-text-primary outline-none focus:border-primary cursor-pointer"
-            >
-              <option value="">Semua Proyek</option>
-              {projects.map(p => <option key={p._id} value={p._id}>{p.nama}</option>)}
             </select>
           </div>
 
@@ -1025,7 +1313,7 @@ export default function AttendanceLogs() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="w-full p-2.5 border border-border-light rounded-xl bg-bg-white text-xs font-bold text-text-primary outline-none focus:border-primary cursor-pointer"
+              className="w-full p-2 border border-border-light rounded-xl bg-bg-white text-xs font-semibold text-text-primary outline-none focus:border-primary cursor-pointer"
             >
               <option value="All">Semua Status</option>
               <option value="Present">Hadir (Present)</option>
@@ -1036,44 +1324,68 @@ export default function AttendanceLogs() {
             </select>
           </div>
 
-          {/* Payment or Photo Filter */}
+          {/* Payment Status */}
+          <div>
+            <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Status Payroll</label>
+            <select
+              value={paymentStatus}
+              onChange={(e) => setPaymentStatus(e.target.value as any)}
+              className="w-full p-2 border border-border-light rounded-xl bg-bg-white text-xs font-semibold text-text-primary outline-none focus:border-primary cursor-pointer"
+            >
+              <option value="All">Semua Pembayaran</option>
+              <option value="Unpaid">Belum Dibayar (Unpaid)</option>
+              <option value="Paid">Sudah Dibayar (Paid)</option>
+            </select>
+          </div>
+
+          {/* Photo evidence filter */}
           <div className="flex flex-col justify-end">
-            {viewMode === 'attendance' ? (
-              <div>
-                <label className="block text-[10px] font-bold text-text-muted uppercase mb-1">Status Gaji / Payroll</label>
-                <select
-                  value={paymentStatus}
-                  onChange={(e) => setPaymentStatus(e.target.value as any)}
-                  className="w-full p-2.5 border border-border-light rounded-xl bg-bg-white text-xs font-bold text-text-primary outline-none focus:border-primary cursor-pointer"
-                >
-                  <option value="All">Semua Pembayaran</option>
-                  <option value="Unpaid">Belum Dibayar (Unpaid)</option>
-                  <option value="Paid">Sudah Dibayar (Paid)</option>
-                </select>
-              </div>
-            ) : (
-              <div className="pt-4">
-                <span className="text-xs text-text-muted">Menampilkan khusus perizinan pekerja</span>
-              </div>
-            )}
+            <button
+              onClick={() => setPhotoOnly(prev => !prev)}
+              className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${
+                photoOnly
+                  ? 'bg-purple-100 text-purple-800 border-purple-300 shadow-xs'
+                  : 'bg-bg-white text-text-muted border-border-light hover:text-text-primary'
+              }`}
+            >
+              <Camera size={14} className={photoOnly ? 'text-purple-600' : ''} />
+              <span>Hanya Foto Bukti</span>
+              {photoOnly && <span className="text-[10px] font-black">✓</span>}
+            </button>
           </div>
         </div>
 
-        {/* Quick Photo Filter Pill */}
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            onClick={() => setPhotoOnly(prev => !prev)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
-              photoOnly
-                ? 'bg-purple-100 text-purple-800 border-purple-300'
-                : 'bg-bg-secondary text-text-muted border-border-light hover:text-text-primary'
-            }`}
-          >
-            <Camera size={14} className={photoOnly ? 'text-purple-600' : ''} />
-            <span>Hanya yang Memiliki Foto Bukti</span>
-            {photoOnly && <span className="text-[10px] font-black">✓</span>}
-          </button>
-        </div>
+        {/* Active Filter Summary Bar */}
+        {(selectedProject || workforceCategory !== 'all' || searchQuery.trim() || statusFilter !== 'All' || paymentStatus !== 'All' || photoOnly) && (
+          <div className="flex items-center justify-between text-xs pt-2 border-t border-dashed border-border-light">
+            <span className="text-text-muted">
+              Ditemukan <strong className="text-teal-700 font-mono">{filteredRecords.length}</strong> catatan log aktif
+              {selectedProject ? ` • Proyek: ${selectedProjectObj?.nama || 'Terpilih'}` : ''}
+              {searchQuery.trim() ? ` • Pencarian: "${searchQuery}"` : ''}
+              {statusFilter !== 'All' ? ` • Status: ${statusFilter}` : ''}
+              {paymentStatus !== 'All' ? ` • Gaji: ${paymentStatus}` : ''}
+              {photoOnly ? ' • Dengan Foto Bukti' : ''}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setWorkforceCategory('all');
+                setWorkTypeFilter('all');
+                setGeofenceFilter('all');
+                setSelectedUser('');
+                setSelectedProject('');
+                setStatusFilter('All');
+                setPaymentStatus('All');
+                setPhotoOnly(false);
+                setSearchQuery('');
+                resetToCurrentWeek();
+              }}
+              className="text-xs font-semibold text-rose-600 hover:underline cursor-pointer"
+            >
+              Reset Filter
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ══════════════ 4. MAIN LOGS VIEW: ATTENDANCE MODE ══════════════ */}
@@ -2190,6 +2502,231 @@ export default function AttendanceLogs() {
                 variant="primary"
                 className="!bg-amber-600 hover:!bg-amber-700 !text-white"
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ Project Cutoff Config Modal ══════════════ */}
+      {configModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1100] p-4 animate-in fade-in duration-150"
+          onClick={() => !configSaving && setConfigModal(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-logs-cutoff-title"
+            className="bg-bg-white rounded-2xl w-[90%] max-w-[440px] shadow-2xl animate-in zoom-in-95 duration-150 overflow-hidden border border-border-light"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 px-5 pt-5 pb-0">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-emerald-100 text-emerald-700 font-bold">
+                <Briefcase size={20} />
+              </div>
+              <div>
+                <h3 id="modal-logs-cutoff-title" className="text-base font-bold text-text-primary m-0">
+                  Siklus Cut-Off Log & Presensi
+                </h3>
+                <p className="text-xs text-text-muted m-0 truncate max-w-[280px]">
+                  {projects.find((p) => p._id === configProjId)?.nama || 'Proyek'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="ml-auto w-8 h-8 border-none bg-bg-secondary rounded-full cursor-pointer flex items-center justify-center text-text-muted hover:bg-border-light transition-colors"
+                onClick={() => setConfigModal(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <p className="text-xs text-text-muted mb-4 leading-relaxed">
+                Tentukan hari mulai dan hari cut-off untuk periode audit dan log mingguan proyek ini. Rentang tanggal dan navigasi minggu akan otomatis tersinkronisasi.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1.5">
+                    Hari Mulai (Start)
+                  </label>
+                  <select
+                    value={configStartDay}
+                    onChange={(e) => setConfigStartDay(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-border-light rounded-xl text-xs font-bold text-text-primary bg-bg-secondary outline-none focus:border-emerald-600 focus:bg-white"
+                  >
+                    {DAY_NAMES.map((name, idx) => (
+                      <option key={idx} value={idx}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1.5">
+                    Hari Selesai (Cut-Off)
+                  </label>
+                  <select
+                    value={configEndDay}
+                    onChange={(e) => setConfigEndDay(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-border-light rounded-xl text-xs font-bold text-text-primary bg-bg-secondary outline-none focus:border-emerald-600 focus:bg-white"
+                  >
+                    {DAY_NAMES.map((name, idx) => (
+                      <option key={idx} value={idx}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-900 mb-5">
+                <strong>Siklus aktif:</strong> Setiap <strong>{DAY_NAMES[configStartDay]}</strong> s/d <strong>{DAY_NAMES[configEndDay]}</strong>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="flex-1 py-2.5 border border-border-light bg-bg-white rounded-xl text-xs font-bold text-text-secondary cursor-pointer hover:bg-bg-secondary transition-colors"
+                  onClick={() => setConfigModal(false)}
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer shadow-md hover:bg-emerald-700 transition-colors disabled:opacity-60"
+                  disabled={configSaving}
+                  onClick={handleSaveCutoffConfig}
+                >
+                  {configSaving ? <Loader size={14} className="animate-spin" /> : 'Simpan Siklus'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Management Monthly Cutoff Modal ===== */}
+      {mgmtCutoffModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-logs-mgmt-cutoff-title"
+            className="bg-bg-white rounded-2xl w-full max-w-[440px] shadow-2xl overflow-hidden border border-border-light animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 p-5 border-b border-border-light bg-bg-secondary/40">
+              <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                <Building size={20} />
+              </div>
+              <div>
+                <h3 id="modal-logs-mgmt-cutoff-title" className="text-base font-bold text-text-primary m-0">
+                  Cut-Off Bulanan Manajemen
+                </h3>
+                <p className="text-xs text-text-muted m-0">
+                  Konfigurasi siklus presensi staf kantor & manajemen
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMgmtCutoffModal(false)}
+                className="ml-auto w-8 h-8 rounded-lg bg-bg-secondary text-text-muted hover:text-text-primary hover:bg-border-light flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <p className="text-xs text-text-muted mb-4 leading-relaxed">
+                Staf kantor beroperasi dengan siklus bulanan (bukan mingguan). Tentukan tanggal cut-off setiap bulannya untuk filter presensi otomatis.
+              </p>
+
+              {/* Quick Select Presets */}
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-text-secondary mb-1.5">
+                  Pilihan Cepat
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { day: 25, label: 'Tgl 25', sub: '26 s/d 25' },
+                    { day: 20, label: 'Tgl 20', sub: '21 s/d 20' },
+                    { day: 1, label: 'Tgl 1', sub: '1 s/d Akhir' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.day}
+                      type="button"
+                      onClick={() => setEditMgmtCutoffDay(preset.day)}
+                      className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                        editMgmtCutoffDay === preset.day
+                          ? 'border-indigo-600 bg-indigo-50/70 text-indigo-900 font-bold'
+                          : 'border-border-light bg-bg-white text-text-secondary hover:bg-bg-secondary'
+                      }`}
+                    >
+                      <div className="text-xs">{preset.label}</div>
+                      <div className="text-[10px] text-text-muted">{preset.sub}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Day Slider / Input */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-text-secondary">
+                    Tanggal Cut-Off (1 – 31)
+                  </label>
+                  <span className="text-xs font-bold text-indigo-600 font-mono">
+                    Tanggal {editMgmtCutoffDay}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={31}
+                  value={editMgmtCutoffDay}
+                  onChange={(e) => setEditMgmtCutoffDay(Number(e.target.value))}
+                  className="w-full accent-indigo-600 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-text-muted mt-1">
+                  <span>Tgl 1 (Kalender)</span>
+                  <span>Tgl 15</span>
+                  <span>Tgl 25 (Payroll)</span>
+                  <span>Tgl 31</span>
+                </div>
+              </div>
+
+              {/* Live Calculated Range Preview */}
+              {(() => {
+                const previewRange = getManagementMonthRange(todayWIB(), editMgmtCutoffDay);
+                return (
+                  <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs text-indigo-950 mb-5 space-y-1">
+                    <div className="font-semibold text-indigo-900">
+                      Pratinjau Periode Berjalan:
+                    </div>
+                    <div className="font-mono text-[11px] text-indigo-800">
+                      {formatWIBDate(previewRange.startDate)} — {formatWIBDate(previewRange.endDate)}
+                    </div>
+                    <div className="text-[10px] text-indigo-700">
+                      {previewRange.label}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="flex-1 py-2.5 border border-border-light bg-bg-white rounded-xl text-xs font-bold text-text-secondary cursor-pointer hover:bg-bg-secondary transition-colors"
+                  onClick={() => setMgmtCutoffModal(false)}
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer shadow-md hover:bg-indigo-700 transition-colors"
+                  onClick={handleSaveMgmtCutoff}
+                >
+                  Simpan Cut-Off
+                </button>
+              </div>
             </div>
           </div>
         </div>
