@@ -78,6 +78,16 @@ const projectSchema = new mongoose.Schema({
     ref: 'User',
   }],
 
+  payrollConfig: {
+    cutoffStartDay: {
+      type: Number, // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      default: 1,
+    },
+    cutoffEndDay: {
+      type: Number, // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      default: 6,
+    },
+  },
   createdAt: {
     type: Date,
     default: Date.now,

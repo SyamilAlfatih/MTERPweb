@@ -48,6 +48,9 @@ interface MySlip {
   _id: string;
   slipNumber: string;
   workerId: { fullName: string; role: string };
+  projectId?: { _id: string; nama: string; lokasi?: string };
+  projectName?: string;
+  projectLocation?: string;
   period: { startDate?: string; endDate?: string; month?: number; year?: number };
   attendanceSummary: {
     totalDays: number;
@@ -530,6 +533,10 @@ export default function MyPayments() {
                       size="small"
                     />
                   </div>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg w-fit mb-2.5">
+                    <span>🏗️</span>
+                    <span>{slip.projectName || slip.projectId?.nama || 'Kantor / Non-Proyek'}</span>
+                  </div>
                   <div className="text-xl font-bold text-text-primary mb-2 max-sm:text-lg">{formatRp(slip.earnings.netPay)}</div>
                   <div className="flex gap-3 mt-1">
                     <span className="block text-xs text-text-muted mt-2">
@@ -580,10 +587,19 @@ export default function MyPayments() {
                 </div>
               </div>
 
-              {/* Period */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '8px 14px', borderRadius: 8 }}>
-                <Calendar size={14} />
-                {t('myPayments.slip.detail.period')} {fmtPeriod(selectedSlip.period)}
+              {/* Period & Project */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '8px 14px', borderRadius: 8, fontWeight: 600 }}>
+                  <span>🏗️</span>
+                  <span>Proyek: {selectedSlip.projectName || selectedSlip.projectId?.nama || 'Kantor / Non-Proyek'}</span>
+                  {(selectedSlip.projectLocation || selectedSlip.projectId?.lokasi) && (
+                    <span style={{ fontSize: '0.85em', opacity: 0.85 }}>({selectedSlip.projectLocation || selectedSlip.projectId?.lokasi})</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '8px 14px', borderRadius: 8 }}>
+                  <Calendar size={14} />
+                  {t('myPayments.slip.detail.period')} {fmtPeriod(selectedSlip.period)}
+                </div>
               </div>
 
               {/* Payment Info */}
@@ -694,6 +710,8 @@ export default function MyPayments() {
                   slipNumber: selectedSlip.slipNumber,
                   workerName: selectedSlip.workerId?.fullName || 'Worker',
                   workerRole: selectedSlip.workerId?.role || '',
+                  projectName: selectedSlip.projectName || selectedSlip.projectId?.nama,
+                  projectLocation: selectedSlip.projectLocation || selectedSlip.projectId?.lokasi,
                   periodStart: selectedSlip.period.startDate || '',
                   periodEnd: selectedSlip.period.endDate || '',
                   attendance: selectedSlip.attendanceSummary,

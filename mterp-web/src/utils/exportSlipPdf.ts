@@ -13,6 +13,8 @@ interface SlipPdfData {
   slipNumber: string;
   workerName: string;
   workerRole: string;
+  projectName?: string;
+  projectLocation?: string;
   periodStart: string;
   periodEnd: string;
   attendance: {
@@ -117,6 +119,7 @@ export async function exportSlipToPdf(data: SlipPdfData) {
     [
       `MTERP Slip Gaji`,
       `Slip: ${data.slipNumber}`,
+      data.projectName ? `Project: ${data.projectName}` : '',
       `Worker: ${data.workerName}`,
       `Net Pay: ${fmtRp(data.earnings.netPay)}`,
       `Period: ${fmtDate(data.periodStart)} - ${fmtDate(data.periodEnd)}`,
@@ -195,6 +198,9 @@ export async function exportSlipToPdf(data: SlipPdfData) {
   };
 
   addInfoRow('Nama Pekerja', data.workerName, true);
+  if (data.projectName) {
+    addInfoRow('Proyek', `${data.projectName}${data.projectLocation ? ` (${data.projectLocation})` : ''}`, true);
+  }
   addInfoRow('Jabatan', data.workerRole.charAt(0).toUpperCase() + data.workerRole.slice(1));
   addInfoRow('Periode', `${fmtDate(data.periodStart)} — ${fmtDate(data.periodEnd)}`, true);
 

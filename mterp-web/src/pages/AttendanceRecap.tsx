@@ -67,6 +67,7 @@ interface PaginationInfo {
 interface Project {
   _id: string;
   nama: string;
+  lokasi?: string;
 }
 
 export default function AttendanceRecap() {
@@ -188,6 +189,7 @@ export default function AttendanceRecap() {
     checkInTime: string;
     checkOutTime: string;
     projectId: string;
+    overtimeProjectId?: string;
     dailyRate: number;
     notes: string;
   } | null>(null);
@@ -226,6 +228,7 @@ export default function AttendanceRecap() {
       checkInTime: initialCheckIn,
       checkOutTime: initialCheckOut,
       projectId: dayData?.projectId || selectedProject || (projects[0]?._id || ''),
+      overtimeProjectId: (dayData as any)?.overtimeProjectId || dayData?.projectId || selectedProject || (projects[0]?._id || ''),
       dailyRate: dayData?.dailyRate || worker.dailyRate || 150000,
       notes: dayData?.notes || dayData?.permitReason || '',
     });
@@ -317,6 +320,7 @@ export default function AttendanceRecap() {
       checkInTime: string;
       checkOutTime: string;
       projectId: string;
+      overtimeProjectId?: string;
       dailyRate: number;
       notes: string;
     }
@@ -373,6 +377,7 @@ export default function AttendanceRecap() {
         checkInTime: data.checkInTime,
         checkOutTime: data.checkOutTime,
         projectId: data.projectId || undefined,
+        overtimeProjectId: data.overtimeProjectId || undefined,
         dailyRate: data.dailyRate,
         notes: data.notes,
       });
@@ -1395,6 +1400,32 @@ export default function AttendanceRecap() {
                     </div>
                   </div>
                 </div>
+
+                {/* Overtime Project Allocation */}
+                {editDayModal.otHours > 0 && (
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1">
+                    <label className="block text-[11px] font-bold text-amber-900 uppercase">
+                      Alokasi Proyek Lembur
+                    </label>
+                    <select
+                      value={editDayModal.overtimeProjectId || ''}
+                      onChange={(e) =>
+                        setEditDayModal({ ...editDayModal, overtimeProjectId: e.target.value })
+                      }
+                      className="w-full p-2 rounded-lg border border-amber-300 text-xs font-semibold text-text-primary bg-bg-white outline-none focus:border-amber-600 cursor-pointer"
+                    >
+                      <option value="">-- Sama dengan Proyek Harian --</option>
+                      {projects.map((p) => (
+                        <option key={p._id} value={p._id}>
+                          🏗️ {p.nama} {p.lokasi ? `(${p.lokasi})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-amber-700 m-0">
+                      Pilih jika lembur dikerjakan di proyek berbeda dari jam kerja harian.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Total Pay Preview Banner */}

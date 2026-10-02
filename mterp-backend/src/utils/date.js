@@ -62,8 +62,56 @@ function nowWIB() {
   // We can just rely on standard new Date() since process.env.TZ mainly affects formatting, not the internal timestamp.
 }
 
+/**
+ * Calculates the start and end dates of the current cycle for a project based on its cutoff configuration.
+ * @param {string|Date} [refDate] - Reference date (defaults to nowWIB)
+ * @param {number} [startDay=1] - 0=Sun, 1=Mon, ..., 6=Sat
+ * @param {number} [endDay=6] - 0=Sun, 1=Mon, ..., 6=Sat
+ * @returns {{startDate: Date, endDate: Date, startStr: string, endStr: string}}
+ */
+function getProjectWeekRange(refDate, startDay = 1, endDay = 6) {
+  const now = refDate ? new Date(refDate) : nowWIB();
+  
+  const wibParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+
+  const y = parseInt(wibParts.find(p => p.type === 'year').value, 10);
+  const m = parseInt(wibParts.find(p => p.type === 'month').value, 10);
+  const d = parseInt(wibParts.find(p => p.type === 'day').value, 10);
+
+  const wibCalendarDate = new Date(Date.UTC(y, m - 1, d));
+  const currentDayOfWeek = wibCalendarDate.getUTCDay(); // 0=Sun, 1=Mon ... 6=Sat
+
+  const diffToStart = (currentDayOfWeek - startDay + 7) % 7;
+  const startCalDate = new Date(wibCalendarDate);
+  startCalDate.setUTCDate(wibCalendarDate.getUTCDate() - diffToStart);
+
+  const cycleDays = (endDay - startDay + 7) % 7;
+  const endCalDate = new Date(startCalDate);
+  endCalDate.setUTCDate(startCalDate.getUTCDate() + cycleDays);
+
+  const startYMD = `${startCalDate.getUTCFullYear()}-${String(startCalDate.getUTCMonth() + 1).padStart(2, '0')}-${String(startCalDate.getUTCDate()).padStart(2, '0')}`;
+  const endYMD = `${endCalDate.getUTCFullYear()}-${String(endCalDate.getUTCMonth() + 1).padStart(2, '0')}-${String(endCalDate.getUTCDate()).padStart(2, '0')}`;
+
+  const startRange = wibDayRange(startYMD);
+  const endRange = wibDayRange(endYMD);
+
+  return {
+    startDate: startRange.start,
+    endDate: endRange.end,
+    startStr: startYMD,
+    endStr: endYMD,
+  };
+}
+
 module.exports = {
   parseWIBDate,
   wibDayRange,
   nowWIB,
+  getProjectWeekRange,
 };
+

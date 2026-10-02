@@ -1214,6 +1214,36 @@ router.put('/:id/progress', auth, authorize('owner', 'director', 'supervisor'), 
   }
 });
 
+// PUT /api/projects/:id/payroll-config - Update weekly payroll cutoff days for a project
+router.put('/:id/payroll-config', auth, authorize('owner', 'director', 'supervisor', 'admin_project'), async (req, res) => {
+  try {
+    const { cutoffStartDay, cutoffEndDay } = req.body;
+    const start = parseInt(cutoffStartDay, 10);
+    const end = parseInt(cutoffEndDay, 10);
+    if (isNaN(start) || start < 0 || start > 6 || isNaN(end) || end < 0 || end > 6) {
+      return res.status(400).json({ msg: 'cutoffStartDay and cutoffEndDay must be integers between 0 and 6 (0=Sun, 1=Mon, ..., 6=Sat)' });
+    }
+
+    const project = await Project.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          'payrollConfig.cutoffStartDay': start,
+          'payrollConfig.cutoffEndDay': end,
+          updatedAt: nowWIB(),
+        }
+      },
+      { new: true }
+    ).select('_id nama lokasi payrollConfig');
+
+    if (!project) return res.status(404).json({ msg: 'Project not found' });
+    res.json(project);
+  } catch (error) {
+    console.error('Update project payroll config error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 // POST /api/projects/:id/duplicate - Clone a project (aligned to unified Single Source of Truth)
 router.post('/:id/duplicate', auth, authorize('owner', 'director'), async (req, res) => {
   try {

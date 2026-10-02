@@ -124,15 +124,23 @@ const matchesSlipSearch = (s: SlipData, query: string, status: string = 'all') =
     const bankPlatformMatch = (s.workerPaymentInfo?.bankPlatform || s.workerId?.paymentInfo?.bankPlatform || '').toLowerCase().includes(q);
     const bankAccountMatch = (s.workerPaymentInfo?.bankAccount || s.workerId?.paymentInfo?.bankAccount || '').toLowerCase().includes(q);
     const accountNameMatch = (s.workerPaymentInfo?.accountName || s.workerId?.paymentInfo?.accountName || '').toLowerCase().includes(q);
+    const projMatch = (s.projectName || s.projectId?.nama || '').toLowerCase().includes(q);
     const notesMatch = (s.notes || '').toLowerCase().includes(q);
-
-    return nameMatch || slipNoMatch || roleMatch || posMatch || bankPlatformMatch || bankAccountMatch || accountNameMatch || notesMatch;
+    return nameMatch || slipNoMatch || roleMatch || posMatch || bankPlatformMatch || bankAccountMatch || accountNameMatch || notesMatch || projMatch;
 };
 
 interface SlipData {
     _id: string;
     slipNumber: string;
     workerId: Worker;
+    projectId?: {
+        _id: string;
+        nama: string;
+        lokasi?: string;
+        payrollConfig?: { cutoffStartDay?: number; cutoffEndDay?: number };
+    };
+    projectName?: string;
+    projectLocation?: string;
     period: { startDate: string; endDate: string };
     attendanceSummary: {
         totalDays: number;
@@ -198,12 +206,18 @@ export default function SlipGaji() {
     const weekRange = getWeekRange();
     const [filterStart, setFilterStart] = useState(toInputDate(weekRange.startDate));
     const [filterEnd, setFilterEnd] = useState(toInputDate(weekRange.endDate));
+    const [filterProject, setFilterProject] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'authorized' | 'issued'>('all');
     const searchInputRef = useRef<HTMLInputElement>(null);
 
+    // Projects list
+    const [projects, setProjects] = useState<any[]>([]);
+
     // Generate modal & user selector state
     const [genModal, setGenModal] = useState(false);
+    const [genProject, setGenProject] = useState('');
+    const [workerProjects, setWorkerProjects] = useState<any[]>([]);
     const [genWorker, setGenWorker] = useState('');
     const [userSearchQuery, setUserSearchQuery] = useState('');
     const [userRoleCategory, setUserRoleCategory] = useState<'all' | 'field' | 'supervisor' | 'management'>('all');
@@ -216,12 +230,25 @@ export default function SlipGaji() {
     const [genNotes, setGenNotes] = useState('');
     const [generating, setGenerating] = useState(false);
 
+    // Project Cutoff config modal state
+    const DAY_NAMES = useMemo(() => ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'], []);
+    const [configModal, setConfigModal] = useState(false);
+    const [configProjId, setConfigProjId] = useState('');
+    const [configStartDay, setConfigStartDay] = useState(1);
+    const [configEndDay, setConfigEndDay] = useState(6);
+    const [configSaving, setConfigSaving] = useState(false);
+
     // Kasbon preview for generate modal
     interface KasbonPreview { _id: string; amount: number; reason?: string; createdAt: string; }
     const [kasbonPreview, setKasbonPreview] = useState<KasbonPreview[]>([]);
 
     // Pre-generation attendance + earnings preview
     interface PreviewData {
+        project?: {
+            projectId: string | null;
+            projectName: string;
+            projectLocation?: string;
+        };
         attendanceSummary: {
             totalDays: number;
             presentDays: number;
@@ -278,11 +305,13 @@ export default function SlipGaji() {
         if (!isValidDate(filterStart) || !isValidDate(filterEnd)) return;
         setLoading(true);
         try {
-            const res = await api.get('/slipgaji', { params: { startDate: filterStart, endDate: filterEnd } });
+            const params: any = { startDate: filterStart, endDate: filterEnd };
+            if (filterProject !== 'all') params.projectId = filterProject;
+            const res = await api.get('/slipgaji', { params });
             setSlips(res.data);
         } catch { /* empty */ }
         setLoading(false);
-    }, [filterStart, filterEnd]);
+    }, [filterStart, filterEnd, filterProject]);
 
     const fetchWorkers = useCallback(async () => {
         try {
@@ -291,8 +320,16 @@ export default function SlipGaji() {
         } catch { /* empty */ }
     }, []);
 
+    const fetchProjects = useCallback(async () => {
+        try {
+            const res = await api.get('/attendance/projects');
+            setProjects(res.data || []);
+        } catch { /* empty */ }
+    }, []);
+
     useEffect(() => { fetchSlips(); }, [fetchSlips]);
     useEffect(() => { fetchWorkers(); }, [fetchWorkers]);
+    useEffect(() => { fetchProjects(); }, [fetchProjects]);
 
     // Body scroll lock while any modal is open
 
@@ -341,7 +378,7 @@ export default function SlipGaji() {
         return () => window.removeEventListener('keydown', onKey);
     }, [authModal, detailModal, genModal]);
 
-    // Fetch preview data when worker/dates change in generate modal
+    // Fetch preview data when worker/project/dates change in generate modal
     useEffect(() => {
         if (!genWorker || !genStart || !genEnd || !genModal || !isValidDate(genStart) || !isValidDate(genEnd)) {
             setPreviewData(null);
@@ -352,15 +389,19 @@ export default function SlipGaji() {
         const timer = setTimeout(async () => {
             setPreviewLoading(true);
             try {
-                // Single endpoint — uses same date logic as generate (no mismatch)
                 const res = await api.get('/slipgaji/preview', {
-                    params: { workerId: genWorker, startDate: genStart, endDate: genEnd },
+                    params: {
+                        workerId: genWorker,
+                        projectId: genProject || undefined,
+                        startDate: genStart,
+                        endDate: genEnd,
+                    },
                     signal: controller.signal,
                 });
                 if (controller.signal.aborted) return;
 
-                const { attendanceSummary, earnings, kasbons } = res.data;
-                setPreviewData({ attendanceSummary, earnings });
+                const { attendanceSummary, earnings, kasbons, project } = res.data;
+                setPreviewData({ attendanceSummary, earnings, project });
                 setKasbonPreview(kasbons || []);
             } catch (err: any) {
                 if (err?.name !== 'CanceledError' && err?.name !== 'AbortError') {
@@ -371,6 +412,21 @@ export default function SlipGaji() {
             if (!controller.signal.aborted) setPreviewLoading(false);
         }, 300);
         return () => { clearTimeout(timer); controller.abort(); };
+    }, [genWorker, genProject, genStart, genEnd, genModal]);
+
+    // Also fetch worker's project summary across this period
+    useEffect(() => {
+        if (!genWorker || !genStart || !genEnd || !genModal || !isValidDate(genStart) || !isValidDate(genEnd)) {
+            setWorkerProjects([]);
+            return;
+        }
+        api.get('/slipgaji/worker-projects', {
+            params: { workerId: genWorker, startDate: genStart, endDate: genEnd }
+        }).then(res => {
+            setWorkerProjects(res.data || []);
+        }).catch(() => {
+            setWorkerProjects([]);
+        });
     }, [genWorker, genStart, genEnd, genModal]);
 
     /* ---- quick week navigation ---- */
@@ -384,8 +440,67 @@ export default function SlipGaji() {
     };
 
     /* ---- actions ---- */
+    const handleGenProjectChange = async (projId: string) => {
+        setGenProject(projId);
+        if (projId && projId !== 'unassigned') {
+            try {
+                const res = await api.get('/slipgaji/week', { params: { projectId: projId } });
+                if (res.data?.startStr && res.data?.endStr) {
+                    setGenStart(res.data.startStr);
+                    setGenEnd(res.data.endStr);
+                }
+            } catch (e) {
+                console.error('Failed to get project week range', e);
+            }
+        }
+    };
+
+    const openCutoffConfig = (pId: string, cfg?: { cutoffStartDay?: number; cutoffEndDay?: number }) => {
+        setConfigProjId(pId);
+        setConfigStartDay(cfg?.cutoffStartDay ?? 1);
+        setConfigEndDay(cfg?.cutoffEndDay ?? 6);
+        setConfigModal(true);
+    };
+
+    const handleSaveProjectCutoff = async () => {
+        if (!configProjId) return;
+        setConfigSaving(true);
+        try {
+            await api.put(`/projects/${configProjId}/payroll-config`, {
+                cutoffStartDay: configStartDay,
+                cutoffEndDay: configEndDay,
+            });
+            await fetchProjects();
+            if (genProject === configProjId) {
+                const res = await api.get('/slipgaji/week', { params: { projectId: configProjId } });
+                if (res.data?.startStr && res.data?.endStr) {
+                    setGenStart(res.data.startStr);
+                    setGenEnd(res.data.endStr);
+                }
+            }
+            setConfigModal(false);
+            setAlertData({
+                visible: true,
+                type: 'success',
+                title: 'Konfigurasi Siklus Tersimpan',
+                message: 'Periode cut-off mingguan proyek berhasil diperbarui.'
+            });
+        } catch (err: any) {
+            setAlertData({
+                visible: true,
+                type: 'error',
+                title: 'Gagal Menyimpan',
+                message: err?.response?.data?.msg || 'Gagal memperbarui konfigurasi proyek.'
+            });
+        } finally {
+            setConfigSaving(false);
+        }
+    };
+
     const openGenerateModal = () => {
         setGenWorker('');
+        setGenProject(filterProject !== 'all' && filterProject !== 'unassigned' ? filterProject : '');
+        setWorkerProjects([]);
         setUserSearchQuery('');
         setUserRoleCategory('all');
         setIsUserDropdownOpen(false);
@@ -403,6 +518,7 @@ export default function SlipGaji() {
         try {
             await api.post('/slipgaji/generate', {
                 workerId: genWorker,
+                projectId: genProject || undefined,
                 startDate: genStart,
                 endDate: genEnd,
                 bonus: genBonus,
@@ -411,6 +527,8 @@ export default function SlipGaji() {
             });
             setGenModal(false);
             setGenWorker('');
+            setGenProject('');
+            setWorkerProjects([]);
             setUserSearchQuery('');
             setIsUserDropdownOpen(false);
             setGenBonus(0);
@@ -510,6 +628,8 @@ export default function SlipGaji() {
             slipNumber: slip.slipNumber,
             workerName: slip.workerId?.fullName || 'Pegawai',
             workerRole: roleLabel,
+            projectName: slip.projectName || slip.projectId?.nama,
+            projectLocation: slip.projectLocation || slip.projectId?.lokasi,
             periodStart: slip.period.startDate,
             periodEnd: slip.period.endDate,
             attendance: {
@@ -556,6 +676,7 @@ export default function SlipGaji() {
     const spvWorkersCount = useMemo(() => workers.filter(w => isSupervisorRole(w.role)).length, [workers]);
     const mgmtWorkersCount = useMemo(() => workers.filter(w => isManagementRole(w.role)).length, [workers]);
     const selectedWorkerObj = useMemo(() => workers.find(w => w._id === genWorker), [workers, genWorker]);
+    const selectedProjectObj = useMemo(() => projects.find(p => p._id === genProject), [projects, genProject]);
 
     // Counts for status filters
     const draftSlipsCount = useMemo(() => slips.filter(s => s.status === 'draft').length, [slips]);
@@ -563,8 +684,18 @@ export default function SlipGaji() {
     const issuedSlipsCount = useMemo(() => slips.filter(s => s.status === 'issued').length, [slips]);
 
     const filteredSlips = useMemo(() => {
-        return slips.filter(s => matchesSlipSearch(s, searchQuery, statusFilter));
-    }, [slips, searchQuery, statusFilter]);
+        return slips.filter(s => {
+            if (filterProject !== 'all') {
+                if (filterProject === 'unassigned') {
+                    if (s.projectId?._id || s.projectId) return false;
+                } else {
+                    const sProjId = s.projectId?._id || s.projectId;
+                    if (sProjId !== filterProject) return false;
+                }
+            }
+            return matchesSlipSearch(s, searchQuery, statusFilter);
+        });
+    }, [slips, searchQuery, statusFilter, filterProject]);
 
     const { gridProps, getRowProps, getCellProps } = useDataGridKeyboard(
         filteredSlips.length,
@@ -617,9 +748,9 @@ export default function SlipGaji() {
                 </div>
             </div>
 
-            {/* Action Bar — Date Range Filter */}
+            {/* Action Bar — Date Range Filter & Project Filter */}
             <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                     <button className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0" onClick={() => shiftWeek(-1)}>◀</button>
                     <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md bg-bg-white">
                         <Calendar size={14} />
@@ -628,6 +759,22 @@ export default function SlipGaji() {
                         <input type="date" className="border-none bg-transparent text-[0.8em] font-medium text-text-primary outline-none w-[120px] cursor-pointer" value={filterEnd} onChange={(e) => setFilterEnd(e.target.value)} />
                     </div>
                     <button className="w-8 h-8 border border-border rounded-md bg-bg-white text-[0.8em] font-bold text-text-secondary flex items-center justify-center transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0" onClick={() => shiftWeek(1)}>▶</button>
+
+                    {/* Filter by Project */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md bg-bg-white ml-1">
+                        <Briefcase size={14} className="text-text-muted shrink-0" />
+                        <select
+                            value={filterProject}
+                            onChange={(e) => setFilterProject(e.target.value)}
+                            className="border-none bg-transparent text-[0.8em] font-semibold text-text-primary outline-none cursor-pointer pr-1"
+                        >
+                            <option value="all">Semua Proyek ({projects.length})</option>
+                            <option value="unassigned">🏢 Kantor / Non-Proyek</option>
+                            {projects.map((p: any) => (
+                                <option key={p._id} value={p._id}>🏗️ {p.nama} {p.lokasi ? `(${p.lokasi})` : ''}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
                 <button className="flex items-center gap-1.5 px-5 py-2.5 border-none rounded-md bg-gradient-to-br from-teal-600 to-teal-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(13,148,136,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_6px_18px_rgba(13,148,136,0.35)]" onClick={openGenerateModal}>
                     <Plus size={18} />
@@ -827,7 +974,13 @@ export default function SlipGaji() {
                                 </span>
                             </div>
 
-                            <div className="flex items-center gap-1.5 text-[0.72em] text-text-secondary pt-1 pb-0.5">
+                            {/* Project Badge */}
+                            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md w-fit mb-1.5">
+                                <span>🏗️</span>
+                                <span className="truncate max-w-[220px]">{slip.projectName || slip.projectId?.nama || 'Kantor / Non-Proyek'}</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 text-[0.72em] text-text-secondary pt-0.5 pb-0.5">
                                 <Calendar size={11} />
                                 <span>{formatDateRange(slip.period.startDate, slip.period.endDate)}</span>
                             </div>
@@ -998,6 +1151,10 @@ export default function SlipGaji() {
                                                                                 <span className="text-text-secondary truncate max-w-[130px]">{slip.workerId.position}</span>
                                                                             </>
                                                                         )}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
+                                                                        <span>🏗️</span>
+                                                                        <span className="truncate max-w-[160px]">{slip.projectName || slip.projectId?.nama || 'Kantor / Non-Proyek'}</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -1194,6 +1351,78 @@ export default function SlipGaji() {
                         </div>
 
                         <div className="p-5">
+                            {/* ── Project Allocation & Cut-off Config ── */}
+                            <div className="mb-4 p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="flex items-center gap-1.5 text-xs font-bold text-emerald-900 uppercase tracking-[0.3px]">
+                                        <Briefcase size={14} className="text-emerald-700" />
+                                        <span>Alokasi Proyek (Slip Terikat Proyek)</span>
+                                    </label>
+                                    {selectedProjectObj && (
+                                        <button
+                                            type="button"
+                                            onClick={() => openCutoffConfig(selectedProjectObj._id, selectedProjectObj.payrollConfig)}
+                                            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 hover:underline flex items-center gap-1 cursor-pointer"
+                                        >
+                                            ⚙️ Atur Siklus Cut-off
+                                        </button>
+                                    )}
+                                </div>
+                                <select
+                                    value={genProject}
+                                    onChange={(e) => handleGenProjectChange(e.target.value)}
+                                    className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm font-semibold text-text-primary bg-bg-white outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
+                                >
+                                    <option value="">🏢 Kantor / Non-Proyek (Umum)</option>
+                                    {projects.map((p: any) => (
+                                        <option key={p._id} value={p._id}>
+                                            🏗️ {p.nama} {p.lokasi ? `(${p.lokasi})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {selectedProjectObj ? (
+                                    <div className="flex items-center justify-between text-[11px] text-emerald-800 mt-2">
+                                        <span>
+                                            Siklus Proyek: <strong>{DAY_NAMES[selectedProjectObj.payrollConfig?.cutoffStartDay ?? 1]} — {DAY_NAMES[selectedProjectObj.payrollConfig?.cutoffEndDay ?? 6]}</strong>
+                                        </span>
+                                        <span className="text-[10px] text-emerald-600">(Tanggal otomatis disesuaikan)</span>
+                                    </div>
+                                ) : (
+                                    <p className="text-[11px] text-text-muted mt-1.5 m-0">
+                                        Pilih proyek untuk membatasi slip hanya pada upah & lembur proyek tersebut.
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Detected Projects for this Worker in Period */}
+                            {workerProjects.length > 0 && (
+                                <div className="mb-4 p-3 bg-amber-50/70 border border-amber-200 rounded-xl">
+                                    <span className="block text-[11px] font-bold text-amber-900 uppercase tracking-wide mb-1.5">
+                                        Proyek yang Dikerjakan Pekerja Ini pada Periode:
+                                    </span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {workerProjects.map(wp => (
+                                            <button
+                                                key={wp.projectId || 'unassigned'}
+                                                type="button"
+                                                onClick={() => handleGenProjectChange(wp.projectId || '')}
+                                                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                                    (genProject === (wp.projectId || ''))
+                                                        ? 'bg-amber-600 text-white shadow-xs'
+                                                        : 'bg-white text-amber-900 border border-amber-300 hover:bg-amber-100'
+                                                }`}
+                                            >
+                                                <span>{wp.projectId ? '🏗️' : '🏢'}</span>
+                                                <span>{wp.projectName}</span>
+                                                <span className="opacity-80 text-[10px]">
+                                                    ({wp.daysCount > 0 ? `${wp.daysCount} hari` : ''}{wp.overtimeHours > 0 ? `${wp.daysCount > 0 ? ', ' : ''}${wp.overtimeHours}h OT` : ''}: {formatRp(wp.totalPay)})
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* ── Employee Searchable Combobox Selector ── */}
                             <div className="mb-4" ref={userDropdownRef}>
                                 <label className="flex items-center justify-between text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-[0.3px]">
@@ -1556,10 +1785,19 @@ export default function SlipGaji() {
                                 </div>
                             </div>
 
-                            {/* Period */}
-                            <div className="flex items-center gap-1.5 text-sm text-text-secondary bg-bg-secondary px-3.5 py-2 rounded-md">
-                                <Calendar size={14} />
-                                <span>{t('slipGaji.modals.detail.period')} {formatDateRange(selectedSlip.period.startDate, selectedSlip.period.endDate)}</span>
+                            {/* Period & Project Banner */}
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center gap-2 text-sm text-emerald-900 bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 rounded-lg font-semibold">
+                                    <Briefcase size={16} className="text-emerald-700 shrink-0" />
+                                    <span>Proyek: {selectedSlip.projectName || selectedSlip.projectId?.nama || 'Kantor / Non-Proyek (Umum)'}</span>
+                                    {(selectedSlip.projectLocation || selectedSlip.projectId?.lokasi) && (
+                                        <span className="text-xs text-emerald-700 font-normal">({selectedSlip.projectLocation || selectedSlip.projectId?.lokasi})</span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-sm text-text-secondary bg-bg-secondary px-3.5 py-2 rounded-md">
+                                    <Calendar size={14} />
+                                    <span>{t('slipGaji.modals.detail.period')} {formatDateRange(selectedSlip.period.startDate, selectedSlip.period.endDate)}</span>
+                                </div>
                             </div>
 
                             {/* Payment Info */}
@@ -1762,6 +2000,98 @@ export default function SlipGaji() {
                                     ) : (
                                         <><Unlock size={16} /> {isBatchAuth ? `Setujui ${selectedSlipIds.length} Slip` : t('slipGaji.modals.auth.btnAuthorize')}</>
                                     )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ===== Project Cutoff Config Modal ===== */}
+            {configModal && (
+                <div className="modal-overlay" onClick={() => setConfigModal(false)}>
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="modal-cutoff-title"
+                        className="bg-bg-white rounded-xl w-[90%] max-w-[440px] shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center gap-3 px-5 pt-5 pb-0">
+                            <div className="w-[42px] h-[42px] rounded-lg flex items-center justify-center shrink-0 bg-emerald-100 text-emerald-700">
+                                <Briefcase size={20} />
+                            </div>
+                            <div>
+                                <h3 id="modal-cutoff-title" className="text-base font-bold text-text-primary m-0">
+                                    Siklus Cut-Off Gaji Proyek
+                                </h3>
+                                <p className="text-xs text-text-muted m-0 truncate max-w-[280px]">
+                                    {projects.find((p: any) => p._id === configProjId)?.nama || 'Proyek'}
+                                </p>
+                            </div>
+                            <button
+                                className="ml-auto w-8 h-8 border-none bg-bg-secondary rounded-full cursor-pointer flex items-center justify-center text-text-muted transition-colors hover:bg-border"
+                                onClick={() => setConfigModal(false)}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="p-5">
+                            <p className="text-xs text-text-muted mb-4 leading-relaxed">
+                                Tentukan hari awal dan akhir untuk periode mingguan slip gaji proyek ini. Generator slip gaji akan otomatis menghitung tanggal berdasarkan siklus ini.
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-text-secondary mb-1.5">
+                                        Hari Mulai (Start)
+                                    </label>
+                                    <select
+                                        value={configStartDay}
+                                        onChange={(e) => setConfigStartDay(Number(e.target.value))}
+                                        className="w-full px-3 py-2 border border-border rounded-lg text-sm font-semibold text-text-primary bg-bg-secondary outline-none focus:border-emerald-600 focus:bg-white"
+                                    >
+                                        {DAY_NAMES.map((name, idx) => (
+                                            <option key={idx} value={idx}>{name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-text-secondary mb-1.5">
+                                        Hari Selesai (Cut-Off)
+                                    </label>
+                                    <select
+                                        value={configEndDay}
+                                        onChange={(e) => setConfigEndDay(Number(e.target.value))}
+                                        className="w-full px-3 py-2 border border-border rounded-lg text-sm font-semibold text-text-primary bg-bg-secondary outline-none focus:border-emerald-600 focus:bg-white"
+                                    >
+                                        {DAY_NAMES.map((name, idx) => (
+                                            <option key={idx} value={idx}>{name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-lg text-xs text-emerald-900 mb-5">
+                                <strong>Siklus aktif:</strong> Setiap <strong>{DAY_NAMES[configStartDay]}</strong> s/d <strong>{DAY_NAMES[configEndDay]}</strong>
+                            </div>
+
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    className="flex-1 py-2.5 border border-border bg-bg-white rounded-lg text-sm font-semibold text-text-secondary cursor-pointer hover:bg-bg-secondary"
+                                    onClick={() => setConfigModal(false)}
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="button"
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold cursor-pointer shadow-md hover:bg-emerald-700 disabled:opacity-60"
+                                    disabled={configSaving}
+                                    onClick={handleSaveProjectCutoff}
+                                >
+                                    {configSaving ? <Loader2 size={16} className="animate-spin" /> : 'Simpan Siklus'}
                                 </button>
                             </div>
                         </div>

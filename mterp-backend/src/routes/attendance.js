@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { Attendance, User, Project, AttendanceSession } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -81,7 +82,7 @@ function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
 router.get('/projects', auth, async (req, res) => {
   try {
     const projects = await Project.find({ status: { $ne: 'Completed' } })
-      .select('_id nama lokasi status assignedTo')
+      .select('_id nama lokasi status assignedTo payrollConfig')
       .populate('assignedTo', '_id fullName role position')
       .sort({ createdAt: -1 })
       .lean();
@@ -251,6 +252,7 @@ router.get('/', auth, async (req, res) => {
     let rawAttendance = (await Attendance.find(query)
       .populate('userId', 'fullName role profileImage')
       .populate('projectId', 'nama lokasi')
+      .populate('overtimeProjectId', 'nama lokasi')
       .populate('sessionId', 'photoUrl notes createdAt')
       .sort({ date: -1 })
       .lean())
@@ -344,6 +346,7 @@ router.get('/recap', auth, async (req, res) => {
     let rawAttendance = (await Attendance.find(query)
       .populate('userId', 'fullName role position profileImage')
       .populate('projectId', 'nama lokasi')
+      .populate('overtimeProjectId', 'nama lokasi')
       .populate('sessionId', 'photoUrl notes createdAt')
       .sort({ date: -1 })
       .lean())
@@ -411,7 +414,7 @@ router.get('/recap', auth, async (req, res) => {
 router.get('/users', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
     const users = await User.find({ isVerified: true })
-      .select('_id fullName role')
+      .select('_id fullName role position dailyRate')
       .sort({ fullName: 1 })
       .lean();
     res.json(users);
@@ -811,6 +814,7 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
     let allRecords = (await Attendance.find(attendanceQuery)
       .populate('userId', 'fullName role position')
       .populate('projectId', 'nama')
+      .populate('overtimeProjectId', 'nama lokasi')
       .lean())
       .filter(a => a.userId); // Filter out records with deleted users
 
@@ -874,6 +878,8 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
         checkOutTime: record.checkOut?.time,
         projectId: record.projectId?._id || record.projectId,
         projectName: record.projectId?.nama,
+        overtimeProjectId: record.overtimeProjectId?._id || record.overtimeProjectId,
+        overtimeProjectName: record.overtimeProjectId?.nama,
         dailyRate: record.dailyRate || 0,
         overtimePay: record.overtimePay || 0,
         notes: record.notes || '',
@@ -1077,9 +1083,17 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'president_dire
 // PUT /api/attendance/:id/rate - Update rate/wage (supervisor only)
 router.put('/:id/rate', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
   try {
-    const { dailyRate, wageType, overtimePay } = req.body;
+    const { dailyRate, wageType, overtimePay, projectId, overtimeProjectId } = req.body;
     
-    const updates = {};
+    let attendance = await Attendance.findById(req.params.id);
+    if (!attendance) return res.status(404).json({ msg: 'Record not found' });
+
+    if (projectId !== undefined) {
+      attendance.projectId = (projectId && mongoose.Types.ObjectId.isValid(projectId)) ? projectId : null;
+    }
+    if (overtimeProjectId !== undefined) {
+      attendance.overtimeProjectId = (overtimeProjectId && mongoose.Types.ObjectId.isValid(overtimeProjectId)) ? overtimeProjectId : null;
+    }
     
     // Basic Wage Type update
     if (wageType) {
@@ -1089,23 +1103,16 @@ router.put('/:id/rate', auth, authorize('owner', 'president_director', 'operatio
         'overtime_2': 2,
         'overtime': 1,
       };
-      updates.wageType = wageType;
-      updates.wageMultiplier = wageMultipliers[wageType] || 1;
+      attendance.wageType = wageType;
+      attendance.wageMultiplier = wageMultipliers[wageType] || 1;
     }
 
     // Rate calculation
     if (dailyRate !== undefined) {
       const rate = Number(dailyRate);
-      updates.dailyRate = rate;
-      updates.hourlyRate = rate / 8; // Auto-calculate hourly
+      attendance.dailyRate = rate;
+      attendance.hourlyRate = rate / 8; // Auto-calculate hourly
     }
-    
-    // We need to fetch the record first to calculate overtime pay correctly based on existing data + updates
-    let attendance = await Attendance.findById(req.params.id);
-    if (!attendance) return res.status(404).json({ msg: 'Record not found' });
-
-    // Merge updates
-    Object.assign(attendance, updates);
     
     // Calculate Overtime Pay
     // Priority: 1. Manual Override (from body) 2. Auto-calculation (if wageType is overtime)
@@ -1127,9 +1134,117 @@ router.put('/:id/rate', auth, authorize('owner', 'president_director', 'operatio
     }
 
     await attendance.save();
+    await attendance.populate('projectId', 'nama lokasi');
+    await attendance.populate('overtimeProjectId', 'nama lokasi');
     res.json(attendance);
   } catch (error) {
     console.error('Update rate error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// POST /api/attendance/quick-overtime - Quickly record/adjust overtime at a specific project calculated from baseline
+router.post('/quick-overtime', auth, authorize('owner', 'president_director', 'operational_director', 'director', 'supervisor', 'site_manager', 'admin_project', 'asset_admin'), async (req, res) => {
+  try {
+    const {
+      userId,
+      date, // YYYY-MM-DD
+      attendanceId,
+      overtimeProjectId,
+      overtimeHours,
+      multiplier = 1,
+      customPay,
+      notes,
+    } = req.body;
+
+    if (!userId && !attendanceId) {
+      return res.status(400).json({ msg: 'userId or attendanceId is required' });
+    }
+
+    const otHours = Math.max(0, Number(overtimeHours) || 0);
+    if (otHours <= 0) {
+      return res.status(400).json({ msg: 'overtimeHours must be greater than 0' });
+    }
+
+    let record = null;
+    if (attendanceId) {
+      record = await Attendance.findById(attendanceId);
+    } else if (userId && date) {
+      const startOfTargetDay = parseDateParam(date, false);
+      const endOfTargetDay = parseDateParam(date, true);
+      if (startOfTargetDay && endOfTargetDay) {
+        record = await Attendance.findOne({
+          userId,
+          date: { $gte: startOfTargetDay, $lte: endOfTargetDay },
+        });
+      }
+    }
+
+    const targetUserId = userId || record?.userId;
+    const worker = await User.findById(targetUserId).select('fullName dailyRate');
+    if (!worker) return res.status(404).json({ msg: 'Worker not found' });
+
+    // Baseline calculation: use existing dailyRate on record or worker's baseline dailyRate
+    const baselineDailyRate = (record?.dailyRate && record.dailyRate > 0)
+      ? record.dailyRate
+      : (worker.dailyRate && worker.dailyRate > 0 ? worker.dailyRate : 150000);
+    const hourlyRate = Math.round(baselineDailyRate / 8);
+
+    const mult = Number(multiplier) || 1;
+    const calculatedPay = (customPay !== undefined && Number(customPay) >= 0)
+      ? Number(customPay)
+      : Math.round(otHours * hourlyRate * mult);
+
+    const validOtProjId = (overtimeProjectId && mongoose.Types.ObjectId.isValid(overtimeProjectId))
+      ? overtimeProjectId
+      : null;
+
+    if (record) {
+      record.overtimeHours = otHours;
+      record.overtimePay = calculatedPay;
+      record.overtimeProjectId = validOtProjId || record.projectId;
+      record.wageType = 'overtime';
+      if (!record.hourlyRate || record.hourlyRate === 0) {
+        record.hourlyRate = hourlyRate;
+      }
+      if (notes) {
+        record.notes = record.notes ? `${record.notes} | ${notes}` : notes;
+      }
+      await record.save();
+    } else {
+      const targetDate = date ? parseDateParam(date, false) : new Date();
+      record = new Attendance({
+        userId: targetUserId,
+        date: targetDate,
+        status: 'Present',
+        workType: 'Project',
+        dailyRate: 0, // No full-day attendance on regular project, overtime only
+        hourlyRate,
+        overtimeHours: otHours,
+        overtimePay: calculatedPay,
+        projectId: validOtProjId,
+        overtimeProjectId: validOtProjId,
+        wageType: 'overtime',
+        paymentStatus: 'Unpaid',
+        notes: notes || 'Lembur proyek',
+      });
+      await record.save();
+    }
+
+    await record.populate('userId', 'fullName role position profileImage');
+    await record.populate('projectId', 'nama lokasi');
+    await record.populate('overtimeProjectId', 'nama lokasi');
+
+    res.json({
+      success: true,
+      record,
+      calculatedPay,
+      baselineDailyRate,
+      hourlyRate,
+      otHours,
+    });
+  } catch (error) {
+    console.error('Quick overtime error:', error);
     res.status(500).json({ msg: 'Server error' });
   }
 });
@@ -1219,6 +1334,7 @@ router.put('/recap-table/adjust', auth, authorize('owner', 'president_director',
       checkInTime,
       checkOutTime,
       projectId,
+      overtimeProjectId,
       dailyRate,
       notes,
     } = req.body;
@@ -1285,8 +1401,11 @@ router.put('/recap-table/adjust', auth, authorize('owner', 'president_director',
       record.wageType = otHours > 0 ? 'overtime' : 'daily';
       record.wageMultiplier = 1;
 
-      if (projectId) {
-        record.projectId = projectId;
+      if (projectId !== undefined) {
+        record.projectId = (projectId && mongoose.Types.ObjectId.isValid(projectId)) ? projectId : null;
+      }
+      if (overtimeProjectId !== undefined) {
+        record.overtimeProjectId = (overtimeProjectId && mongoose.Types.ObjectId.isValid(overtimeProjectId)) ? overtimeProjectId : null;
       }
       if (notes !== undefined) {
         record.notes = notes;
@@ -1325,7 +1444,8 @@ router.put('/recap-table/adjust', auth, authorize('owner', 'president_director',
         wageType: otHours > 0 ? 'overtime' : 'daily',
         wageMultiplier: 1,
         paymentStatus: 'Unpaid',
-        projectId: projectId || undefined,
+        projectId: (projectId && mongoose.Types.ObjectId.isValid(projectId)) ? projectId : undefined,
+        overtimeProjectId: (overtimeProjectId && mongoose.Types.ObjectId.isValid(overtimeProjectId)) ? overtimeProjectId : undefined,
         notes: notes || undefined,
         permit: targetStatus === 'Permit' ? {
           reason: notes || 'Izin / Sakit via Rekapitulasi',
@@ -1343,7 +1463,8 @@ router.put('/recap-table/adjust', auth, authorize('owner', 'president_director',
 
     const populatedRecord = await Attendance.findById(record._id)
       .populate('userId', 'fullName role position profileImage')
-      .populate('projectId', 'nama lokasi');
+      .populate('projectId', 'nama lokasi')
+      .populate('overtimeProjectId', 'nama lokasi');
 
     res.json({
       msg: 'Attendance adjusted successfully',

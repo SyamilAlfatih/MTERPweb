@@ -21,6 +21,8 @@ interface UserOption {
   _id: string;
   fullName: string;
   role: string;
+  position?: string;
+  dailyRate?: number;
 }
 
 interface ProjectOption {
@@ -31,7 +33,7 @@ interface ProjectOption {
 
 interface AttendanceRecord {
   _id: string;
-  userId: { _id: string; fullName: string; role: string; profileImage?: string };
+  userId: { _id: string; fullName: string; role: string; profileImage?: string; dailyRate?: number };
   date: string;
   checkIn?: {
     time: string;
@@ -56,6 +58,7 @@ interface AttendanceRecord {
   paymentStatus: 'Unpaid' | 'Paid';
   paidAt?: string;
   projectId?: { _id: string; nama: string; lokasi?: string };
+  overtimeProjectId?: { _id: string; nama: string; lokasi?: string } | string;
   sessionId?: { _id: string; photoUrl?: string; notes?: string; createdAt?: string };
   workType?: string;
   officeLocation?: string;
@@ -100,6 +103,20 @@ const getImageUrl = (path: string | undefined): string => {
   }
   const clean = normalizedPath.startsWith('/') ? normalizedPath.slice(1) : normalizedPath;
   return `${API_BASE}/${clean}`;
+};
+
+const getOtProjId = (rec?: AttendanceRecord | null): string => {
+  if (!rec || !rec.overtimeProjectId) return '';
+  if (typeof rec.overtimeProjectId === 'object') return rec.overtimeProjectId._id || '';
+  return String(rec.overtimeProjectId);
+};
+
+const getOtProjName = (rec?: AttendanceRecord | null, projList: any[] = []): string => {
+  if (!rec || !rec.overtimeProjectId) return '';
+  if (typeof rec.overtimeProjectId === 'object' && rec.overtimeProjectId.nama) return rec.overtimeProjectId.nama;
+  const id = typeof rec.overtimeProjectId === 'object' ? rec.overtimeProjectId._id : String(rec.overtimeProjectId);
+  const p = projList.find((x: any) => x._id === id);
+  return p?.nama || '';
 };
 
 const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }> = {
@@ -261,8 +278,24 @@ export default function AttendanceLogs() {
   const [newDailyRate, setNewDailyRate] = useState<number>(0);
   const [newOvertimePay, setNewOvertimePay] = useState<number>(0);
   const [newOvertimeHours, setNewOvertimeHours] = useState<number | string>(0);
+  const [newProjectId, setNewProjectId] = useState<string>('');
+  const [newOvertimeProjectId, setNewOvertimeProjectId] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [paying, setPaying] = useState(false);
+
+  // Quick Overtime Modal State (calculated from baseline)
+  const [quickOtModal, setQuickOtModal] = useState(false);
+  const [quickOtRecord, setQuickOtRecord] = useState<AttendanceRecord | null>(null);
+  const [quickOtWorkerId, setQuickOtWorkerId] = useState('');
+  const [quickOtWorkerName, setQuickOtWorkerName] = useState('');
+  const [quickOtDate, setQuickOtDate] = useState(todayWIB());
+  const [quickOtProjectId, setQuickOtProjectId] = useState('');
+  const [quickOtHours, setQuickOtHours] = useState<number | string>(2);
+  const [quickOtMultiplier, setQuickOtMultiplier] = useState<number>(1);
+  const [quickOtDailyRate, setQuickOtDailyRate] = useState<number>(150000);
+  const [quickOtCustomPay, setQuickOtCustomPay] = useState<string>('');
+  const [quickOtNotes, setQuickOtNotes] = useState('');
+  const [quickOtSaving, setQuickOtSaving] = useState(false);
 
   // Quick Photo Inspector Modal
   const [photoInspector, setPhotoInspector] = useState<{
@@ -402,11 +435,18 @@ export default function AttendanceLogs() {
   const openWageModal = (record: AttendanceRecord) => {
     setSelectedRecord(record);
     const hourly = record.dailyRate ? record.dailyRate / 8 : 0;
-    const hours = (record.overtimePay && hourly) ? record.overtimePay / hourly : 0;
+    const hours = (record.overtimeHours && record.overtimeHours > 0)
+      ? record.overtimeHours
+      : ((record.overtimePay && hourly) ? record.overtimePay / hourly : 0);
     setNewOvertimeHours(hours);
     setNewWageType(record.wageType.startsWith('overtime') ? 'overtime' : 'daily');
     setNewDailyRate(record.dailyRate || 0);
     setNewOvertimePay(record.overtimePay || 0);
+    setNewProjectId(record.projectId?._id || '');
+
+    // Properly preserve overtimeProjectId if set, don't fall back to projectId if already assigned
+    const existingOtId = getOtProjId(record);
+    setNewOvertimeProjectId(existingOtId || record.projectId?._id || '');
     setWageModal(true);
   };
 
@@ -438,6 +478,9 @@ export default function AttendanceLogs() {
         wageType: newWageType,
         dailyRate: newDailyRate,
         overtimePay: newOvertimePay,
+        overtimeHours: newOvertimeHours,
+        projectId: newProjectId || null,
+        overtimeProjectId: newOvertimeProjectId || null,
       });
       await fetchRecords();
       setWageModal(false);
@@ -447,6 +490,88 @@ export default function AttendanceLogs() {
       alert('Gagal memperbarui upah pekerja.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Quick Overtime Handlers (Calculated from Baseline)
+  const openQuickOvertimeModal = (record: AttendanceRecord) => {
+    setQuickOtRecord(record);
+    setQuickOtWorkerId(record.userId?._id || '');
+    setQuickOtWorkerName(record.userId?.fullName || 'Pekerja');
+    setQuickOtDate(record.date ? record.date.slice(0, 10) : todayWIB());
+
+    const existingOtId = getOtProjId(record);
+    setQuickOtProjectId(existingOtId || record.projectId?._id || (projects[0]?._id || ''));
+
+    const baseline = (record.dailyRate && record.dailyRate > 0)
+      ? record.dailyRate
+      : (record.userId?.dailyRate || 150000);
+    setQuickOtDailyRate(baseline);
+
+    setQuickOtHours(record.overtimeHours && record.overtimeHours > 0 ? record.overtimeHours : 2);
+    setQuickOtMultiplier(record.wageMultiplier && record.wageMultiplier > 1 ? record.wageMultiplier : 1);
+    setQuickOtCustomPay(record.overtimePay && record.overtimePay > 0 ? String(record.overtimePay) : '');
+    setQuickOtNotes(record.notes || '');
+    setQuickOtModal(true);
+  };
+
+  const openGlobalQuickOtModal = () => {
+    setQuickOtRecord(null);
+    const firstUser = users[0];
+    const uId = firstUser?._id || '';
+    setQuickOtWorkerId(uId);
+    setQuickOtWorkerName(firstUser?.fullName || 'Pekerja');
+    setQuickOtDate(todayWIB());
+    setQuickOtProjectId(projects[0]?._id || '');
+    setQuickOtHours(2);
+    setQuickOtMultiplier(1);
+    setQuickOtDailyRate(firstUser?.dailyRate || 150000);
+    setQuickOtCustomPay('');
+    setQuickOtNotes('');
+    setQuickOtModal(true);
+  };
+
+  const handleQuickOtWorkerChange = (uId: string) => {
+    setQuickOtWorkerId(uId);
+    const u = users.find(x => x._id === uId);
+    if (u) {
+      setQuickOtWorkerName(u.fullName);
+      if (u.dailyRate) {
+        setQuickOtDailyRate(u.dailyRate);
+      }
+    }
+  };
+
+  const handleSaveQuickOvertime = async () => {
+    if (!quickOtWorkerId) {
+      alert('Pilih pekerja terlebih dahulu.');
+      return;
+    }
+    const hrs = parseFloat(String(quickOtHours).replace(',', '.')) || 0;
+    if (hrs <= 0) {
+      alert('Durasi jam lembur harus lebih dari 0.');
+      return;
+    }
+    setQuickOtSaving(true);
+    try {
+      const customPayVal = quickOtCustomPay !== '' ? Number(quickOtCustomPay) : undefined;
+      await api.post('/attendance/quick-overtime', {
+        userId: quickOtWorkerId,
+        date: quickOtDate,
+        attendanceId: quickOtRecord?._id || undefined,
+        overtimeProjectId: quickOtProjectId || undefined,
+        overtimeHours: hrs,
+        multiplier: quickOtMultiplier,
+        customPay: customPayVal,
+        notes: quickOtNotes || undefined,
+      });
+      await fetchRecords();
+      setQuickOtModal(false);
+    } catch (err: any) {
+      console.error('Failed to save quick overtime', err);
+      alert(err?.response?.data?.msg || 'Gagal mencatat lembur.');
+    } finally {
+      setQuickOtSaving(false);
     }
   };
 
@@ -571,6 +696,16 @@ export default function AttendanceLogs() {
               <TableIcon size={14} />
               <span>Rekapitulasi</span>
             </button>
+            {isSupervisor && (
+              <button
+                onClick={openGlobalQuickOtModal}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-xs cursor-pointer"
+                title="Catat lembur di proyek tertentu (dihitung otomatis dari upah baseline)"
+              >
+                <Clock size={14} />
+                <span>+ Catat Lembur Proyek</span>
+              </button>
+            )}
             <button
               onClick={fetchRecords}
               disabled={loading}
@@ -1048,6 +1183,14 @@ export default function AttendanceLogs() {
                                 {record.officeLocation ? `🏢 ${record.officeLocation}` : record.projectId?.nama ? `📍 ${record.projectId.nama}` : '—'}
                               </span>
 
+                              {/* Overtime Project Allocation Badge */}
+                              {((record.overtimeHours || 0) > 0 || (record.overtimePay || 0) > 0) && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-50 text-amber-800 border border-amber-300 inline-flex items-center gap-1" title="Alokasi Proyek Lembur">
+                                  <Clock size={9} className="text-amber-600" />
+                                  <span>OT {record.overtimeHours ? `${record.overtimeHours}h` : ''} @ 🏗️ {getOtProjName(record, projects) || record.projectId?.nama || 'Proyek'}</span>
+                                </span>
+                              )}
+
                               {/* Geofence Status Badge */}
                               {record.checkIn?.geofenceStatus === 'in_radius' && (
                                 <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-0.5">
@@ -1194,6 +1337,13 @@ export default function AttendanceLogs() {
                                   >
                                     <DollarSign size={15} />
                                   </button>
+                                  <button
+                                    onClick={() => openQuickOvertimeModal(record)}
+                                    className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-colors cursor-pointer"
+                                    title="Catat Lembur di Proyek (Hitung Otomatis dari Baseline)"
+                                  >
+                                    <Clock size={15} />
+                                  </button>
                                   {record.checkIn?.time && ['Present', 'Late'].includes(record.status) && (
                                     <button
                                       onClick={() => openInvalidateModal(record)}
@@ -1325,6 +1475,17 @@ export default function AttendanceLogs() {
                       </div>
                     </div>
 
+                    {/* Overtime Project Banner */}
+                    {((record.overtimeHours || 0) > 0 || (record.overtimePay || 0) > 0) && (
+                      <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200 flex items-center justify-between text-xs text-amber-900 mb-3">
+                        <span className="flex items-center gap-1.5 font-bold">
+                          <Clock size={13} className="text-amber-600" />
+                          <span>Lembur {record.overtimeHours ? `${record.overtimeHours} jam` : ''} di 🏗️ {getOtProjName(record, projects) || record.projectId?.nama || 'Proyek'}</span>
+                        </span>
+                        <span className="font-extrabold text-amber-700">+{formatRp(record.overtimePay || 0)}</span>
+                      </div>
+                    )}
+
                     {record.workSummary && (
                       <div className="px-3 py-2 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs text-indigo-900 mb-3 leading-relaxed">
                         <strong className="block text-[10px] uppercase font-black text-indigo-600 mb-0.5">Catatan Capaian Kerja:</strong>
@@ -1419,6 +1580,13 @@ export default function AttendanceLogs() {
                         >
                           <DollarSign size={13} />
                           <span>Edit Upah</span>
+                        </button>
+                        <button
+                          onClick={() => openQuickOvertimeModal(record)}
+                          className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors cursor-pointer"
+                        >
+                          <Clock size={13} />
+                          <span>Lembur Proyek</span>
                         </button>
                       </div>
                     )}
@@ -1664,6 +1832,24 @@ export default function AttendanceLogs() {
                 />
               </div>
 
+              {/* Project Assignment */}
+              <div>
+                <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">Alokasi Proyek Harian</label>
+                <select
+                  value={newProjectId}
+                  onChange={(e) => {
+                    setNewProjectId(e.target.value);
+                    if (!newOvertimeProjectId) setNewOvertimeProjectId(e.target.value);
+                  }}
+                  className="w-full p-2.5 border border-border-light rounded-xl text-xs font-semibold text-text-primary bg-bg-white focus:border-primary outline-none"
+                >
+                  <option value="">-- Kantor / Non-Proyek --</option>
+                  {projects.map((p: any) => (
+                    <option key={p._id} value={p._id}>{p.nama} {p.lokasi ? `(${p.lokasi})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
               {newWageType === 'overtime' && (
                 <div className="p-4 bg-orange-50/70 rounded-xl border border-orange-200 space-y-3">
                   <div>
@@ -1675,6 +1861,20 @@ export default function AttendanceLogs() {
                       placeholder="Contoh: 2"
                       className="w-full p-2.5 border border-orange-300 rounded-xl text-xs font-bold text-text-primary focus:border-primary outline-none bg-bg-white"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-orange-900 uppercase mb-1">Alokasi Proyek Lembur</label>
+                    <select
+                      value={newOvertimeProjectId}
+                      onChange={(e) => setNewOvertimeProjectId(e.target.value)}
+                      className="w-full p-2.5 border border-orange-300 rounded-xl text-xs font-semibold text-text-primary bg-bg-white focus:border-primary outline-none"
+                    >
+                      <option value="">-- Sama dengan Proyek Harian --</option>
+                      {projects.map((p: any) => (
+                        <option key={p._id} value={p._id}>{p.nama} {p.lokasi ? `(${p.lokasi})` : ''}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-orange-700 mt-1">Pilih jika lembur dikerjakan di proyek berbeda dari jam kerja reguler.</p>
                   </div>
                   <div className="flex items-center justify-between text-xs font-bold text-orange-900 pt-1">
                     <span>Estimasi Uang Lembur:</span>
@@ -1788,6 +1988,207 @@ export default function AttendanceLogs() {
                 onClick={handleInvalidate}
                 loading={invalidating}
                 variant="danger"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ Quick Overtime Modal (Calculated from Baseline) ══════════════ */}
+      {quickOtModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1050] p-4 animate-in fade-in duration-200"
+          onClick={() => setQuickOtModal(false)}
+        >
+          <div
+            className="bg-bg-white rounded-2xl w-full max-w-[500px] shadow-2xl overflow-hidden border border-border-light animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-amber-200 bg-amber-50/80 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <Clock size={22} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-extrabold text-amber-900 m-0">Catat Lembur di Proyek</h3>
+                <p className="text-xs text-amber-700 m-0">Hitung otomatis upah lembur dari baseline harian & alokasikan ke proyek</p>
+              </div>
+              <button
+                className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center hover:bg-amber-200 transition-colors cursor-pointer"
+                onClick={() => setQuickOtModal(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Worker & Date Picker */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">Pekerja</label>
+                  {quickOtRecord ? (
+                    <div className="p-2.5 bg-bg-secondary border border-border-light rounded-xl text-xs font-bold text-text-primary">
+                      {quickOtWorkerName}
+                    </div>
+                  ) : (
+                    <select
+                      value={quickOtWorkerId}
+                      onChange={(e) => handleQuickOtWorkerChange(e.target.value)}
+                      className="w-full p-2.5 border border-border-light rounded-xl text-xs font-semibold text-text-primary bg-bg-white focus:border-amber-500 outline-none"
+                    >
+                      {users.map((u) => (
+                        <option key={u._id} value={u._id}>
+                          {u.fullName} {u.role ? `(${u.role})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">Tanggal</label>
+                  <input
+                    type="date"
+                    value={quickOtDate}
+                    onChange={(e) => setQuickOtDate(e.target.value)}
+                    disabled={!!quickOtRecord}
+                    className="w-full p-2.5 border border-border-light rounded-xl text-xs font-semibold text-text-primary bg-bg-white focus:border-amber-500 outline-none disabled:bg-bg-secondary"
+                  />
+                </div>
+              </div>
+
+              {/* Baseline Info Box */}
+              <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-amber-800 block">Baseline Upah Harian:</span>
+                  <span className="font-extrabold text-amber-950 text-sm">{formatRp(quickOtDailyRate)}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-amber-800 block">Tarif Lembur per Jam:</span>
+                  <span className="font-extrabold text-amber-950 text-sm">{formatRp(Math.round(quickOtDailyRate / 8))} / jam</span>
+                  <span className="text-[9px] text-amber-700 block">(Baseline ÷ 8 jam)</span>
+                </div>
+              </div>
+
+              {/* Overtime Project */}
+              <div>
+                <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">
+                  Proyek Tempat Lembur <span className="text-amber-600">*</span>
+                </label>
+                <select
+                  value={quickOtProjectId}
+                  onChange={(e) => setQuickOtProjectId(e.target.value)}
+                  className="w-full p-2.5 border border-amber-300 rounded-xl text-xs font-bold text-text-primary bg-bg-white focus:border-amber-600 outline-none"
+                >
+                  <option value="">🏢 Kantor / Non-Proyek (Umum)</option>
+                  {projects.map((p: any) => (
+                    <option key={p._id} value={p._id}>
+                      🏗️ {p.nama} {p.lokasi ? `(${p.lokasi})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-text-muted mt-1 m-0">
+                  Upah lembur ini akan terikat secara khusus ke proyek yang dipilih dan dicetak pada slip proyek tersebut.
+                </p>
+              </div>
+
+              {/* Hours & Multiplier */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">Durasi Lembur (Jam)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    value={quickOtHours}
+                    onChange={(e) => setQuickOtHours(e.target.value)}
+                    placeholder="Contoh: 2"
+                    className="w-full p-2.5 border border-border-light rounded-xl text-xs font-bold text-text-primary bg-bg-white focus:border-amber-500 outline-none"
+                  />
+                  <div className="flex gap-1.5 mt-1.5">
+                    {[1, 2, 3, 4].map(h => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => setQuickOtHours(h)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer transition-colors ${
+                          Number(quickOtHours) === h
+                            ? 'bg-amber-500 text-white border-amber-600'
+                            : 'bg-bg-secondary text-text-secondary border-border-light hover:bg-amber-50'
+                        }`}
+                      >
+                        +{h}h
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">Skema Multiplier</label>
+                  <select
+                    value={quickOtMultiplier}
+                    onChange={(e) => setQuickOtMultiplier(Number(e.target.value))}
+                    className="w-full p-2.5 border border-border-light rounded-xl text-xs font-semibold text-text-primary bg-bg-white focus:border-amber-500 outline-none"
+                  >
+                    <option value={1}>1.0x (Standar Baseline)</option>
+                    <option value={1.5}>1.5x (Hari Kerja Lembur Malam)</option>
+                    <option value={2}>2.0x (Hari Libur / Weekend)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Calculated Earnings Card */}
+              {(() => {
+                const hrs = parseFloat(String(quickOtHours).replace(',', '.')) || 0;
+                const hourly = Math.round(quickOtDailyRate / 8);
+                const autoPay = Math.round(hrs * hourly * quickOtMultiplier);
+                const displayPay = quickOtCustomPay !== '' ? Number(quickOtCustomPay) : autoPay;
+
+                return (
+                  <div className="p-3.5 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-300 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-amber-800 block">Total Upah Lembur Dihasilkan:</span>
+                        <span className="text-lg font-black text-amber-900">{formatRp(displayPay)}</span>
+                      </div>
+                      <span className="text-[11px] text-amber-700 font-semibold bg-amber-100 px-2 py-1 rounded-md">
+                        {hrs}h × {formatRp(hourly)} {quickOtMultiplier > 1 ? `× ${quickOtMultiplier}x` : ''}
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-amber-900 uppercase">Override Manual (Opsional):</label>
+                      <input
+                        type="number"
+                        placeholder={`Otomatis (${formatRp(autoPay)})`}
+                        value={quickOtCustomPay}
+                        onChange={(e) => setQuickOtCustomPay(e.target.value)}
+                        className="w-full mt-1 p-2 bg-white border border-amber-300 rounded-lg text-xs font-semibold text-text-primary outline-none focus:border-amber-600"
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Notes */}
+              <div>
+                <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1">Catatan Lembur (Opsional)</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Pengecoran lantai 2, perbaikan bekisting..."
+                  value={quickOtNotes}
+                  onChange={(e) => setQuickOtNotes(e.target.value)}
+                  className="w-full p-2.5 border border-border-light rounded-xl text-xs text-text-primary bg-bg-white focus:border-amber-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-border-light bg-bg-secondary flex gap-2.5 justify-end">
+              <Button title="Batal" onClick={() => setQuickOtModal(false)} variant="outline" />
+              <Button
+                title={quickOtSaving ? 'Menyimpan...' : 'Simpan Lembur Proyek'}
+                onClick={handleSaveQuickOvertime}
+                loading={quickOtSaving}
+                variant="primary"
+                className="!bg-amber-600 hover:!bg-amber-700 !text-white"
               />
             </div>
           </div>

@@ -91,6 +91,10 @@ const attendanceSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Project',
   },
+  overtimeProjectId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Project',
+  },
   sessionId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'AttendanceSession',
