@@ -6,7 +6,7 @@ import {
   X, CheckSquare, Square, PlayCircle, RefreshCw,
   FileText, DollarSign, CalendarOff, Receipt, Shield,
   Upload, Calendar, MapPin, Timer, CheckCircle2, UserCheck,
-  TrendingUp, ShieldCheck, ArrowRight, Info, PlusCircle,
+  TrendingUp, ShieldCheck, ArrowRight, Info, PlusCircle, AlertTriangle,
 } from 'lucide-react';
 import { PhotoView } from 'react-photo-view';
 import api from '../api/api';
@@ -172,6 +172,16 @@ export default function GroupAttendance() {
   const [sessionStatusFilter, setSessionStatusFilter] = useState<'all' | 'active' | 'closed'>('all');
   const [currentActiveSession, setCurrentActiveSession] = useState<ActiveSession | null>(null);
   const skipProjectFetchRef = useRef(false);
+
+  // ── Previous / Unclosed Sessions Navigation State ──
+  const [sessionDateMode, setSessionDateMode] = useState<'today' | 'yesterday' | 'unclosed' | 'custom'>('today');
+  const [selectedCustomDate, setSelectedCustomDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+  });
+  const [unclosedSessions, setUnclosedSessions] = useState<ActiveSession[]>([]);
+  const [loadingUnclosed, setLoadingUnclosed] = useState(false);
 
   // ── Close Session (1-Click Bulk Clock-out & Close) Modal ──
   const [showCloseModal, setShowCloseModal] = useState(false);
@@ -381,6 +391,41 @@ export default function GroupAttendance() {
     return isSessionClosed(currentActiveSession);
   }, [currentActiveSession, isSessionClosed]);
 
+  const isCurrentSessionPast = useMemo(() => {
+    if (!currentActiveSession?.date) return false;
+    const sessDateStr = new Date(currentActiveSession.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+    const todayStr = todayWIB();
+    return sessDateStr < todayStr;
+  }, [currentActiveSession]);
+
+  const sessionContainerTitle = useMemo(() => {
+    switch (sessionDateMode) {
+      case 'today':
+        return 'Sesi Grup Hari Ini';
+      case 'yesterday':
+        return 'Sesi Grup Kemarin';
+      case 'unclosed':
+        return 'Sesi Lampau Belum Ditutup';
+      case 'custom':
+        return `Sesi Tanggal ${selectedCustomDate ? formatWIBDate(new Date(selectedCustomDate)) : ''}`;
+      default:
+        return 'Daftar Sesi Grup';
+    }
+  }, [sessionDateMode, selectedCustomDate]);
+
+  const sessionContainerSubtitle = useMemo(() => {
+    switch (sessionDateMode) {
+      case 'unclosed':
+        return 'Daftar sesi dari tanggal sebelumnya di mana ada pekerja yang belum clock-out. Selesaikan agar data absensi rapi.';
+      case 'yesterday':
+        return 'Sesi grup multi-supervisor yang dibuat kemarin.';
+      case 'custom':
+        return `Sesi grup multi-supervisor yang dibuat pada tanggal ${selectedCustomDate ? formatWIBDate(new Date(selectedCustomDate)) : ''}.`;
+      default:
+        return 'Seluruh sesi multi-supervisor hari ini. Sesi otomatis ditutup setelah seluruh pekerja clock-out.';
+    }
+  }, [sessionDateMode, selectedCustomDate]);
+
   // Total workers present across all sessions today
   const totalWorkersToday = useMemo(() => {
     return todaySessions.reduce((acc, s) => {
@@ -410,6 +455,10 @@ export default function GroupAttendance() {
     fetchTodaySelfAttendance();
     fetchRecentHistory();
   }, []);
+
+  useEffect(() => {
+    fetchSessions(sessionDateMode, selectedCustomDate);
+  }, [sessionDateMode, selectedCustomDate]);
 
   useEffect(() => {
     if (selectedProjectId && !skipProjectFetchRef.current) {
@@ -450,25 +499,68 @@ export default function GroupAttendance() {
     }
   };
 
-  const fetchTodaySessions = async () => {
+  const fetchUnclosedSessions = async () => {
+    setLoadingUnclosed(true);
+    try {
+      const response = await api.get('/attendance-session/unclosed');
+      const list = response.data?.sessions || [];
+      setUnclosedSessions(list);
+    } catch (err) {
+      console.warn('Failed to fetch unclosed sessions', err);
+    } finally {
+      setLoadingUnclosed(false);
+    }
+  };
+
+  const fetchSessions = async (
+    mode: 'today' | 'yesterday' | 'unclosed' | 'custom' = sessionDateMode,
+    customDate: string = selectedCustomDate
+  ) => {
     setLoadingTodaySessions(true);
     try {
-      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
-      const response = await api.get(`/attendance-session?date=${today}&limit=50`);
+      if (mode === 'unclosed') {
+        const response = await api.get('/attendance-session/unclosed');
+        const list = response.data?.sessions || [];
+        setTodaySessions(list);
+        setUnclosedSessions(list);
+        return;
+      }
+
+      let dateQuery = '';
+      if (mode === 'today') {
+        dateQuery = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+      } else if (mode === 'yesterday') {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        dateQuery = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+      } else if (mode === 'custom') {
+        dateQuery = customDate;
+      }
+
+      const response = await api.get(`/attendance-session?date=${dateQuery}&limit=50`);
       const sessions = response.data?.sessions || [];
       setTodaySessions(sessions);
-      cacheTodaySessions(sessions);
+      if (mode === 'today') {
+        cacheTodaySessions(sessions);
+      }
     } catch (err) {
-      console.warn('Failed to fetch today sessions, checking offline cache', err);
-      const cached = await getCachedTodaySessions();
-      if (cached.length > 0) {
-        setTodaySessions(cached);
+      console.warn('Failed to fetch sessions, checking offline cache', err);
+      if (mode === 'today') {
+        const cached = await getCachedTodaySessions();
+        setTodaySessions(cached.length > 0 ? cached : []);
       } else {
         setTodaySessions([]);
       }
     } finally {
       setLoadingTodaySessions(false);
     }
+  };
+
+  const fetchTodaySessions = async () => {
+    await Promise.all([
+      fetchSessions(sessionDateMode, selectedCustomDate),
+      fetchUnclosedSessions(),
+    ]);
   };
 
   const fetchTodaySelfAttendance = async () => {
@@ -1006,7 +1098,10 @@ export default function GroupAttendance() {
     const isLocalSession = result.session._id.startsWith('offline_');
 
     if (!navigator.onLine || isLocalSession) {
-      const finalHour = closeLeaveHour || formatWIBTime(new Date());
+      const finalHour = closeLeaveHour || (isCurrentSessionPast ? '17:00' : formatWIBTime(new Date()));
+      const defaultReason = isCurrentSessionPast
+        ? 'Clock-out susulan sesi lampau oleh supervisor'
+        : 'Penutupan sesi offline';
       const nowIso = new Date().toISOString();
       await queueOfflineAttendance({
         localUuid: `off_close_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -1016,7 +1111,7 @@ export default function GroupAttendance() {
         projectId: selectedProjectId,
         targetSessionId: result.session._id,
         leaveHour: finalHour,
-        reason: closeReason || 'Penutupan sesi offline',
+        reason: closeReason || defaultReason,
         recordedAt: nowIso,
       });
 
@@ -1043,11 +1138,14 @@ export default function GroupAttendance() {
     }
 
     try {
-      const finalHour = closeLeaveHour || formatWIBTime(new Date());
+      const finalHour = closeLeaveHour || (isCurrentSessionPast ? '17:00' : formatWIBTime(new Date()));
+      const defaultReason = isCurrentSessionPast
+        ? 'Clock-out susulan sesi lampau oleh supervisor'
+        : 'Clock-out serentak & penutupan sesi oleh supervisor';
 
       const response = await api.post(`/attendance-session/${result.session._id}/close`, {
         defaultLeaveHour: finalHour,
-        reason: closeReason || 'Clock-out serentak & penutupan sesi oleh supervisor',
+        reason: closeReason || defaultReason,
       });
 
       // Refresh current session from server
@@ -1128,13 +1226,34 @@ export default function GroupAttendance() {
       });
 
       const isClosed = isSessionClosed(fullSession);
+      const sessDateStr = new Date(fullSession.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+      const isPast = sessDateStr < todayWIB();
+
+      if (isPast && !isClosed) {
+        setLeaveHour('17:00');
+        setBulkLeaveHour('17:00');
+        setLeaveReason('Clock-out susulan sesi lampau');
+        setBulkLeaveReason('Clock-out susulan sesi lampau');
+      } else if (!isClosed) {
+        setLeaveHour(formatWIBTime(new Date()));
+        setBulkLeaveHour(formatWIBTime(new Date()));
+        setLeaveReason('');
+        setBulkLeaveReason('');
+      }
+
       setAlertData({
         visible: true,
         type: 'success',
-        title: isClosed ? 'Detail Sesi Dimuat (Selesai)' : 'Sesi Dimuat (Aktif)',
+        title: isClosed
+          ? 'Detail Sesi Dimuat (Selesai)'
+          : isPast
+            ? 'Sesi Lampau Dimuat (Perlu Clock-Out)'
+            : 'Sesi Dimuat (Aktif)',
         message: isClosed
           ? 'Sesi ini telah selesai/ditutup. Anda dapat meninjau rekap jam pulang pekerja.'
-          : 'Anda melanjutkan sesi absensi yang sedang aktif.',
+          : isPast
+            ? 'Sesi dari hari sebelumnya. Jam pulang diset default 17:00 WIB untuk memudahkan penyelesaian clock-out.'
+            : 'Anda melanjutkan sesi absensi yang sedang aktif.',
       });
     } catch (err) {
       console.error('Failed to resume session', err);
@@ -1774,39 +1893,167 @@ export default function GroupAttendance() {
             </div>
           )}
 
-          {!loadingTodaySessions && todaySessions.length > 0 && !result && (
-            <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50/90 via-emerald-50/40 to-bg-white p-5 shadow-sm">
+          {/* ── Warning Alert Banner: Unclosed Past Sessions ── */}
+          {!result && unclosedSessions.length > 0 && sessionDateMode !== 'unclosed' && (
+            <div className="p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-amber-950 m-0 flex items-center gap-2">
+                    <span>{unclosedSessions.length} Sesi Lampau Belum Ditutup</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
+                      Perlu Tindakan
+                    </span>
+                  </h4>
+                  <p className="text-xs text-amber-900/80 m-0 mt-0.5">
+                    Ada pekerja pada sesi hari sebelumnya yang belum di-clockout. Segera selesaikan sesi tersebut.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSessionDateMode('unclosed')}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-amber-950 bg-amber-200/90 hover:bg-amber-300 border border-amber-400/60 transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 shadow-xs"
+              >
+                <span>Tinjau & Clock-Out ({unclosedSessions.length})</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+
+          {!loadingTodaySessions && !result && (
+            <div className={`rounded-2xl border-2 p-5 shadow-sm transition-all ${
+              sessionDateMode === 'unclosed'
+                ? 'border-amber-300 bg-gradient-to-br from-amber-50/90 via-amber-50/40 to-bg-white'
+                : 'border-emerald-200 bg-gradient-to-br from-emerald-50/90 via-emerald-50/40 to-bg-white'
+            }`}>
+              {/* Header Title & Refresh */}
               <div className="flex items-center justify-between gap-3 mb-3.5">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-[0_2px_8px_rgba(5,150,105,0.3)] shrink-0">
-                    <PlayCircle size={20} />
+                  <div className={`w-9 h-9 rounded-xl text-white flex items-center justify-center shrink-0 shadow-sm ${
+                    sessionDateMode === 'unclosed'
+                      ? 'bg-amber-500 shadow-[0_2px_8px_rgba(245,158,11,0.3)]'
+                      : 'bg-emerald-500 shadow-[0_2px_8px_rgba(5,150,105,0.3)]'
+                  }`}>
+                    {sessionDateMode === 'unclosed' ? <AlertTriangle size={20} /> : <PlayCircle size={20} />}
                   </div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-base font-bold text-emerald-950 m-0">Sesi Grup Hari Ini</h2>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-200 text-emerald-900">
-                        {activeSessionsCount} Aktif
-                      </span>
-                      {closedSessionsCount > 0 && (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-800">
-                          {closedSessionsCount} Ditutup
+                      <h2 className={`text-base font-bold m-0 ${sessionDateMode === 'unclosed' ? 'text-amber-950' : 'text-emerald-950'}`}>
+                        {sessionContainerTitle}
+                      </h2>
+                      {sessionDateMode === 'unclosed' ? (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-black bg-amber-200 text-amber-950 border border-amber-300">
+                          {unclosedSessions.length} Perlu Tindakan
                         </span>
+                      ) : (
+                        <>
+                          <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-200 text-emerald-900">
+                            {activeSessionsCount} Aktif
+                          </span>
+                          {closedSessionsCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-800">
+                              {closedSessionsCount} Ditutup
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
-                    <p className="text-xs text-emerald-700/80 m-0">
-                      Seluruh sesi multi-supervisor hari ini. Sesi otomatis ditutup setelah seluruh pekerja clock-out.
+                    <p className={`text-xs m-0 mt-0.5 ${sessionDateMode === 'unclosed' ? 'text-amber-800/80' : 'text-emerald-700/80'}`}>
+                      {sessionContainerSubtitle}
                     </p>
                   </div>
                 </div>
                 <button
                   id="refresh-session-btn"
                   onClick={fetchTodaySessions}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center text-emerald-700 hover:bg-emerald-200/70 transition-colors shrink-0 bg-emerald-100/60 cursor-pointer"
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors shrink-0 cursor-pointer ${
+                    sessionDateMode === 'unclosed'
+                      ? 'text-amber-800 bg-amber-100/80 hover:bg-amber-200/80'
+                      : 'text-emerald-700 bg-emerald-100/60 hover:bg-emerald-200/70'
+                  }`}
                   title="Refresh sesi"
                   aria-label="Refresh sesi"
                 >
-                  <RefreshCw size={16} />
+                  <RefreshCw size={16} className={loadingTodaySessions || loadingUnclosed ? 'animate-spin' : ''} />
                 </button>
+              </div>
+
+              {/* Date Navigation Tabs */}
+              <div className="flex items-center gap-1.5 p-1 bg-emerald-100/60 rounded-xl mb-3.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setSessionDateMode('today')}
+                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    sessionDateMode === 'today'
+                      ? 'bg-bg-white text-emerald-950 shadow-sm'
+                      : 'text-emerald-800/80 hover:text-emerald-950'
+                  }`}
+                >
+                  Hari Ini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSessionDateMode('yesterday')}
+                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    sessionDateMode === 'yesterday'
+                      ? 'bg-bg-white text-emerald-950 shadow-sm'
+                      : 'text-emerald-800/80 hover:text-emerald-950'
+                  }`}
+                >
+                  Kemarin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSessionDateMode('unclosed')}
+                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    sessionDateMode === 'unclosed'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : unclosedSessions.length > 0
+                        ? 'bg-amber-200/70 text-amber-900 hover:bg-amber-200 font-extrabold'
+                        : 'text-emerald-800/80 hover:text-emerald-950'
+                  }`}
+                >
+                  <AlertTriangle size={13} className={sessionDateMode === 'unclosed' ? 'text-white' : 'text-amber-600'} />
+                  <span>Belum Clock-Out</span>
+                  {unclosedSessions.length > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                      sessionDateMode === 'unclosed' ? 'bg-white text-amber-900' : 'bg-amber-500 text-white'
+                    }`}>
+                      {unclosedSessions.length}
+                    </span>
+                  )}
+                </button>
+                <div className="flex items-center gap-1.5 sm:ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setSessionDateMode('custom')}
+                    className={`py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      sessionDateMode === 'custom'
+                        ? 'bg-bg-white text-emerald-950 shadow-sm'
+                        : 'text-emerald-800/80 hover:text-emerald-950'
+                    }`}
+                  >
+                    <Calendar size={13} />
+                    <span>Pilih Tanggal</span>
+                  </button>
+                  {sessionDateMode === 'custom' && (
+                    <input
+                      type="date"
+                      value={selectedCustomDate}
+                      max={todayWIB()}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setSelectedCustomDate(e.target.value);
+                          setSessionDateMode('custom');
+                        }
+                      }}
+                      className="py-1 px-2 text-xs font-semibold rounded-lg border border-emerald-300 bg-bg-white text-text-primary focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-xs"
+                    />
+                  )}
+                </div>
               </div>
 
               {/* Multi-Filter Bar: Supervisor & Status */}
@@ -1877,12 +2124,25 @@ export default function GroupAttendance() {
 
               {/* List of sessions */}
               {displayedSessions.length === 0 ? (
-                <div className="p-5 rounded-xl bg-bg-white border border-emerald-200 text-center text-xs text-text-muted">
-                  {sessionStatusFilter === 'active'
-                    ? 'Tidak ada sesi yang sedang aktif. Semua sesi telah selesai / ditutup.'
-                    : sessionStatusFilter === 'closed'
-                      ? 'Belum ada sesi yang selesai / ditutup hari ini.'
-                      : 'Tidak ada sesi yang sesuai dengan kriteria filter.'}
+                <div className="p-6 rounded-xl bg-bg-white border border-emerald-200 text-center text-xs text-text-muted space-y-1">
+                  <p className="font-bold text-text-primary m-0">
+                    {sessionDateMode === 'unclosed'
+                      ? '🎉 Bagus! Tidak Ada Sesi Lampau yang Terbengkalai'
+                      : sessionDateMode === 'today'
+                        ? 'Belum Ada Sesi Grup Hari Ini'
+                        : sessionDateMode === 'yesterday'
+                          ? 'Tidak Ada Sesi Grup Kemarin'
+                          : 'Tidak Ada Sesi pada Tanggal Ini'}
+                  </p>
+                  <p className="m-0 text-[11px]">
+                    {sessionDateMode === 'unclosed'
+                      ? 'Seluruh sesi absensi grup dari hari-hari sebelumnya telah selesai dan ditutup rapi.'
+                      : sessionStatusFilter === 'active'
+                        ? 'Tidak ada sesi yang sedang aktif. Semua sesi telah selesai / ditutup.'
+                        : sessionStatusFilter === 'closed'
+                          ? 'Belum ada sesi yang selesai / ditutup.'
+                          : 'Tidak ada sesi yang sesuai dengan kriteria filter.'}
+                  </p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3 max-h-[420px] overflow-y-auto pr-1">
@@ -1898,6 +2158,9 @@ export default function GroupAttendance() {
                       : 'Supervisor';
                     const isResumingThis = resumingSessionId === session._id;
                     const photoSrc = getImageUrl(session.photoUrl);
+                    const sessDate = session.date || session.createdAt;
+                    const sessDateObj = sessDate ? new Date(sessDate) : null;
+                    const isPastDate = sessDateObj ? (new Date(sessDateObj).toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }) < todayWIB()) : false;
 
                     return (
                       <div
@@ -1905,9 +2168,11 @@ export default function GroupAttendance() {
                         className={`p-4 rounded-xl border transition-all ${
                           isClosed
                             ? 'bg-slate-50/70 border-slate-200/90 hover:border-slate-300 opacity-95'
-                            : isMine
-                              ? 'bg-bg-white border-emerald-300 shadow-sm ring-1 ring-emerald-200'
-                              : 'bg-bg-white/95 border-emerald-200/80 hover:border-emerald-300'
+                            : isPastDate
+                              ? 'bg-amber-50/40 border-amber-300 shadow-sm ring-1 ring-amber-200 hover:border-amber-400'
+                              : isMine
+                                ? 'bg-bg-white border-emerald-300 shadow-sm ring-1 ring-emerald-200'
+                                : 'bg-bg-white/95 border-emerald-200/80 hover:border-emerald-300'
                         }`}
                       >
                         <div className="flex items-start gap-3.5">
@@ -1924,7 +2189,11 @@ export default function GroupAttendance() {
                             </div>
                           ) : (
                             <div className={`w-16 h-16 rounded-xl flex items-center justify-center shrink-0 ${
-                              isClosed ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-600'
+                              isClosed
+                                ? 'bg-slate-200 text-slate-600'
+                                : isPastDate
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-emerald-100 text-emerald-600'
                             }`}>
                               <Camera size={22} />
                             </div>
@@ -1937,6 +2206,14 @@ export default function GroupAttendance() {
                                 {projectName}
                               </h4>
 
+                              {/* Date Pill */}
+                              {sessDateObj && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-bg-secondary text-text-primary border border-border-light flex items-center gap-1">
+                                  <Calendar size={10} className="text-text-muted" />
+                                  {formatWIBDate(sessDateObj)}
+                                </span>
+                              )}
+
                               {/* Status Badge */}
                               {(session.isOffline || session._id?.startsWith('offline_')) && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-700 border border-amber-500/30 flex items-center gap-1">
@@ -1947,6 +2224,11 @@ export default function GroupAttendance() {
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-200/80 text-slate-700 border border-slate-300 flex items-center gap-1">
                                   <CheckCircle2 size={11} className="text-slate-600" />
                                   Selesai (Clock-out Semua)
+                                </span>
+                              ) : isPastDate ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white flex items-center gap-1 shadow-xs">
+                                  <AlertTriangle size={11} />
+                                  Belum Clock-Out (Sesi Lampau)
                                 </span>
                               ) : (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
@@ -1979,8 +2261,8 @@ export default function GroupAttendance() {
                                   {totalWorkers} pekerja • Selesai Clock-Out
                                 </span>
                               ) : (
-                                <span className="flex items-center gap-1 font-bold text-emerald-800">
-                                  <Users size={13} className="text-emerald-600" />
+                                <span className={`flex items-center gap-1 font-bold ${isPastDate ? 'text-amber-800' : 'text-emerald-800'}`}>
+                                  <Users size={13} className={isPastDate ? 'text-amber-600' : 'text-emerald-600'} />
                                   {remainingWorkers} dari {totalWorkers} belum clock-out {leftWorkers > 0 && `(${leftWorkers} pulang)`}
                                 </span>
                               )}
@@ -2035,8 +2317,10 @@ export default function GroupAttendance() {
                                 disabled={resumingSessionId !== null}
                                 className={`flex items-center gap-1.5 py-2.5 px-4 rounded-xl text-xs font-bold text-white transition-all ${
                                   isResumingThis
-                                    ? 'bg-emerald-400 cursor-not-allowed'
-                                    : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 shadow-sm cursor-pointer'
+                                    ? isPastDate ? 'bg-amber-400 cursor-not-allowed' : 'bg-emerald-400 cursor-not-allowed'
+                                    : isPastDate
+                                      ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-700 hover:to-amber-600 shadow-sm cursor-pointer'
+                                      : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 shadow-sm cursor-pointer'
                                 }`}
                               >
                                 {isResumingThis ? (
@@ -2046,8 +2330,8 @@ export default function GroupAttendance() {
                                   </>
                                 ) : (
                                   <>
-                                    <PlayCircle size={14} />
-                                    <span>Lanjutkan Sesi</span>
+                                    {isPastDate ? <LogOut size={14} /> : <PlayCircle size={14} />}
+                                    <span>{isPastDate ? 'Selesaikan Clock-out' : 'Lanjutkan Sesi'}</span>
                                     <ChevronRight size={14} />
                                   </>
                                 )}
@@ -2068,13 +2352,13 @@ export default function GroupAttendance() {
             <div className="space-y-6">
               {/* Header Bar */}
               <div className={`flex items-center justify-between gap-3 p-4 rounded-2xl bg-bg-white border shadow-sm ${
-                isCurrentSessionClosed ? 'border-slate-300 ring-1 ring-slate-200' : 'border-emerald-300'
+                isCurrentSessionClosed ? 'border-slate-300 ring-1 ring-slate-200' : isCurrentSessionPast ? 'border-amber-300 ring-1 ring-amber-200' : 'border-emerald-300'
               }`}>
                 <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm text-white ${
-                    isCurrentSessionClosed ? 'bg-slate-700' : 'bg-emerald-500'
+                    isCurrentSessionClosed ? 'bg-slate-700' : isCurrentSessionPast ? 'bg-amber-500' : 'bg-emerald-500'
                   }`}>
-                    {isCurrentSessionClosed ? <CheckCircle2 size={22} /> : <PlayCircle size={20} />}
+                    {isCurrentSessionClosed ? <CheckCircle2 size={22} /> : isCurrentSessionPast ? <AlertTriangle size={20} /> : <PlayCircle size={20} />}
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -2088,6 +2372,17 @@ export default function GroupAttendance() {
                       }`}>
                         {isCurrentSessionClosed ? '⚪ Sesi Telah Ditutup (Selesai)' : '🟢 Sesi Sedang Dibuka (Aktif)'}
                       </p>
+                      {currentActiveSession?.date && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-bg-secondary text-text-primary border border-border-light flex items-center gap-1">
+                          <Calendar size={11} className="text-text-muted" />
+                          {formatWIBDate(new Date(currentActiveSession.date))}
+                        </span>
+                      )}
+                      {!isCurrentSessionClosed && isCurrentSessionPast && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white flex items-center gap-1 animate-pulse">
+                          <AlertTriangle size={11} /> Sesi Lampau Belum Ditutup
+                        </span>
+                      )}
                       {isCurrentSessionClosed && currentActiveSession?.closedAt && (
                         <span className="text-[11px] text-text-muted font-medium">
                           Ditutup: {formatWIBTime(new Date(currentActiveSession.closedAt))} WIB
@@ -2267,20 +2562,41 @@ export default function GroupAttendance() {
               ) : (
                 /* ══════════════ IF ACTIVE: LIVE CLOCK-OUT & MANAGEMENT ══════════════ */
                 <>
+                  {/* Notice for Past Session Clock-out */}
+                  {!isCurrentSessionClosed && isCurrentSessionPast && (
+                    <div className="p-4 rounded-xl bg-amber-500/15 border-2 border-amber-400 text-amber-950 flex items-start gap-3">
+                      <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+                      <div className="text-xs">
+                        <p className="font-bold m-0 mb-0.5">Sesi Absensi Tanggal Lampau ({currentActiveSession?.date ? formatWIBDate(new Date(currentActiveSession.date)) : ''})</p>
+                        <p className="m-0 text-amber-900/90">
+                          Sesi ini belum ditutup pada tanggal tersebut. Anda dapat mencatat jam pulang pekerja yang terlupa atau langsung klik <strong>"Clock-Out Semua & Tutup Sesi"</strong>. Jam pulang default otomatis diset ke <strong>17:00 WIB</strong> (jam akhir shift kerja standar).
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* 1-Click Action: Bulk Clock-Out & Close Session */}
-                  <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-50 via-emerald-50 to-bg-white border-2 border-emerald-300 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className={`p-5 rounded-2xl border-2 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                    isCurrentSessionPast
+                      ? 'bg-gradient-to-r from-amber-100/90 via-amber-50 to-bg-white border-amber-300'
+                      : 'bg-gradient-to-r from-amber-50 via-emerald-50 to-bg-white border-emerald-300'
+                  }`}>
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                      <div className={`w-10 h-10 rounded-xl text-white flex items-center justify-center shrink-0 shadow-sm ${
+                        isCurrentSessionPast ? 'bg-amber-600' : 'bg-emerald-600'
+                      }`}>
                         <LogOut size={20} />
                       </div>
                       <div>
-                        <h4 className="text-sm font-extrabold text-emerald-950 m-0 flex items-center gap-2">
+                        <h4 className="text-sm font-extrabold text-text-primary m-0 flex items-center gap-2">
                           <span>Clock-Out Seluruh Pekerja & Tutup Sesi</span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 text-emerald-900">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            isCurrentSessionPast ? 'bg-amber-200 text-amber-900' : 'bg-emerald-200 text-emerald-900'
+                          }`}>
                             1-Klik
                           </span>
                         </h4>
-                        <p className="text-xs text-emerald-800/80 m-0 mt-0.5">
+                        <p className="text-xs text-text-muted m-0 mt-0.5">
                           Tandai jam pulang untuk seluruh {workersStillPresent.length} pekerja tersisa dan ubah status sesi menjadi inaktif/ditutup.
                         </p>
                       </div>
@@ -2289,10 +2605,20 @@ export default function GroupAttendance() {
                     <button
                       type="button"
                       onClick={() => {
-                        setCloseLeaveHour(formatWIBTime(new Date()));
+                        if (isCurrentSessionPast) {
+                          setCloseLeaveHour('17:00');
+                          setCloseReason('Clock-out susulan sesi lampau oleh supervisor');
+                        } else {
+                          setCloseLeaveHour(formatWIBTime(new Date()));
+                          setCloseReason('');
+                        }
                         setShowCloseModal(true);
                       }}
-                      className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 shadow-sm cursor-pointer whitespace-nowrap transition-all flex items-center justify-center gap-2 shrink-0"
+                      className={`px-4 py-2.5 rounded-xl text-xs font-bold text-white shadow-sm cursor-pointer whitespace-nowrap transition-all flex items-center justify-center gap-2 shrink-0 ${
+                        isCurrentSessionPast
+                          ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-700 hover:to-amber-600'
+                          : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600'
+                      }`}
                     >
                       <LogOut size={14} />
                       <span>Clock-Out Semua ({workersStillPresent.length}) & Tutup Sesi</span>
@@ -3518,25 +3844,43 @@ export default function GroupAttendance() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
-                <LogOut size={22} />
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${
+                isCurrentSessionPast
+                  ? 'bg-amber-100 text-amber-700 border-amber-300'
+                  : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+              }`}>
+                {isCurrentSessionPast ? <AlertTriangle size={22} /> : <LogOut size={22} />}
               </div>
               <div>
                 <h3 className="text-base font-extrabold text-text-primary m-0">
-                  Clock-Out Semua & Selesaikan Sesi
+                  {isCurrentSessionPast ? 'Clock-Out Susulan & Tutup Sesi' : 'Clock-Out Semua & Selesaikan Sesi'}
                 </h3>
                 <p className="text-xs text-text-muted m-0">
-                  Tandai jam pulang seluruh sisa pekerja dan tutup sesi ini
+                  {isCurrentSessionPast
+                    ? `Selesaikan presensi sisa pekerja untuk sesi lampau (${currentActiveSession?.date ? formatWIBDate(new Date(currentActiveSession.date)) : ''})`
+                    : 'Tandai jam pulang seluruh sisa pekerja dan tutup sesi ini'}
                 </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-950 mb-4">
-              <p className="m-0 font-bold mb-1">Konfirmasi Penutupan Sesi:</p>
-              <p className="m-0 text-emerald-800">
-                Aksi ini akan mencatat jam kepulangan untuk <strong>{workersStillPresent.length} pekerja</strong> yang tersisa dan mengubah status sesi menjadi <strong>Inaktif / Ditutup</strong>.
-              </p>
-            </div>
+            {isCurrentSessionPast ? (
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-950 mb-4 space-y-1">
+                <p className="m-0 font-bold flex items-center gap-1.5 text-amber-900">
+                  <AlertTriangle size={14} className="text-amber-600" />
+                  Clock-Out Susulan Sesi Lampau ({currentActiveSession?.date ? formatWIBDate(new Date(currentActiveSession.date)) : ''}):
+                </p>
+                <p className="m-0 text-amber-800">
+                  Sesi ini berasal dari tanggal sebelumnya. Jam pulang disetel default ke <strong>17:00 WIB</strong> (jam akhir shift kerja standar) agar absensi pekerja tercatat penuh pada tanggal tersebut.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-950 mb-4">
+                <p className="m-0 font-bold mb-1">Konfirmasi Penutupan Sesi:</p>
+                <p className="m-0 text-emerald-800">
+                  Aksi ini akan mencatat jam kepulangan untuk <strong>{workersStillPresent.length} pekerja</strong> yang tersisa dan mengubah status sesi menjadi <strong>Inaktif / Ditutup</strong>.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-3.5 mb-5">
               <div>
@@ -3550,7 +3894,9 @@ export default function GroupAttendance() {
                   className="w-full p-3 rounded-xl border border-border-light bg-bg-white text-sm font-semibold text-text-primary focus:outline-none focus:border-primary"
                 />
                 <span className="text-[11px] text-text-muted mt-1 block">
-                  Default: jam saat ini ({formatWIBTime(new Date())} WIB)
+                  {isCurrentSessionPast
+                    ? `Default: 17:00 WIB (jam shift normal sesi lampau)`
+                    : `Default: jam saat ini (${formatWIBTime(new Date())} WIB)`}
                 </span>
               </div>
 

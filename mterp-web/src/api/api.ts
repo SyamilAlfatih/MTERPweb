@@ -656,6 +656,26 @@ export const verifyLocalPurchase = async (
   return response.data;
 };
 
+export const getAttendanceSessions = async (params?: {
+  date?: string;
+  startDate?: string;
+  endDate?: string;
+  projectId?: string;
+  supervisorId?: string;
+  status?: string;
+  unclosedOnly?: boolean | string;
+  page?: number;
+  limit?: number;
+}) => {
+  const response = await api.get('/attendance-session', { params });
+  return response.data;
+};
+
+export const getUnclosedAttendanceSessions = async (params?: { supervisorId?: string; projectId?: string }) => {
+  const response = await api.get('/attendance-session/unclosed', { params });
+  return response.data;
+};
+
 export default api;
 
 
