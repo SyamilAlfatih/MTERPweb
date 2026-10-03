@@ -148,6 +148,14 @@ export const verifyUserManually = async (id: string) => {
   return response.data;
 };
 
+export const resetUserPassword = async (
+  id: string,
+  newPassword?: string
+): Promise<{ success: boolean; msg: string; username: string; fullName: string; newPassword: string }> => {
+  const response = await api.put(`/users/${id}/reset-password`, { newPassword });
+  return response.data;
+};
+
 export const deleteUser = async (id: string) => {
   const response = await api.delete(`/users/${id}`);
   return response.data;

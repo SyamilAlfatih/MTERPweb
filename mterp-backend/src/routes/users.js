@@ -1073,6 +1073,50 @@ router.put('/:id/verify', async (req, res) => {
   }
 });
 
+// PUT /api/users/:id/reset-password - Instant password reset (owner privilege)
+router.put('/:id/reset-password', async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    let finalPassword = typeof newPassword === 'string' ? newPassword.trim() : '';
+
+    if (finalPassword) {
+      if (finalPassword.length < 6) {
+        return res.status(400).json({ msg: 'Password minimal 6 karakter' });
+      }
+    } else {
+      // Auto-generate random secure password
+      const randomNum = Math.floor(1000 + Math.random() * 9000);
+      finalPassword = `Mterp${randomNum}!`;
+    }
+
+    user.password = finalPassword;
+    if (!user.isVerified) {
+      user.isVerified = true;
+      user.otp = undefined;
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      msg: 'Password berhasil di-reset secara instan',
+      userId: user._id,
+      username: user.username,
+      fullName: user.fullName,
+      newPassword: finalPassword,
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ msg: 'Server error: ' + error.message });
+  }
+});
+
 // DELETE /api/users/:id - Delete a user
 router.delete('/:id', async (req, res) => {
   try {

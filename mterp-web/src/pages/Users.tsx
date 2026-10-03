@@ -34,6 +34,8 @@ import {
   GraduationCap,
   Award,
   Eye,
+  EyeOff,
+  Sparkles,
   RotateCcw,
   ShieldCheck,
   HeartHandshake,
@@ -49,6 +51,7 @@ import {
   updateUser, 
   updateUserRole, 
   verifyUserManually, 
+  resetUserPassword,
   deleteUser,
   exportUsersExcel,
   exportUsersCsv,
@@ -224,6 +227,20 @@ export default function Users() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  // Instant Reset Password (Owner Privilege)
+  const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
+  const [resetTargetUser, setResetTargetUser] = useState<User | null>(null);
+  const [customPassword, setCustomPassword] = useState('');
+  const [showCustomPassword, setShowCustomPassword] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [resetSuccessData, setResetSuccessData] = useState<{
+    username: string;
+    fullName: string;
+    newPassword: string;
+  } | null>(null);
+  const [hasCopiedPassword, setHasCopiedPassword] = useState(false);
+  const [hasCopiedShareText, setHasCopiedShareText] = useState(false);
 
   // Single New User Form State
   const [newUser, setNewUser] = useState({
@@ -740,6 +757,72 @@ export default function Users() {
       } else {
         alert('An unexpected error occurred');
       }
+    }
+  };
+
+  // Instant Reset Password Handlers (Owner Privilege)
+  const handleOpenResetPassword = (user: User) => {
+    setResetTargetUser(user);
+    setCustomPassword('');
+    setShowCustomPassword(false);
+    setResetSuccessData(null);
+    setHasCopiedPassword(false);
+    setHasCopiedShareText(false);
+    setIsResetPasswordModalOpen(true);
+  };
+
+  const handleGenerateRandomPassword = () => {
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    setCustomPassword(`Mterp${randomNum}!`);
+    setShowCustomPassword(true);
+  };
+
+  const handleExecuteResetPassword = async (providedPassword?: string) => {
+    if (!resetTargetUser?._id) return;
+    const pwd = providedPassword !== undefined ? providedPassword : customPassword;
+    if (pwd && pwd.trim().length < 6) {
+      alert('Password minimal 6 karakter');
+      return;
+    }
+
+    try {
+      setIsResettingPassword(true);
+      const res = await resetUserPassword(resetTargetUser._id, pwd.trim() || undefined);
+      setResetSuccessData({
+        username: res.username || resetTargetUser.username,
+        fullName: res.fullName || resetTargetUser.fullName,
+        newPassword: res.newPassword,
+      });
+      fetchUsers();
+    } catch (error: unknown) {
+      if (error instanceof AxiosError) {
+        alert(error.response?.data?.msg || 'Gagal mereset kata sandi');
+      } else {
+        alert('Terjadi kesalahan yang tidak terduga');
+      }
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
+  const handleCopyPasswordToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setHasCopiedPassword(true);
+      setTimeout(() => setHasCopiedPassword(false), 2000);
+    } catch {
+      // fallback
+    }
+  };
+
+  const handleCopyShareCredentials = async (username: string, pass: string, name: string) => {
+    const msg = `Halo ${name},\nKata sandi akun MTERP Anda telah di-reset oleh Owner:\n\n👤 Username: ${username}\n🔑 Password Baru: ${pass}\n\nSilakan login ke https://mterp.id (atau aplikasi internal) dan segera ganti kata sandi setelah masuk.`;
+    try {
+      await navigator.clipboard.writeText(msg);
+      setHasCopiedShareText(true);
+      setTimeout(() => setHasCopiedShareText(false), 2500);
+    } catch {
+      // fallback
     }
   };
 
@@ -1550,6 +1633,13 @@ export default function Users() {
                         <ShieldAlert size={16} />
                       </button>
                       <button 
+                        className="w-8 h-8 rounded-lg flex items-center justify-center bg-bg-white border-2 border-amber-500/30 text-amber-600 cursor-pointer transition-all hover:bg-amber-500 hover:text-white active:scale-95" 
+                        onClick={() => handleOpenResetPassword(user)}
+                        title="Reset Password Instan (Owner)"
+                      >
+                        <Key size={16} />
+                      </button>
+                      <button 
                         className="w-8 h-8 rounded-lg flex items-center justify-center bg-bg-white border-2 border-danger/30 text-danger cursor-pointer transition-all hover:bg-danger hover:text-white active:scale-95" 
                         onClick={() => handleDeleteUser(user._id!)}
                         title="Hapus Pekerja"
@@ -2131,7 +2221,7 @@ export default function Users() {
                       )}
 
                       {/* Sticky 3: Aksi */}
-                      <td {...getCellProps(idx, colIdx++)} className={`sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right min-w-[140px] border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] border-b focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
+                      <td {...getCellProps(idx, colIdx++)} className={`sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right min-w-[165px] border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] border-b focus:ring-2 focus:ring-primary focus:outline-none ${DENSITY_CONFIG[tableDensity].td}`}>
                         <div className="flex items-center justify-end gap-1.5">
                           {!user.isVerified && (
                             <button 
@@ -2155,6 +2245,13 @@ export default function Users() {
                             title="Edit Data"
                           >
                             <Edit size={14} />
+                          </button>
+                          <button 
+                            className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-amber-500/30 text-amber-600 hover:bg-amber-500 hover:text-white cursor-pointer transition-colors"
+                            onClick={() => handleOpenResetPassword(user)}
+                            title="Reset Password Instan (Owner)"
+                          >
+                            <Key size={14} />
                           </button>
                           <button 
                             className="w-7 h-7 rounded flex items-center justify-center bg-bg-white border border-danger/30 text-danger hover:bg-danger hover:text-white cursor-pointer transition-colors"
@@ -2804,6 +2901,30 @@ export default function Users() {
                 </div>
               </div>
 
+              {/* Reset Password Instan Section */}
+              <div className="p-4 bg-amber-50/70 border-2 border-amber-200 rounded-xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0">
+                    <Key size={16} />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-amber-950 uppercase block">Reset Password Pengguna</span>
+                    <span className="text-[11px] text-amber-800">Ubah kata sandi secara instan tanpa OTP</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedUser) {
+                      handleOpenResetPassword(selectedUser);
+                    }
+                  }}
+                  className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider rounded-lg transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+                >
+                  Reset Sekarang
+                </button>
+              </div>
+
               <div className="flex gap-3 pt-3">
                 <button 
                   type="button" 
@@ -3362,6 +3483,247 @@ export default function Users() {
                 <button type="button" className="flex-1 py-4 bg-bg-white border-2 border-border-light rounded-xl text-sm font-black text-text-secondary cursor-pointer hover:bg-bg-secondary uppercase tracking-wider" onClick={() => setIsEditRoleModalOpen(false)}>Batal</button>
                 <button type="button" className="flex-[2] py-4 bg-primary text-white border-none rounded-xl text-sm font-black cursor-pointer shadow-lg shadow-primary/20 hover:bg-primary/90 uppercase tracking-wider" onClick={handleSaveRole}>Simpan Role</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* MODAL: INSTANT PASSWORD RESET (OWNER)      */}
+      {/* ========================================== */}
+      {isResetPasswordModalOpen && resetTargetUser && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[1050] p-4 sm:p-0 animate-in fade-in duration-200" 
+          onClick={() => {
+            if (!isResettingPassword) {
+              setIsResetPasswordModalOpen(false);
+            }
+          }}
+        >
+          <div 
+            className="bg-bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-[500px] shadow-2xl overflow-hidden flex flex-col" 
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-5 border-b-2 border-border-light bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white flex justify-between items-center sticky top-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center shrink-0 font-black shadow-md">
+                  <Key size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black uppercase tracking-tight m-0">Reset Password Instan</h3>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-200 border border-amber-300/30">
+                      Owner Only
+                    </span>
+                  </div>
+                  <span className="text-xs text-amber-100">Bypass verifikasi email / OTP pengguna</span>
+                </div>
+              </div>
+              <button 
+                type="button"
+                className="w-8 h-8 rounded-full bg-white/10 border-none flex items-center justify-center text-white cursor-pointer hover:bg-white/20 transition-colors" 
+                onClick={() => setIsResetPasswordModalOpen(false)}
+                disabled={isResettingPassword}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* User Target Card */}
+              <div className="p-3.5 bg-slate-50 border-2 border-border-light rounded-2xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-black text-sm shrink-0">
+                    {resetTargetUser.fullName?.charAt(0)?.toUpperCase() || 'U'}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-black text-text-primary truncate m-0">{resetTargetUser.fullName}</h4>
+                    <div className="flex items-center gap-2 text-xs text-text-muted mt-0.5">
+                      <span className="font-mono">@{resetTargetUser.username}</span>
+                      <span>•</span>
+                      <span className="truncate">{resetTargetUser.email}</span>
+                    </div>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-primary-bg text-primary shrink-0">
+                  {resetTargetUser.role}
+                </span>
+              </div>
+
+              {/* SUCCESS VIEW */}
+              {resetSuccessData ? (
+                <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="p-4 bg-emerald-50 border-2 border-emerald-300 rounded-2xl flex items-start gap-3">
+                    <CheckCircle className="text-emerald-600 shrink-0 mt-0.5" size={20} />
+                    <div className="text-xs text-emerald-900">
+                      <p className="font-black text-sm text-emerald-800 m-0">Kata Sandi Berhasil Diperbarui!</p>
+                      <p className="mt-1 m-0 text-emerald-700">
+                        Akun pengguna otomatis diaktifkan dan kata sandi baru telah tersimpan di sistem.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Password Display Box */}
+                  <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3 shadow-inner">
+                    <div className="flex items-center justify-between text-xs text-slate-400 font-bold uppercase tracking-wider">
+                      <span>Kredensial Baru</span>
+                      <span className="text-[10px] text-amber-400 font-mono">Simpan & Berikan ke Pengguna</span>
+                    </div>
+                    
+                    <div className="bg-slate-800/90 p-3 rounded-xl border border-slate-700 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Username:</span>
+                        <span className="font-mono font-bold text-slate-200 select-all">{resetSuccessData.username}</span>
+                      </div>
+                      <div className="h-px bg-slate-700" />
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-400">Password Baru:</span>
+                        <span className="font-mono font-black text-base text-amber-300 tracking-wider select-all">
+                          {resetSuccessData.newPassword}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyPasswordToClipboard(resetSuccessData.newPassword)}
+                        className="flex-1 py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                      >
+                        {hasCopiedPassword ? <Check size={15} /> : <Copy size={15} />}
+                        <span>{hasCopiedPassword ? 'Password Tersalin!' : 'Salin Password'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCopyShareCredentials(resetSuccessData.username, resetSuccessData.newPassword, resetSuccessData.fullName)}
+                        className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-slate-700 active:scale-95"
+                        title="Salin pesan siap kirim (WhatsApp/SMS)"
+                      >
+                        {hasCopiedShareText ? <Check size={15} className="text-emerald-400" /> : <FileText size={15} />}
+                        <span>{hasCopiedShareText ? 'Pesan Tersalin!' : 'Format WA'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsResetPasswordModalOpen(false)}
+                    className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+                  >
+                    Selesai & Tutup
+                  </button>
+                </div>
+              ) : (
+                /* FORM VIEW */
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleExecuteResetPassword();
+                  }} 
+                  className="space-y-4"
+                >
+                  {/* Quick Reset Option */}
+                  <div className="p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl flex flex-col gap-2.5">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={16} className="text-amber-600" />
+                      <span className="text-xs font-black uppercase text-amber-900 tracking-wide">
+                        Rekomendasi Cepat: Auto-Generate
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-800/90 m-0">
+                      Sistem akan membuat kata sandi acak yang aman secara instan (contoh: <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono font-bold text-amber-900">Mterp2841!</code>) dan langsung menampilkannya untuk disalin.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={isResettingPassword}
+                      onClick={() => handleExecuteResetPassword('')}
+                      className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isResettingPassword ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>Memproses Reset...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw size={15} />
+                          <span>⚡ Reset Otomatis Sekarang</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="relative flex items-center justify-center my-3">
+                    <div className="border-t border-border-light w-full" />
+                    <span className="bg-bg-white px-3 text-[10px] font-black uppercase tracking-wider text-text-muted absolute">
+                      atau tentukan password manual
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[10px] font-black text-text-muted uppercase">
+                        Password Baru Kustom
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleGenerateRandomPassword}
+                        className="text-[10px] font-bold text-primary hover:underline cursor-pointer flex items-center gap-1"
+                      >
+                        <Sparkles size={11} /> Buat Acak
+                      </button>
+                    </div>
+                    
+                    <div className="relative">
+                      <input 
+                        type={showCustomPassword ? 'text' : 'password'}
+                        placeholder="Minimal 6 karakter..."
+                        value={customPassword}
+                        onChange={(e) => setCustomPassword(e.target.value)}
+                        className="w-full pl-3.5 pr-10 py-3 border-2 border-border-light rounded-xl font-bold text-text-primary bg-bg-white focus:border-amber-500 outline-none text-sm font-mono"
+                        minLength={6}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomPassword(!showCustomPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary cursor-pointer p-1"
+                      >
+                        {showCustomPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                    <span className="text-[11px] text-text-muted mt-1 block">
+                      Kosongkan untuk auto-generate atau masukkan password khusus.
+                    </span>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button 
+                      type="button" 
+                      disabled={isResettingPassword}
+                      className="flex-1 py-3.5 bg-bg-white border-2 border-border-light rounded-xl text-xs font-black text-text-secondary cursor-pointer hover:bg-bg-secondary uppercase tracking-wider disabled:opacity-50" 
+                      onClick={() => setIsResetPasswordModalOpen(false)}
+                    >
+                      Batal
+                    </button>
+                    <button 
+                      type="submit" 
+                      disabled={isResettingPassword || (customPassword.length > 0 && customPassword.length < 6)}
+                      className="flex-[2] py-3.5 bg-amber-600 text-white border-none rounded-xl text-xs font-black cursor-pointer hover:bg-amber-700 uppercase tracking-wider shadow-lg shadow-amber-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isResettingPassword ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>Mereset...</span>
+                        </>
+                      ) : (
+                        <span>Simpan Password</span>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>
