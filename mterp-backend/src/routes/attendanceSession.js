@@ -666,4 +666,73 @@ router.post(
   }
 );
 
+// ─── DELETE /api/attendance-session/:id ─────────────────────────────────────
+// Eliminate an attendance session and its linked worker attendance records (e.g. accidental double clock-in)
+router.delete(
+  '/:id',
+  auth,
+  authorize(...SUPERVISOR_ROLES),
+  async (req, res) => {
+    try {
+      const session = await AttendanceSession.findById(req.params.id);
+      if (!session) {
+        return res.status(404).json({ msg: 'Sesi absensi tidak ditemukan' });
+      }
+
+      // Check permission: creator of session OR management roles
+      const currentUserId = (req.user._id || req.user.userId || '').toString();
+      const isCreator = currentUserId && session.supervisorId.toString() === currentUserId;
+      const isAdminOrDirector = [
+        'owner', 'president_director', 'operational_director',
+        'director', 'admin_project'
+      ].includes(req.user.role);
+
+      if (!isCreator && !isAdminOrDirector) {
+        return res.status(403).json({
+          msg: 'Anda hanya dapat menghapus sesi absensi yang Anda buat sendiri.'
+        });
+      }
+
+      // Safety check: prevent deleting if any attendance record has already been Paid
+      const paidCount = await Attendance.countDocuments({
+        sessionId: session._id,
+        paymentStatus: 'Paid',
+      });
+      if (paidCount > 0) {
+        return res.status(400).json({
+          msg: `Tidak dapat menghapus sesi: ${paidCount} data absensi pekerja sudah berstatus Dibayar (Paid).`
+        });
+      }
+
+      // Delete attendance records linked to this session
+      const deleteAttendanceResult = await Attendance.deleteMany({
+        sessionId: session._id,
+      });
+
+      // Remove photo file from disk if locally stored
+      if (session.photoUrl && session.photoUrl.startsWith('uploads/')) {
+        const fullPhotoPath = path.join(__dirname, '../../', session.photoUrl);
+        if (fs.existsSync(fullPhotoPath)) {
+          fs.unlink(fullPhotoPath, (err) => {
+            if (err) console.warn('[SessionDelete] Failed to remove photo file:', err.message);
+          });
+        }
+      }
+
+      // Delete the session document itself
+      await AttendanceSession.deleteOne({ _id: session._id });
+
+      res.json({
+        msg: 'Sesi absensi dan catatan absensi pekerja terkait berhasil dihapus.',
+        sessionId: session._id,
+        deletedAttendanceCount: deleteAttendanceResult.deletedCount,
+      });
+    } catch (error) {
+      console.error('Delete attendance session error:', error);
+      res.status(500).json({ msg: 'Server error saat menghapus sesi absensi' });
+    }
+  }
+);
+
 module.exports = router;
+

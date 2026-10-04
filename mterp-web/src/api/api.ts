@@ -711,6 +711,12 @@ export const getUnclosedAttendanceSessions = async (params?: { supervisorId?: st
   return response.data;
 };
 
+export const deleteAttendanceSession = async (sessionId: string) => {
+  const response = await api.delete(`/attendance-session/${sessionId}`);
+  return response.data;
+};
+
 export default api;
+
 
 

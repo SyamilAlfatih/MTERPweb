@@ -7,9 +7,10 @@ import {
   FileText, DollarSign, CalendarOff, Receipt, Shield,
   Upload, Calendar, MapPin, Timer, CheckCircle2, UserCheck,
   TrendingUp, ShieldCheck, ArrowRight, Info, PlusCircle, AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 import { PhotoView } from 'react-photo-view';
-import api from '../api/api';
+import api, { deleteAttendanceSession } from '../api/api';
 import { Card, Button, Alert, Input, CostInput } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import { useImageCompression } from '../utils/useImageCompression';
@@ -28,6 +29,7 @@ import {
   getCachedTodaySessions,
   addOfflineWorker,
 } from '../services/attendanceSyncEngine';
+import { attendanceOfflineDb } from '../services/attendanceOfflineDb';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -172,6 +174,10 @@ export default function GroupAttendance() {
   const [sessionStatusFilter, setSessionStatusFilter] = useState<'all' | 'active' | 'closed'>('all');
   const [currentActiveSession, setCurrentActiveSession] = useState<ActiveSession | null>(null);
   const skipProjectFetchRef = useRef(false);
+
+  // ── Eliminate / Delete Session State ──
+  const [sessionToDelete, setSessionToDelete] = useState<ActiveSession | null>(null);
+  const [deletingSession, setDeletingSession] = useState(false);
 
   // ── Previous / Unclosed Sessions Navigation State ──
   const [sessionDateMode, setSessionDateMode] = useState<'today' | 'yesterday' | 'unclosed' | 'custom'>('today');
@@ -1275,6 +1281,55 @@ export default function GroupAttendance() {
     fetchTodaySessions();
   };
 
+  const canDeleteSession = useCallback((session: any) => {
+    if (!user || !session) return false;
+    const adminRoles = ['owner', 'president_director', 'operational_director', 'director', 'admin_project'];
+    if (adminRoles.includes(user.role)) return true;
+    const supervisorId = typeof session.supervisorId === 'object' ? session.supervisorId?._id : session.supervisorId;
+    return String(supervisorId) === String(user._id);
+  }, [user]);
+
+  const handleConfirmDeleteSession = async () => {
+    if (!sessionToDelete) return;
+    setDeletingSession(true);
+    try {
+      const isLocalSession = sessionToDelete._id?.startsWith('offline_');
+      if (isLocalSession) {
+        await attendanceOfflineDb.cachedTodaySessions.delete(sessionToDelete._id);
+        await attendanceOfflineDb.offlineAttendance.where('localUuid').equals(sessionToDelete._id).delete();
+        await attendanceOfflineDb.offlineAttendance.where('targetSessionId').equals(sessionToDelete._id).delete();
+      } else {
+        await deleteAttendanceSession(sessionToDelete._id);
+      }
+
+      setAlertData({
+        visible: true,
+        type: 'success',
+        title: 'Sesi Dieliminasi',
+        message: 'Sesi absensi dan catatan clock-in pekerja terkait berhasil dihapus.',
+      });
+
+      if (result && result.session._id === sessionToDelete._id) {
+        setResult(null);
+        setCurrentActiveSession(null);
+        setStep(1);
+      }
+
+      await fetchTodaySessions();
+      setSessionToDelete(null);
+    } catch (err: any) {
+      console.error('Failed to delete attendance session:', err);
+      setAlertData({
+        visible: true,
+        type: 'error',
+        title: 'Gagal Menghapus Sesi',
+        message: err.response?.data?.msg || err.message || 'Terjadi kesalahan saat menghapus sesi absensi.',
+      });
+    } finally {
+      setDeletingSession(false);
+    }
+  };
+
   const resetAll = () => {
     setStep(1);
     setResult(null);
@@ -2290,8 +2345,8 @@ export default function GroupAttendance() {
                             )}
                           </div>
 
-                          {/* Action Button */}
-                          <div className="shrink-0 self-center">
+                          {/* Action Buttons */}
+                          <div className="shrink-0 self-center flex items-center gap-2">
                             {isClosed ? (
                               <button
                                 onClick={() => handleResumeSession(session)}
@@ -2335,6 +2390,21 @@ export default function GroupAttendance() {
                                     <ChevronRight size={14} />
                                   </>
                                 )}
+                              </button>
+                            )}
+
+                            {/* Eliminate / Delete Duplicate Session Button */}
+                            {canDeleteSession(session) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSessionToDelete(session);
+                                }}
+                                title="Eliminasi / Hapus Sesi (Jika Clock-In Ganda)"
+                                className="p-2.5 rounded-xl text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-all cursor-pointer shadow-xs active:scale-95 flex items-center justify-center min-h-[40px] min-w-[40px]"
+                              >
+                                <Trash2 size={16} />
                               </button>
                             )}
                           </div>
@@ -2404,10 +2474,22 @@ export default function GroupAttendance() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {canDeleteSession(currentActiveSession || (result as any)?.session) && (
+                    <button
+                      type="button"
+                      onClick={() => setSessionToDelete(currentActiveSession || (result as any)?.session)}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 min-h-[40px]"
+                      title="Eliminasi / batalkan sesi ini jika terjadi clock-in ganda"
+                    >
+                      <Trash2 size={14} />
+                      <span>Hapus Sesi</span>
+                    </button>
+                  )}
+
                   <button
                     id="back-to-sessions-btn"
                     onClick={handleBackToSessions}
-                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-text-primary bg-bg-secondary hover:bg-border-light border border-border-light transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-text-primary bg-bg-secondary hover:bg-border-light border border-border-light transition-all flex items-center gap-1.5 cursor-pointer shadow-sm min-h-[40px]"
                     title="Kembali ke daftar sesi hari ini"
                   >
                     <ChevronLeft size={14} />
@@ -3928,6 +4010,78 @@ export default function GroupAttendance() {
                 variant="danger"
                 icon={LogOut}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Konfirmasi Eliminasi Sesi Absensi ── */}
+      {sessionToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-bg-white rounded-2xl max-w-md w-full border border-border-light shadow-2xl p-6 relative animate-zoom-in">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0 shadow-xs">
+                <Trash2 size={24} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-black text-text-primary m-0 mb-1">
+                  Eliminasi / Hapus Sesi Absensi?
+                </h3>
+                <p className="text-xs text-text-muted m-0 leading-relaxed">
+                  Fitur ini digunakan jika terjadi clock-in ganda (dua kali) atau kekeliruan sesi oleh supervisor.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200/80 text-xs text-amber-900 mb-5 space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                <span>Perhatian & Konsekuensi:</span>
+              </div>
+              <ul className="list-disc pl-4 space-y-1 text-amber-800">
+                <li>
+                  Catatan clock-in untuk{' '}
+                  <strong className="text-amber-950">
+                    {(sessionToDelete.workerIds?.length || 0) + (sessionToDelete.lateWorkerIds?.length || 0)} pekerja
+                  </strong>{' '}
+                  pada sesi ini akan ikut dibatalkan/dihapus.
+                </li>
+                <li>
+                  Foto bukti dan riwayat sesi ini akan dihapus secara permanen.
+                </li>
+                <li>
+                  Pekerja yang dibatalkan dapat di-clock-in kembali secara benar pada sesi baru.
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={deletingSession}
+                onClick={() => setSessionToDelete(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-text-primary bg-bg-secondary hover:bg-border-light border border-border-light transition-all cursor-pointer min-h-[44px]"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={deletingSession}
+                onClick={handleConfirmDeleteSession}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 active:scale-95 transition-all flex items-center gap-2 cursor-pointer shadow-sm min-h-[44px] disabled:opacity-50"
+              >
+                {deletingSession ? (
+                  <>
+                    <Loader size={15} className="animate-spin" />
+                    <span>Menghapus...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={15} />
+                    <span>Ya, Eliminasi Sesi</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
