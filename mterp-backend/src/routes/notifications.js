@@ -1,7 +1,8 @@
 const express = require('express');
-const { Notification } = require('../models');
+const { Notification, PushSubscription } = require('../models');
 const { auth } = require('../middleware/auth');
 const { archiveNotifications } = require('../utils/notificationLog');
+const { getVapidPublicKey, sendPushToUsers, detectDeviceType } = require('../utils/webPush');
 
 const router = express.Router();
 
@@ -131,4 +132,117 @@ router.delete('/clear', auth, async (req, res) => {
   }
 });
 
+// ── Web Push Notification Endpoints ──────────────────────────────────────────
+
+// GET /api/notifications/vapid-public-key - Return public key for client registration
+router.get('/vapid-public-key', auth, (req, res) => {
+  const publicKey = getVapidPublicKey();
+  if (!publicKey) {
+    return res.status(503).json({ msg: 'WebPush is not configured on this server' });
+  }
+  res.json({ publicKey });
+});
+
+// POST /api/notifications/push-subscribe - Register or update a device push subscription
+router.post('/push-subscribe', auth, async (req, res) => {
+  try {
+    const { endpoint, keys } = req.body;
+    if (!endpoint || !keys || !keys.p256dh || !keys.auth) {
+      return res.status(400).json({ msg: 'Invalid push subscription payload' });
+    }
+
+    const userAgent = req.headers['user-agent'] || '';
+    const deviceType = detectDeviceType(userAgent);
+
+    const subscription = await PushSubscription.findOneAndUpdate(
+      { endpoint },
+      {
+        $set: {
+          user: req.user._id,
+          endpoint,
+          keys,
+          userAgent,
+          deviceType,
+          lastActiveAt: new Date(),
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    res.status(201).json({
+      msg: 'Push subscription registered successfully',
+      subscriptionId: subscription._id,
+    });
+  } catch (error) {
+    console.error('Push subscribe error:', error);
+    res.status(500).json({ msg: 'Failed to register push subscription' });
+  }
+});
+
+// POST /api/notifications/push-unsubscribe - Remove a device push subscription
+router.post('/push-unsubscribe', auth, async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+    if (!endpoint) {
+      return res.status(400).json({ msg: 'Endpoint is required' });
+    }
+
+    await PushSubscription.deleteOne({
+      endpoint,
+      user: req.user._id,
+    });
+
+    res.json({ msg: 'Push subscription removed successfully' });
+  } catch (error) {
+    console.error('Push unsubscribe error:', error);
+    res.status(500).json({ msg: 'Failed to remove push subscription' });
+  }
+});
+
+// GET /api/notifications/push-status - Check if current user has active subscriptions
+router.get('/push-status', auth, async (req, res) => {
+  try {
+    const subscriptions = await PushSubscription.find({ recipient: req.user._id })
+      .select('deviceType userAgent lastActiveAt createdAt')
+      .lean();
+
+    // In model, field is 'user'
+    const userSubs = await PushSubscription.find({ user: req.user._id })
+      .select('deviceType userAgent lastActiveAt createdAt')
+      .lean();
+
+    res.json({
+      hasSubscriptions: userSubs.length > 0,
+      activeDevicesCount: userSubs.length,
+      devices: userSubs,
+    });
+  } catch (error) {
+    console.error('Push status error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// POST /api/notifications/test-push - Send a test push notification to current user's devices
+router.post('/test-push', auth, async (req, res) => {
+  try {
+    const results = await sendPushToUsers(req.user._id.toString(), {
+      title: '🔔 Uji Coba Notifikasi MTERP',
+      body: 'Web Push PWA berhasil dikonfigurasi! Notifikasi ERP akan muncul di perangkat ini.',
+      data: {
+        url: '/notifications',
+        timestamp: Date.now(),
+      },
+    });
+
+    res.json({
+      msg: 'Test notification triggered',
+      results,
+    });
+  } catch (error) {
+    console.error('Test push error:', error);
+    res.status(500).json({ msg: 'Failed to send test push notification' });
+  }
+});
+
 module.exports = router;
+

@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { useNotifications } from '../contexts/NotificationContext';
 import { clearReadNotifications, deleteNotification } from '../api/api';
 import type { AppNotification, NotificationType } from '../types';
+import { PushNotificationSettings } from '../components/notifications/PushNotificationSettings';
 
 /* ── Notification type → icon/color mapping ── */
 const TYPE_CONFIG: Record<NotificationType, { icon: ElementType; color: string; bg: string }> = {
@@ -218,6 +219,11 @@ export default function Notifications() {
             {clearing ? 'Clearing...' : 'Clear read'}
           </button>
         </div>
+      </div>
+
+      {/* ── Web Push PWA Settings & Soft Prompt ── */}
+      <div className="mb-6">
+        <PushNotificationSettings />
       </div>
 
       {/* ── Filter Tabs ── */}

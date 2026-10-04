@@ -341,6 +341,41 @@ export const clearReadNotifications = async () => {
   return response.data;
 };
 
+// === WEB PUSH NOTIFICATIONS API ===
+
+export const getVapidPublicKey = async (): Promise<{ publicKey: string }> => {
+  const response = await api.get('/notifications/vapid-public-key');
+  return response.data;
+};
+
+export const registerPushSubscription = async (subscription: {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}) => {
+  const response = await api.post('/notifications/push-subscribe', subscription);
+  return response.data;
+};
+
+export const unregisterPushSubscription = async (endpoint: string) => {
+  const response = await api.post('/notifications/push-unsubscribe', { endpoint });
+  return response.data;
+};
+
+export const getPushSubscriptionStatus = async (): Promise<{
+  hasSubscriptions: boolean;
+  activeDevicesCount: number;
+  devices: Array<{ deviceType: string; userAgent: string; lastActiveAt: string }>;
+}> => {
+  const response = await api.get('/notifications/push-status');
+  return response.data;
+};
+
+export const triggerTestPush = async () => {
+  const response = await api.post('/notifications/test-push');
+  return response.data;
+};
+
+
 // === PROJECT PLAN (MS Project) API ===
 
 export const getProjectPlanTasks = async (projectId: string): Promise<{ success: boolean; count: number; tasks: ProjectTask[] }> => {

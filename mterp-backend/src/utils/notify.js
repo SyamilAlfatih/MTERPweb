@@ -1,7 +1,20 @@
 const { Notification, User } = require('../models');
+const { sendPushToUsers } = require('./webPush');
 
 // Will be set by server.js after socket.io is initialized
 let io = null;
+
+/**
+ * Determine destination URL for push notification click deep linking
+ */
+function resolveNotificationUrl(doc) {
+  if (doc.data?.taskId) return `/tasks?id=${doc.data.taskId}`;
+  if (doc.data?.requestId) return `/requests`;
+  if (doc.data?.kasbonId) return `/kasbon`;
+  if (doc.data?.reportId && doc.data?.projectId) return `/projects/${doc.data.projectId}/reports`;
+  if (doc.data?.projectId) return `/projects/${doc.data.projectId}`;
+  return '/notifications';
+}
 
 /**
  * Set the socket.io instance. Called once from server.js.
@@ -11,7 +24,7 @@ function setIO(socketIO) {
 }
 
 /**
- * Create notification(s) for one or multiple recipients and emit via socket.io.
+ * Create notification(s) for one or multiple recipients and emit via socket.io & Web Push.
  * Fire-and-forget — never blocks the calling route.
  *
  * @param {Object|Object[]} opts - Single or array of { recipient, type, title, message, data }
@@ -45,11 +58,27 @@ async function notify(opts) {
       }
     }
 
+    // Dispatch Web Push notification to recipient devices (runs in background)
+    for (const doc of docs) {
+      sendPushToUsers(doc.recipient.toString(), {
+        title: doc.title,
+        body: doc.message,
+        data: {
+          id: doc._id.toString(),
+          type: doc.type,
+          url: resolveNotificationUrl(doc),
+        },
+      }).catch((err) => {
+        console.error('WebPush dispatch error:', err.message);
+      });
+    }
+
     return docs;
   } catch (err) {
     console.error('notify() error:', err.message);
   }
 }
+
 
 /**
  * Notify all users with specific roles.

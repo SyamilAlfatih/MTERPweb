@@ -18,6 +18,7 @@ const ProjectCalendar = require('./ProjectCalendar');
 const ProjectResource = require('./ProjectResource');
 const RABItem = require('./RABItem');
 const LocalPurchase = require('./LocalPurchase');
+const PushSubscription = require('./PushSubscription');
 
 module.exports = {
   User,
@@ -40,4 +41,6 @@ module.exports = {
   ProjectResource,
   RABItem,
   LocalPurchase,
+  PushSubscription,
 };
+

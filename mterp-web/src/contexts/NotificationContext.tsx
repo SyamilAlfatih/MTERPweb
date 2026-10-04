@@ -6,7 +6,17 @@ import {
   getUnreadCount,
   markNotificationRead,
   markAllNotificationsRead,
+  getPushSubscriptionStatus,
+  triggerTestPush,
 } from '../api/api';
+import {
+  isPushSupported,
+  getNotificationPermission,
+  getActiveSubscription,
+  subscribeToPush,
+  unsubscribeFromPush,
+  getIOSPWAStatus,
+} from '../services/pushNotification';
 import { useAuth } from './AuthContext';
 
 interface NotificationContextType {
@@ -18,6 +28,16 @@ interface NotificationContextType {
   markAllRead: () => Promise<void>;
   totalPages: number;
   currentPage: number;
+  // Web Push additions
+  isPushSupported: boolean;
+  isPushSubscribed: boolean;
+  pushPermission: NotificationPermission | 'unsupported';
+  activeDevicesCount: number;
+  isPushLoading: boolean;
+  togglePush: () => Promise<{ success: boolean; error?: string }>;
+  sendTestPushNotification: () => Promise<void>;
+  syncPushStatus: () => Promise<void>;
+  iosStatus: { isIOS: boolean; isStandalone: boolean };
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -25,6 +45,7 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 const SOCKET_URL = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace('/api', '')
   : 'http://localhost:3001';
+
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuth();
@@ -34,6 +55,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const socketRef = useRef<Socket | null>(null);
+
+  // Web Push state
+  const [isPushSubscribed, setIsPushSubscribed] = useState(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('default');
+  const [activeDevicesCount, setActiveDevicesCount] = useState(0);
+  const [isPushLoading, setIsPushLoading] = useState(false);
+  const [iosStatus, setIosStatus] = useState({ isIOS: false, isStandalone: false });
 
   // Fetch notifications from REST API
   const fetchNotifications = useCallback(async (page = 1) => {
@@ -139,6 +167,67 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
   }, [isAuthenticated, fetchNotifications, fetchUnreadCount]);
 
+  // Sync Push Notification status
+  const syncPushStatus = useCallback(async () => {
+    const supported = isPushSupported();
+    setIosStatus(getIOSPWAStatus());
+
+    if (!supported) {
+      setPushPermission('unsupported');
+      setIsPushSubscribed(false);
+      return;
+    }
+
+    setPushPermission(getNotificationPermission());
+
+    const activeSub = await getActiveSubscription();
+    setIsPushSubscribed(!!activeSub);
+
+    if (isAuthenticated) {
+      try {
+        const status = await getPushSubscriptionStatus();
+        setActiveDevicesCount(status.activeDevicesCount);
+      } catch (err) {
+        console.warn('[Push] Failed to query push status:', err);
+      }
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    syncPushStatus();
+  }, [syncPushStatus]);
+
+  // Toggle push notification subscription
+  const togglePush = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    setIsPushLoading(true);
+    try {
+      if (isPushSubscribed) {
+        const res = await unsubscribeFromPush();
+        if (res.success) {
+          setIsPushSubscribed(false);
+          setActiveDevicesCount((prev) => Math.max(0, prev - 1));
+        }
+        return res;
+      } else {
+        const res = await subscribeToPush();
+        if (res.success) {
+          setIsPushSubscribed(true);
+          setPushPermission('granted');
+          setActiveDevicesCount((prev) => prev + 1);
+        }
+        return res;
+      }
+    } finally {
+      setIsPushLoading(false);
+    }
+  }, [isPushSubscribed]);
+
+  // Trigger test push
+  const sendTestPushNotification = useCallback(async () => {
+    await triggerTestPush();
+  }, []);
+
+
   return (
     <NotificationContext.Provider
       value={{
@@ -150,12 +239,22 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         markAllRead,
         totalPages,
         currentPage,
+        isPushSupported: isPushSupported(),
+        isPushSubscribed,
+        pushPermission,
+        activeDevicesCount,
+        isPushLoading,
+        togglePush,
+        sendTestPushNotification,
+        syncPushStatus,
+        iosStatus,
       }}
     >
       {children}
     </NotificationContext.Provider>
   );
 }
+
 
 export function useNotifications() {
   const context = useContext(NotificationContext);

@@ -21,6 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Alert } from '../components/shared';
 import { useTranslation } from 'react-i18next';
 import { getImageUrl } from '../utils/image';
+import { PushNotificationSettings } from '../components/notifications/PushNotificationSettings';
 
 interface SettingsItem {
   id: string;
@@ -403,6 +404,12 @@ export default function Profile() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Push Notification Settings */}
+      <div className="mb-6">
+        <h2 className="text-xs font-semibold text-text-muted tracking-[1px] ml-4 mb-3">NOTIFIKASI PERANGKAT</h2>
+        <PushNotificationSettings />
       </div>
 
       {/* Settings Section */}
