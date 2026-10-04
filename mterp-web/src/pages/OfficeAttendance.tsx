@@ -34,6 +34,8 @@ import {
   PlusCircle,
   FileCheck,
   AlertTriangle,
+  ClipboardList,
+  CheckSquare,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PhotoView } from 'react-photo-view';
@@ -241,6 +243,23 @@ export default function OfficeAttendance() {
   const [permitFilePreview, setPermitFilePreview] = useState<string | null>(null);
   const [permitSubmitting, setPermitSubmitting] = useState(false);
 
+  // My Tasks State & Attendance Integration
+  interface MyOfficeTask {
+    _id: string;
+    title: string;
+    scope?: 'office' | 'project';
+    department?: string;
+    projectId?: { _id: string; nama: string };
+    status: 'pending' | 'in_progress' | 'completed';
+    priority: string;
+    dueDate?: string;
+    progress?: number;
+    subtasks?: { title: string; isCompleted: boolean }[];
+  }
+  const [myTasks, setMyTasks] = useState<MyOfficeTask[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]);
+
   // Proximity & Geofencing Calculation
   const distanceToHeadOffice = useMemo(() => {
     if (!coords) return null;
@@ -285,6 +304,7 @@ export default function OfficeAttendance() {
     loadProjects();
     fetchLocation();
     loadTeamData();
+    fetchMyTasks();
   }, []);
 
   // Stop camera on unmount
@@ -463,6 +483,43 @@ export default function OfficeAttendance() {
     } finally {
       setLoadingTeam(false);
     }
+  };
+
+  const fetchMyTasks = async () => {
+    setLoadingTasks(true);
+    try {
+      const res = await api.get('/tasks/my');
+      setMyTasks(res.data || []);
+    } catch (err) {
+      console.warn('Failed to load my tasks', err);
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
+  const handleQuickTaskStatus = async (taskId: string, newStatus: 'pending' | 'in_progress' | 'completed') => {
+    try {
+      await api.put(`/tasks/${taskId}/status`, { status: newStatus });
+      setMyTasks((prev) => prev.map((t) => (t._id === taskId ? { ...t, status: newStatus } : t)));
+    } catch (err) {
+      console.error('Failed to update task status from attendance', err);
+    }
+  };
+
+  const toggleTaskForCheckout = (task: MyOfficeTask) => {
+    const isSelected = completedTaskIds.includes(task._id);
+    let updatedIds: string[];
+    if (isSelected) {
+      updatedIds = completedTaskIds.filter((id) => id !== task._id);
+    } else {
+      updatedIds = [...completedTaskIds, task._id];
+      const contextTag = (task.scope || 'project') === 'office'
+        ? (task.department || 'Kantor')
+        : (task.projectId?.nama || 'Proyek');
+      const taskLine = `• Selesai: ${task.title} (${contextTag})`;
+      setWorkSummary((prev) => (prev ? `${prev}\n${taskLine}` : taskLine));
+    }
+    setCompletedTaskIds(updatedIds);
   };
 
   // Working Duration calculation
@@ -706,6 +763,14 @@ export default function OfficeAttendance() {
       });
       removePhoto();
       loadTeamData();
+
+      // Sync completed tasks if any were selected during checkout
+      if (completedTaskIds.length > 0) {
+        await Promise.allSettled(
+          completedTaskIds.map((id) => api.put(`/tasks/${id}/status`, { status: 'completed' }))
+        );
+        fetchMyTasks();
+      }
     } catch (err: any) {
       console.error('Check-out error:', err);
       setAlertData({
@@ -1137,6 +1202,97 @@ export default function OfficeAttendance() {
                 )}
               </div>
             )}
+
+            {/* ── Today's Tasks & Assignments Widget ─────────────────── */}
+            <Card className="p-5 sm:p-6 space-y-4 shadow-sm border-border-light bg-bg-white">
+              <div className="flex items-center justify-between pb-3 border-b border-border-light">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                    <ClipboardList size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-text-primary m-0">Tugas Hari Ini (Today's Worklist)</h3>
+                    <p className="text-xs text-text-muted m-0">Daftar penugasan operasional kantor dan proyek aktif Anda</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/tasks')}
+                  className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Buka Pusat Tugas</span>
+                  <ArrowUpRight size={13} />
+                </button>
+              </div>
+
+              {loadingTasks ? (
+                <div className="p-4 text-center text-xs text-text-muted flex items-center justify-center gap-2">
+                  <RefreshCw size={13} className="animate-spin text-primary" />
+                  <span>Memuat tugas harian Anda...</span>
+                </div>
+              ) : myTasks.length === 0 ? (
+                <div className="p-4 text-center text-xs text-text-muted bg-bg-secondary/40 rounded-xl border border-dashed border-border-light">
+                  <span>Tidak ada tugas tertunda yang ditugaskan hari ini. Kerja bagus!</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {myTasks.map((t) => (
+                    <div
+                      key={t._id}
+                      className="flex items-center justify-between p-3 rounded-xl border border-border-light bg-bg-secondary/30 hover:bg-slate-50 transition-colors gap-3"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickTaskStatus(t._id, t.status === 'in_progress' ? 'completed' : 'in_progress')}
+                          className={`w-6 h-6 rounded-md border flex items-center justify-center cursor-pointer transition-colors ${
+                            t.status === 'in_progress'
+                              ? 'bg-amber-100 border-amber-400 text-amber-700'
+                              : 'bg-white border-border-medium text-slate-400 hover:border-primary'
+                          }`}
+                          title={t.status === 'in_progress' ? 'Klik untuk tandai selesai' : 'Klik untuk mulai kerjakan'}
+                        >
+                          {t.status === 'in_progress' ? <Clock size={12} /> : <Check size={12} />}
+                        </button>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-bold text-text-primary truncate">{t.title}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                              (t.scope || 'project') === 'office'
+                                ? 'bg-indigo-50 text-indigo-700'
+                                : 'bg-emerald-50 text-emerald-700'
+                            }`}>
+                              {(t.scope || 'project') === 'office' ? `Kantor: ${t.department || 'General'}` : (t.projectId?.nama || 'Proyek')}
+                            </span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                              t.priority === 'urgent' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {t.priority}
+                            </span>
+                          </div>
+                          {t.subtasks && t.subtasks.length > 0 && (
+                            <div className="text-[11px] text-text-muted mt-0.5">
+                              Subtugas: {t.subtasks.filter(s => s.isCompleted).length}/{t.subtasks.length}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 flex items-center gap-1.5">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                          t.status === 'in_progress'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                            : 'bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}>
+                          {t.status === 'in_progress' ? 'Sedang Dikerjakan' : 'Tertunda'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
 
             {/* CHECK-IN FORM (When not checked in and not permit) */}
             {!hasCheckedIn && !isPermit && (
@@ -1591,6 +1747,40 @@ export default function OfficeAttendance() {
                     produktivitas dan dapat dilihat di halaman <strong>Log Presensi</strong>.
                   </p>
                 </div>
+
+                {/* Task Completion Checklist for Check-Out */}
+                {myTasks.length > 0 && (
+                  <div className="p-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                        <CheckSquare size={15} className="text-indigo-600" />
+                        Pilih Tugas yang Diselesaikan Hari Ini (Otomatis Masuk Laporan):
+                      </span>
+                      <span className="text-[11px] text-indigo-700 font-bold font-mono">
+                        {completedTaskIds.length} dipilih
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
+                      {myTasks.map((t) => (
+                        <label
+                          key={t._id}
+                          className="flex items-center gap-2.5 p-2 rounded-xl bg-white border border-border-light hover:border-indigo-300 transition-colors cursor-pointer text-xs"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={completedTaskIds.includes(t._id)}
+                            onChange={() => toggleTaskForCheckout(t)}
+                            className="rounded border-border-medium text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          />
+                          <span className="font-semibold text-text-primary flex-1 truncate">{t.title}</span>
+                          <span className="text-[10px] font-bold text-text-muted px-1.5 py-0.5 rounded bg-bg-secondary">
+                            {(t.scope || 'project') === 'office' ? (t.department || 'Kantor') : (t.projectId?.nama || 'Proyek')}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Work Summary Textarea with Assistant Chips */}
                 <div className="space-y-2.5">

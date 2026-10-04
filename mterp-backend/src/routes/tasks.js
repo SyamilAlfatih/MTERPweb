@@ -6,19 +6,40 @@ const { notify } = require('../utils/notify');
 
 const router = express.Router();
 
-// GET /api/tasks - Get all tasks (filtered by user role)
+const TASK_MANAGE_ROLES = [
+  'owner',
+  'president_director',
+  'operational_director',
+  'director',
+  'site_manager',
+  'supervisor',
+  'admin_project',
+  'asset_admin',
+];
+
+// GET /api/tasks - Get all tasks (filtered by user role, scope, department, project, status)
 router.get('/', auth, async (req, res) => {
   try {
-    const { projectId, status, assignedTo } = req.query;
+    const { projectId, status, assignedTo, scope, department, search } = req.query;
     let query = {};
     
+    // Filter by scope (office vs project)
+    if (scope && scope !== 'all') {
+      query.scope = scope;
+    }
+
+    // Filter by office department
+    if (department && department !== 'all') {
+      query.department = department;
+    }
+
     // Filter by project
     if (projectId) {
       query.projectId = projectId;
     }
     
     // Filter by status
-    if (status) {
+    if (status && status !== 'all') {
       query.status = status;
     }
     
@@ -26,9 +47,15 @@ router.get('/', auth, async (req, res) => {
     if (assignedTo) {
       query.assignedTo = assignedTo;
     }
+
+    // Keyword search across title and description
+    if (search && search.trim()) {
+      const regex = new RegExp(search.trim(), 'i');
+      query.$or = [{ title: regex }, { description: regex }];
+    }
     
-    // Workers can only see tasks assigned to them
-    if (req.user.role === 'worker') {
+    // Field workforce can only see tasks assigned to them
+    if (['worker', 'tukang', 'helper'].includes(req.user.role)) {
       query.assignedTo = req.user._id;
     }
     
@@ -46,12 +73,77 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// GET /api/tasks/my - Get current user's tasks for today
+// GET /api/tasks/stats - Get high-level summary statistics
+router.get('/stats', auth, async (req, res) => {
+  try {
+    let matchQuery = {};
+    if (['worker', 'tukang', 'helper'].includes(req.user.role)) {
+      matchQuery.assignedTo = req.user._id;
+    }
+
+    const now = nowWIB();
+
+    const [stats] = await Task.aggregate([
+      { $match: matchQuery },
+      {
+        $facet: {
+          byStatus: [
+            {
+              $group: {
+                _id: '$status',
+                count: { $sum: 1 },
+              },
+            },
+          ],
+          byScope: [
+            {
+              $group: {
+                _id: '$scope',
+                count: { $sum: 1 },
+              },
+            },
+          ],
+          overdue: [
+            {
+              $match: {
+                status: { $in: ['pending', 'in_progress'] },
+                dueDate: { $lt: now },
+              },
+            },
+            { $count: 'count' },
+          ],
+          total: [
+            { $count: 'count' },
+          ],
+        },
+      },
+    ]);
+
+    const statusMap = {};
+    (stats.byStatus || []).forEach(s => { statusMap[s._id] = s.count; });
+    
+    const scopeMap = {};
+    (stats.byScope || []).forEach(s => { scopeMap[s._id] = s.count; });
+
+    res.json({
+      total: stats.total?.[0]?.count || 0,
+      pending: statusMap.pending || 0,
+      in_progress: statusMap.in_progress || 0,
+      completed: statusMap.completed || 0,
+      cancelled: statusMap.cancelled || 0,
+      overdue: stats.overdue?.[0]?.count || 0,
+      office: scopeMap.office || 0,
+      project: scopeMap.project || 0,
+    });
+  } catch (error) {
+    console.error('Get task stats error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// GET /api/tasks/my - Get current user's active tasks
 router.get('/my', auth, async (req, res) => {
   try {
-    const today = nowWIB();
-    today.setUTCHours(0, 0, 0, 0); // Local time bounds handled correctly by DB queries usually, but this is safe for sorting.
-    
     const tasks = await Task.find({
       assignedTo: req.user._id,
       status: { $in: ['pending', 'in_progress'] },
@@ -67,12 +159,27 @@ router.get('/my', auth, async (req, res) => {
   }
 });
 
+// GET /api/tasks/users/list - Get list of users for assignment
+router.get('/users/list', auth, authorize(...TASK_MANAGE_ROLES), async (req, res) => {
+  try {
+    const users = await User.find({ isVerified: true })
+      .select('_id fullName role username position')
+      .sort({ fullName: 1 })
+      .lean();
+    
+    res.json(users);
+  } catch (error) {
+    console.error('Get users error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 // GET /api/tasks/:id - Get single task
 router.get('/:id', auth, async (req, res) => {
   try {
     const task = await Task.findById(req.params.id)
       .populate('projectId', 'nama lokasi')
-      .populate('assignedTo', 'fullName role')
+      .populate('assignedTo', 'fullName role position')
       .populate('assignedBy', 'fullName')
       .lean();
     
@@ -87,15 +194,42 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// POST /api/tasks - Create task (owner, director, supervisor)
-router.post('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+// POST /api/tasks - Create task (office or project)
+router.post('/', auth, authorize(...TASK_MANAGE_ROLES), async (req, res) => {
   try {
-    const { title, description, projectId, assignedTo, priority, dueDate, workItemId } = req.body;
+    const {
+      title,
+      description,
+      scope = 'project',
+      department,
+      officeLocation,
+      projectId,
+      assignedTo,
+      priority,
+      dueDate,
+      workItemId,
+      subtasks,
+      progress,
+    } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ msg: 'Title is required' });
+    }
     
-    // Verify project exists
-    const project = await Project.findById(projectId);
-    if (!project) {
-      return res.status(404).json({ msg: 'Project not found' });
+    // Verify project exists if scope is project or if projectId is supplied
+    if (scope === 'project') {
+      if (!projectId) {
+        return res.status(400).json({ msg: 'Project ID is required for project tasks' });
+      }
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ msg: 'Project not found' });
+      }
+    } else if (projectId) {
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ msg: 'Referenced project not found' });
+      }
     }
     
     // Verify assigned user exists (if provided)
@@ -107,14 +241,19 @@ router.post('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin
     }
     
     const task = new Task({
-      title,
+      title: title.trim(),
       description,
-      projectId,
+      scope: scope === 'office' ? 'office' : 'project',
+      department: scope === 'office' ? (department || 'General') : undefined,
+      officeLocation: officeLocation || (scope === 'office' ? 'Head Office PT Mega Tama Enerco' : undefined),
+      projectId: projectId || undefined,
       assignedTo: assignedTo || undefined,
       assignedBy: req.user._id,
       priority: priority || 'normal',
       dueDate: parseWIBDate(dueDate) || undefined,
-      workItemId,
+      workItemId: workItemId || undefined,
+      progress: typeof progress === 'number' ? Math.min(100, Math.max(0, progress)) : 0,
+      subtasks: Array.isArray(subtasks) ? subtasks : [],
     });
     
     await task.save();
@@ -128,12 +267,15 @@ router.post('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin
 
     // Notify the assigned user (fire-and-forget)
     if (assignedTo) {
+      const locationLabel = task.scope === 'office'
+        ? `Kantor (${task.department || 'Operasional'})`
+        : (task.projectId?.nama || 'Proyek');
       notify({
         recipient: assignedTo,
         type: 'task_assigned',
         title: 'Task Assigned',
-        message: `You have been assigned "${title}" at ${task.projectId?.nama || 'a project'}`,
-        data: { taskId: task._id, projectId: projectId },
+        message: `You have been assigned "${task.title}" at ${locationLabel}`,
+        data: { taskId: task._id, projectId: task.projectId?._id, scope: task.scope },
       }).catch(console.error);
     }
   } catch (error) {
@@ -151,35 +293,79 @@ router.put('/:id', auth, async (req, res) => {
       return res.status(404).json({ msg: 'Task not found' });
     }
     
-    // Workers can only update status of their own tasks
-    if (req.user.role === 'worker') {
+    const isFieldWorker = ['worker', 'tukang', 'helper'].includes(req.user.role);
+
+    // Field workers can only update status/progress/subtasks of their own tasks
+    if (isFieldWorker) {
       if (task.assignedTo?.toString() !== req.user._id.toString()) {
         return res.status(403).json({ msg: 'Not authorized' });
       }
-      // Workers can only update status
-      const { status } = req.body;
+      const { status, progress, subtasks, notes } = req.body;
       if (status) {
         task.status = status;
         if (status === 'completed') {
           task.completedAt = nowWIB();
+          task.progress = 100;
         }
       }
+      if (typeof progress === 'number') {
+        task.progress = Math.min(100, Math.max(0, progress));
+        if (task.progress === 100 && task.status !== 'completed') {
+          task.status = 'completed';
+          task.completedAt = nowWIB();
+        }
+      }
+      if (Array.isArray(subtasks)) {
+        task.subtasks = subtasks;
+      }
+      if (notes !== undefined) task.notes = notes;
     } else {
-      // Supervisors and above can update anything
-      const { title, description, assignedTo, status, priority, dueDate, notes } = req.body;
+      // Management and supervisors can update all fields
+      const {
+        title,
+        description,
+        scope,
+        department,
+        officeLocation,
+        projectId,
+        assignedTo,
+        status,
+        priority,
+        dueDate,
+        notes,
+        progress,
+        subtasks,
+        workItemId,
+      } = req.body;
       
-      if (title) task.title = title;
+      if (title) task.title = title.trim();
       if (description !== undefined) task.description = description;
+      if (scope) task.scope = scope;
+      if (department !== undefined) task.department = department;
+      if (officeLocation !== undefined) task.officeLocation = officeLocation;
+      if (projectId !== undefined) task.projectId = projectId || undefined;
       if (assignedTo !== undefined) task.assignedTo = assignedTo || undefined;
-      if (status) {
-        task.status = status;
-        if (status === 'completed') {
-          task.completedAt = nowWIB();
-        }
-      }
       if (priority) task.priority = priority;
       if (dueDate !== undefined) task.dueDate = parseWIBDate(dueDate) || undefined;
       if (notes !== undefined) task.notes = notes;
+      if (workItemId !== undefined) task.workItemId = workItemId || undefined;
+
+      if (typeof progress === 'number') {
+        task.progress = Math.min(100, Math.max(0, progress));
+      }
+      if (Array.isArray(subtasks)) {
+        task.subtasks = subtasks;
+      }
+
+      if (status) {
+        task.status = status;
+        if (status === 'completed') {
+          task.completedAt = nowWIB();
+          task.progress = 100;
+        } else if (status === 'in_progress' && task.progress === 0) {
+          task.progress = 25;
+        }
+      }
     }
     
     await task.save();
@@ -197,11 +383,11 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // PUT /api/tasks/:id/assign - Assign task to user
-router.put('/:id/assign', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.put('/:id/assign', auth, authorize(...TASK_MANAGE_ROLES), async (req, res) => {
   try {
     const { assignedTo } = req.body;
     
-    // Verify user exists
+    // Verify user exists if provided
     if (assignedTo) {
       const user = await User.findById(assignedTo);
       if (!user) {
@@ -231,12 +417,15 @@ router.put('/:id/assign', auth, authorize('owner', 'director', 'supervisor', 'as
 
     // Notify the new assignee (fire-and-forget)
     if (assignedTo) {
+      const locationLabel = task.scope === 'office'
+        ? `Kantor (${task.department || 'Operasional'})`
+        : (task.projectId?.nama || 'Proyek');
       notify({
         recipient: assignedTo,
         type: 'task_assigned',
         title: 'Task Assigned',
-        message: `You have been assigned "${task.title}" at ${task.projectId?.nama || 'a project'}`,
-        data: { taskId: task._id, projectId: task.projectId?._id },
+        message: `You have been assigned "${task.title}" at ${locationLabel}`,
+        data: { taskId: task._id, projectId: task.projectId?._id, scope: task.scope },
       }).catch(console.error);
     }
   } catch (error) {
@@ -248,7 +437,7 @@ router.put('/:id/assign', auth, authorize('owner', 'director', 'supervisor', 'as
 // PUT /api/tasks/:id/status - Quick status update
 router.put('/:id/status', auth, async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, progress } = req.body;
     
     const task = await Task.findById(req.params.id);
     
@@ -256,14 +445,20 @@ router.put('/:id/status', auth, async (req, res) => {
       return res.status(404).json({ msg: 'Task not found' });
     }
     
-    // Workers can only update their own tasks
-    if (req.user.role === 'worker' && task.assignedTo?.toString() !== req.user._id.toString()) {
+    const isFieldWorker = ['worker', 'tukang', 'helper'].includes(req.user.role);
+    // Field workers can only update their own tasks
+    if (isFieldWorker && task.assignedTo?.toString() !== req.user._id.toString()) {
       return res.status(403).json({ msg: 'Not authorized' });
     }
     
     task.status = status;
     if (status === 'completed') {
       task.completedAt = nowWIB();
+      task.progress = 100;
+    } else if (typeof progress === 'number') {
+      task.progress = Math.min(100, Math.max(0, progress));
+    } else if (status === 'in_progress' && task.progress === 0) {
+      task.progress = 25;
     }
     
     await task.save();
@@ -280,7 +475,7 @@ router.put('/:id/status', auth, async (req, res) => {
         type: 'task_completed',
         title: 'Task Completed',
         message: `"${task.title}" has been marked as completed`,
-        data: { taskId: task._id, projectId: task.projectId?._id },
+        data: { taskId: task._id, projectId: task.projectId?._id, scope: task.scope },
       }).catch(console.error);
     }
   } catch (error) {
@@ -290,7 +485,7 @@ router.put('/:id/status', auth, async (req, res) => {
 });
 
 // DELETE /api/tasks/:id - Delete task
-router.delete('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
+router.delete('/:id', auth, authorize(...TASK_MANAGE_ROLES), async (req, res) => {
   try {
     const task = await Task.findByIdAndDelete(req.params.id);
     
@@ -305,19 +500,5 @@ router.delete('/:id', auth, authorize('owner', 'director', 'supervisor', 'asset_
   }
 });
 
-// GET /api/tasks/users/list - Get list of users for assignment
-router.get('/users/list', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'), async (req, res) => {
-  try {
-    const users = await User.find({ isVerified: true })
-      .select('_id fullName role username')
-      .sort({ fullName: 1 })
-      .lean();
-    
-    res.json(users);
-  } catch (error) {
-    console.error('Get users error:', error);
-    res.status(500).json({ msg: 'Server error' });
-  }
-});
-
 module.exports = router;
+
