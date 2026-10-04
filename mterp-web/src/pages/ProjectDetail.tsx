@@ -309,6 +309,10 @@ export default function ProjectDetail() {
       completed: 'pending',
     };
     const nextStatus = statusFlow[currentStatus] || 'pending';
+    if (nextStatus === 'completed') {
+      navigate(`/tasks?projectId=${id}`);
+      return;
+    }
     try {
       await api.put(`/tasks/${taskId}/status`, { status: nextStatus });
       setProjectTasks(prev => prev.map(t => t._id === taskId ? { ...t, status: nextStatus } : t));

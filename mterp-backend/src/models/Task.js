@@ -13,7 +13,32 @@ const subtaskSchema = new mongoose.Schema({
   completedAt: Date,
 }, { _id: true });
 
+const completionEvidenceSchema = new mongoose.Schema({
+  photoUrl: {
+    type: String,
+    required: true,
+  },
+  photos: [{
+    type: String,
+  }],
+  notes: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  submittedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+  },
+  submittedAt: {
+    type: Date,
+    default: Date.now,
+  },
+}, { _id: false });
+
 const taskSchema = new mongoose.Schema({
+
   title: {
     type: String,
     required: true,
@@ -84,6 +109,7 @@ const taskSchema = new mongoose.Schema({
   subtasks: [subtaskSchema],
   dueDate: Date,
   completedAt: Date,
+  completionEvidence: completionEvidenceSchema,
   notes: String,
   createdAt: {
     type: Date,

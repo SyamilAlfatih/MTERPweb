@@ -14,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
+import { GlobalNearDeadlineWidget } from '../tasks/GlobalNearDeadlineWidget';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useSidebar } from '../../contexts/SidebarContext';
@@ -332,6 +333,9 @@ export default function AppLayout() {
 
       {/* Mobile bottom nav */}
       <MobileNav />
+
+      {/* Global Near-Deadline Floating Alert & Evidence Submission */}
+      <GlobalNearDeadlineWidget />
     </div>
   );
 }

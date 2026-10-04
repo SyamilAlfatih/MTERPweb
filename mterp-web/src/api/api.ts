@@ -716,6 +716,19 @@ export const deleteAttendanceSession = async (sessionId: string) => {
   return response.data;
 };
 
+// === TASK MANAGEMENT API ===
+export const completeTaskWithEvidence = async (taskId: string, formData: FormData) => {
+  const response = await api.post(`/tasks/${taskId}/complete`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const sendTaskReminder = async (taskId: string) => {
+  const response = await api.post(`/tasks/${taskId}/remind`);
+  return response.data;
+};
+
 export default api;
 
 

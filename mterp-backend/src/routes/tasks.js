@@ -1,6 +1,10 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const sharp = require('sharp');
 const { Task, Project, User } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
+const upload = require('../middleware/upload');
 const { parseWIBDate, nowWIB } = require('../utils/date');
 const { notify } = require('../utils/notify');
 
@@ -63,6 +67,7 @@ router.get('/', auth, async (req, res) => {
       .populate('projectId', 'nama lokasi')
       .populate('assignedTo', 'fullName role')
       .populate('assignedBy', 'fullName')
+      .populate('completionEvidence.submittedBy', 'fullName role')
       .sort({ dueDate: 1, createdAt: -1 })
       .lean();
     
@@ -181,6 +186,7 @@ router.get('/:id', auth, async (req, res) => {
       .populate('projectId', 'nama lokasi')
       .populate('assignedTo', 'fullName role position')
       .populate('assignedBy', 'fullName')
+      .populate('completionEvidence.submittedBy', 'fullName role')
       .lean();
     
     if (!task) {
@@ -301,6 +307,14 @@ router.put('/:id', auth, async (req, res) => {
         return res.status(403).json({ msg: 'Not authorized' });
       }
       const { status, progress, subtasks, notes } = req.body;
+
+      // Guard: Setting to completed or 100% requires prior completion evidence
+      if ((status === 'completed' || progress === 100) && !task.completionEvidence?.photoUrl) {
+        return res.status(400).json({
+          msg: 'Bukti penyelesaian tugas (foto/file) wajib diunggah untuk menandai tugas selesai.',
+        });
+      }
+
       if (status) {
         task.status = status;
         if (status === 'completed') {
@@ -350,11 +364,28 @@ router.put('/:id', auth, async (req, res) => {
       if (notes !== undefined) task.notes = notes;
       if (workItemId !== undefined) task.workItemId = workItemId || undefined;
 
+      if (req.body.completionEvidence?.photoUrl) {
+        task.completionEvidence = {
+          photoUrl: req.body.completionEvidence.photoUrl,
+          photos: req.body.completionEvidence.photos || [req.body.completionEvidence.photoUrl],
+          notes: req.body.completionEvidence.notes || '',
+          submittedBy: req.user._id,
+          submittedAt: nowWIB(),
+        };
+      }
+
       if (typeof progress === 'number') {
         task.progress = Math.min(100, Math.max(0, progress));
       }
       if (Array.isArray(subtasks)) {
         task.subtasks = subtasks;
+      }
+
+      // Guard: Setting to completed or 100% requires prior completion evidence
+      if ((status === 'completed' || progress === 100) && !task.completionEvidence?.photoUrl) {
+        return res.status(400).json({
+          msg: 'Bukti penyelesaian tugas (foto/file) wajib diunggah untuk menandai tugas selesai.',
+        });
       }
 
       if (status) {
@@ -437,7 +468,7 @@ router.put('/:id/assign', auth, authorize(...TASK_MANAGE_ROLES), async (req, res
 // PUT /api/tasks/:id/status - Quick status update
 router.put('/:id/status', auth, async (req, res) => {
   try {
-    const { status, progress } = req.body;
+    const { status, progress, completionEvidence } = req.body;
     
     const task = await Task.findById(req.params.id);
     
@@ -449,6 +480,23 @@ router.put('/:id/status', auth, async (req, res) => {
     // Field workers can only update their own tasks
     if (isFieldWorker && task.assignedTo?.toString() !== req.user._id.toString()) {
       return res.status(403).json({ msg: 'Not authorized' });
+    }
+
+    if (completionEvidence?.photoUrl) {
+      task.completionEvidence = {
+        photoUrl: completionEvidence.photoUrl,
+        photos: completionEvidence.photos || [completionEvidence.photoUrl],
+        notes: completionEvidence.notes || '',
+        submittedBy: req.user._id,
+        submittedAt: nowWIB(),
+      };
+    }
+
+    // Guard: Setting to completed or 100% requires prior completion evidence
+    if ((status === 'completed' || progress === 100) && !task.completionEvidence?.photoUrl) {
+      return res.status(400).json({
+        msg: 'Bukti penyelesaian tugas (foto/file) wajib diunggah untuk menandai tugas selesai.',
+      });
     }
     
     task.status = status;
@@ -465,6 +513,7 @@ router.put('/:id/status', auth, async (req, res) => {
     
     await task.populate('projectId', 'nama lokasi');
     await task.populate('assignedTo', 'fullName role');
+    await task.populate('completionEvidence.submittedBy', 'fullName role');
     
     res.json(task);
 
@@ -484,6 +533,97 @@ router.put('/:id/status', auth, async (req, res) => {
   }
 });
 
+// POST /api/tasks/:id/complete - Complete task with mandatory evidence submission
+router.post('/:id/complete', auth, upload.single('evidence'), async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({ msg: 'Tugas tidak ditemukan' });
+    }
+
+    const isFieldWorker = ['worker', 'tukang', 'helper'].includes(req.user.role);
+    const isAssignedUser = task.assignedTo?.toString() === req.user._id.toString();
+
+    if (isFieldWorker && !isAssignedUser) {
+      return res.status(403).json({
+        msg: 'Anda hanya dapat menyelesaikan tugas yang ditugaskan kepada Anda.',
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        msg: 'Bukti penyelesaian tugas (foto/dokumen) wajib diunggah.',
+      });
+    }
+
+    const { notes } = req.body;
+    let photoUrl = '';
+
+    if (req.file.mimetype.startsWith('image/')) {
+      const compressedFilename = `task-evidence-${Date.now()}-${Math.round(Math.random() * 1e6)}.jpg`;
+      const photosDir = path.join(__dirname, '../../uploads/photos');
+      if (!fs.existsSync(photosDir)) {
+        fs.mkdirSync(photosDir, { recursive: true });
+      }
+      const compressedPath = path.join(photosDir, compressedFilename);
+
+      try {
+        await sharp(req.file.path)
+          .resize({ width: 1920, withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toFile(compressedPath);
+
+        // Clean up raw upload
+        fs.unlink(req.file.path, () => {});
+        photoUrl = `uploads/photos/${compressedFilename}`;
+      } catch (sharpErr) {
+        console.warn('Sharp compression error, falling back to original upload:', sharpErr);
+        photoUrl = `uploads/photos/${path.basename(req.file.path)}`;
+      }
+    } else {
+      photoUrl = `uploads/documents/${path.basename(req.file.path)}`;
+    }
+
+    task.status = 'completed';
+    task.progress = 100;
+    task.completedAt = nowWIB();
+    task.completionEvidence = {
+      photoUrl,
+      photos: [photoUrl],
+      notes: (notes || '').trim(),
+      submittedBy: req.user._id,
+      submittedAt: nowWIB(),
+    };
+
+    await task.save();
+
+    await task.populate('projectId', 'nama lokasi');
+    await task.populate('assignedTo', 'fullName role');
+    await task.populate('completionEvidence.submittedBy', 'fullName role');
+
+    res.json(task);
+
+    // Notify task assigner if different user
+    if (task.assignedBy && task.assignedBy.toString() !== req.user._id.toString()) {
+      notify({
+        recipient: task.assignedBy,
+        type: 'task_completed',
+        title: 'Tugas Selesai dengan Bukti',
+        message: `"${task.title}" telah diselesaikan dengan bukti pengerjaan.`,
+        data: {
+          taskId: task._id,
+          projectId: task.projectId?._id,
+          scope: task.scope,
+        },
+      }).catch(console.error);
+    }
+  } catch (error) {
+    console.error('Complete task error:', error);
+    res.status(500).json({ msg: 'Server error saat menyelesaikan tugas' });
+  }
+});
+
+
 // DELETE /api/tasks/:id - Delete task
 router.delete('/:id', auth, authorize(...TASK_MANAGE_ROLES), async (req, res) => {
   try {
@@ -497,6 +637,28 @@ router.delete('/:id', auth, authorize(...TASK_MANAGE_ROLES), async (req, res) =>
   } catch (error) {
     console.error('Delete task error:', error);
     res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// POST /api/tasks/:id/remind - Send deadline push notification reminder to assignee
+router.post('/:id/remind', auth, async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id).populate('assignedTo', 'fullName');
+    if (!task) return res.status(404).json({ msg: 'Tugas tidak ditemukan' });
+    if (!task.assignedTo) return res.status(400).json({ msg: 'Tugas belum memiliki personil yang ditugaskan' });
+
+    await notify({
+      recipient: task.assignedTo._id,
+      type: 'task_reminder',
+      title: '⏰ Pengingat Tenggat Tugas!',
+      message: `Tugas "${task.title}" mendekati batas waktu atau belum selesai. Harap segera tuntaskan dan unggah bukti.`,
+      data: { taskId: task._id, projectId: task.projectId, scope: task.scope },
+    });
+
+    res.json({ success: true, msg: 'Pengingat Web Push berhasil dikirim' });
+  } catch (error) {
+    console.error('Send task reminder error:', error);
+    res.status(500).json({ msg: 'Server error saat mengirim pengingat' });
   }
 });
 

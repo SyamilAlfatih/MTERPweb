@@ -263,3 +263,5 @@ export function useNotifications() {
   }
   return context;
 }
+
+export const useNotification = useNotifications;

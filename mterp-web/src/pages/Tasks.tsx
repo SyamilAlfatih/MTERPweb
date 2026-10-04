@@ -2,42 +2,27 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { 
   ClipboardList, Circle, Check, Plus, User, Calendar, 
-  FolderKanban, AlertCircle, X, ChevronDown, List, LayoutGrid,
+  FolderKanban, AlertCircle, X, ChevronDown, ChevronUp, List, LayoutGrid,
   Search, RotateCcw, Clock, CheckCircle2,
-  Building2, Briefcase, Trash2, CheckSquare, Layers
+  Building2, Briefcase, Trash2, CheckSquare, Layers,
+  Camera, Eye, ZoomIn, AlertTriangle, Bell, BellRing,
+  Download, ArrowUpDown, ArrowUp, ArrowDown, Filter, Sparkles
 } from 'lucide-react';
+import { PhotoView } from 'react-photo-view';
 import { useTranslation } from 'react-i18next';
-import api from '../api/api';
+import api, { sendTaskReminder } from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, Input, AriaLiveRegion } from '../components/shared';
 import { formatDate as formatWIBDate } from '../utils/date';
+import { getImageUrl } from '../utils/image';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { useDataGridKeyboard } from '../hooks/useDataGridKeyboard';
-
-interface Subtask {
-  _id?: string;
-  title: string;
-  isCompleted: boolean;
-  completedAt?: string;
-}
-
-interface TaskData {
-  _id: string;
-  title: string;
-  description?: string;
-  scope: 'office' | 'project';
-  department?: string;
-  officeLocation?: string;
-  projectId: { _id: string; nama: string; lokasi: string } | null;
-  assignedTo: { _id: string; fullName: string; role: string; position?: string } | null;
-  assignedBy: { fullName: string } | null;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-  priority: 'low' | 'normal' | 'high' | 'urgent';
-  progress?: number;
-  subtasks?: Subtask[];
-  dueDate?: string;
-  workItemId?: string;
-}
+import { 
+  TaskCompletionModal, 
+  TaskData, 
+  Subtask, 
+  CompletionEvidence 
+} from '../components/tasks/TaskCompletionModal';
 
 interface WorkItemOption {
   _id: string;
@@ -58,7 +43,7 @@ interface UserOption {
 
 type ViewMode = 'cards' | 'table';
 type TableDensity = 'compact' | 'normal' | 'comfortable';
-type ScopeFilter = 'all' | 'office' | 'project';
+type ScopeFilter = 'all' | 'my' | 'office' | 'project';
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'completed';
 type PriorityFilter = 'all' | 'urgent' | 'high' | 'normal' | 'low';
 
@@ -94,13 +79,18 @@ export default function Tasks() {
     return (localStorage.getItem('mterp_tasks_density') as TableDensity) || 'normal';
   });
 
-  // Filters & Search
+  // Filters, Sorting & Search
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [projectFilter, setProjectFilter] = useState<string>(urlProjectId);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
+  const [urgencyFilter, setUrgencyFilter] = useState<'all' | 'overdue' | 'near_deadline'>('all');
+  const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
+  const [sortField, setSortField] = useState<'dueDate' | 'priority' | 'title' | 'status' | 'createdAt'>('dueDate');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     const pId = searchParams.get('projectId') || '';
@@ -114,6 +104,9 @@ export default function Tasks() {
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'assign'>('create');
   const [selectedTask, setSelectedTask] = useState<TaskData | null>(null);
+  const [completingTask, setCompletingTask] = useState<TaskData | null>(null);
+  const [expandedSubtaskTaskId, setExpandedSubtaskTaskId] = useState<string | null>(null);
+  const [remindingTaskId, setRemindingTaskId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   
   // Form state
@@ -154,16 +147,21 @@ export default function Tasks() {
     }
   }, []);
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (showRefreshSpinner = false) => {
+    if (showRefreshSpinner) setIsRefreshing(true);
     try {
       setError(null);
       const response = await api.get('/tasks');
       setTasks(response.data);
+      if (showRefreshSpinner) {
+        setAnnouncement('Data tugas berhasil disegarkan dari server.');
+      }
     } catch (err: any) {
       console.error('Failed to fetch tasks', err);
       setError(err.response?.data?.msg || t('tasks.messages.loadFailed'));
     } finally {
       setLoading(false);
+      if (showRefreshSpinner) setIsRefreshing(false);
     }
   };
 
@@ -187,6 +185,10 @@ export default function Tasks() {
 
   const handleSetStatus = async (task: TaskData, newStatus: 'pending' | 'in_progress' | 'completed') => {
     if (task.status === newStatus) return;
+    if (newStatus === 'completed' && !task.completionEvidence?.photoUrl) {
+      setCompletingTask(task);
+      return;
+    }
     try {
       const res = await api.put(`/tasks/${task._id}/status`, { status: newStatus });
       setTasks(prev => 
@@ -198,8 +200,9 @@ export default function Tasks() {
         completed: 'Selesai (Completed)',
       };
       setAnnouncement(`Status tugas "${task.title}" diubah menjadi ${statusLabels[newStatus]}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update status', err);
+      alert(err.response?.data?.msg || 'Gagal mengubah status tugas');
     }
   };
 
@@ -233,6 +236,21 @@ export default function Tasks() {
 
     let newStatus = task.status;
     if (newProgress === 100 && task.status !== 'completed') {
+      if (!task.completionEvidence?.photoUrl) {
+        // Save subtasks progress up to 99% and open completion modal for mandatory evidence
+        try {
+          const res = await api.put(`/tasks/${task._id}`, {
+            subtasks: updatedSubtasks,
+            progress: 99,
+            status: 'in_progress',
+          });
+          setTasks(prev => prev.map(t => t._id === task._id ? res.data : t));
+          setCompletingTask({ ...res.data, subtasks: updatedSubtasks });
+        } catch (err: any) {
+          console.error('Failed to update subtask progress', err);
+        }
+        return;
+      }
       newStatus = 'completed';
     } else if (newProgress > 0 && task.status === 'pending') {
       newStatus = 'in_progress';
@@ -245,8 +263,32 @@ export default function Tasks() {
         status: newStatus,
       });
       setTasks(prev => prev.map(t => t._id === task._id ? res.data : t));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to toggle subtask', err);
+      alert(err.response?.data?.msg || 'Gagal memperbarui subtugas');
+    }
+  };
+
+  const handleCompletionSuccess = (updatedTask: TaskData) => {
+    setTasks(prev => prev.map(t => t._id === updatedTask._id ? updatedTask : t));
+    setAnnouncement(`Tugas "${updatedTask.title}" berhasil diselesaikan dengan bukti foto.`);
+  };
+
+  const handleSendReminder = async (task: TaskData) => {
+    if (!task.assignedTo?._id) {
+      alert('Tugas belum memiliki personil yang ditugaskan.');
+      return;
+    }
+    setRemindingTaskId(task._id);
+    try {
+      await sendTaskReminder(task._id);
+      setAnnouncement(`Pengingat push notification berhasil dikirim ke ${task.assignedTo.fullName}`);
+      alert(`Pengingat Web Push berhasil dikirim ke ${task.assignedTo.fullName}`);
+    } catch (err: any) {
+      console.error('Failed to send reminder', err);
+      alert(err.response?.data?.msg || 'Gagal mengirimkan pengingat');
+    } finally {
+      setRemindingTaskId(null);
     }
   };
 
@@ -379,14 +421,47 @@ export default function Tasks() {
     }
   };
 
-  // Filter tasks across scope, department, project, status, priority, and search
+  // Sort handler
+  const handleSort = (field: 'dueDate' | 'priority' | 'title' | 'status' | 'createdAt') => {
+    if (sortField === field) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  // Filter tasks across scope, department, project, status, priority, urgency, assignee, and search
   const filteredTasks = tasks.filter(task => {
     const taskScope = task.scope || 'project';
-    if (scopeFilter !== 'all' && taskScope !== scopeFilter) return false;
+    if (scopeFilter === 'my') {
+      if (task.assignedTo?._id !== user?._id) return false;
+    } else if (scopeFilter !== 'all' && taskScope !== scopeFilter) {
+      return false;
+    }
     if (scopeFilter === 'office' && departmentFilter !== 'all' && task.department !== departmentFilter) return false;
+    if (scopeFilter === 'all' && departmentFilter !== 'all' && task.scope === 'office' && task.department !== departmentFilter) return false;
     if (statusFilter !== 'all' && task.status !== statusFilter) return false;
     if (projectFilter && task.projectId?._id !== projectFilter) return false;
     if (priorityFilter !== 'all' && task.priority !== priorityFilter) return false;
+
+    // Urgency filter
+    if (urgencyFilter !== 'all') {
+      if (task.status === 'completed' || !task.dueDate) return false;
+      const diffHours = (new Date(task.dueDate).getTime() - Date.now()) / (1000 * 60 * 60);
+      if (urgencyFilter === 'overdue' && diffHours >= 0) return false;
+      if (urgencyFilter === 'near_deadline' && (diffHours < 0 || diffHours > 48)) return false;
+    }
+
+    // Assignee filter
+    if (assigneeFilter === 'my') {
+      if (task.assignedTo?._id !== user?._id) return false;
+    } else if (assigneeFilter === 'unassigned') {
+      if (task.assignedTo) return false;
+    } else if (assigneeFilter !== 'all') {
+      if (task.assignedTo?._id !== assigneeFilter) return false;
+    }
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchTitle = task.title?.toLowerCase().includes(q);
@@ -399,14 +474,48 @@ export default function Tasks() {
     return true;
   });
 
+  const priorityWeight: Record<string, number> = {
+    urgent: 4,
+    high: 3,
+    normal: 2,
+    low: 1,
+  };
+
+  const statusWeight: Record<string, number> = {
+    in_progress: 3,
+    pending: 2,
+    completed: 1,
+  };
+
+  // Sort filtered tasks
+  const sortedTasks = [...filteredTasks].sort((a, b) => {
+    let comp = 0;
+    if (sortField === 'dueDate') {
+      const timeA = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+      const timeB = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+      comp = timeA - timeB;
+    } else if (sortField === 'priority') {
+      comp = (priorityWeight[b.priority] || 0) - (priorityWeight[a.priority] || 0);
+    } else if (sortField === 'title') {
+      comp = (a.title || '').localeCompare(b.title || '');
+    } else if (sortField === 'status') {
+      comp = (statusWeight[b.status] || 0) - (statusWeight[a.status] || 0);
+    } else if (sortField === 'createdAt') {
+      const timeA = (a as any).createdAt ? new Date((a as any).createdAt).getTime() : 0;
+      const timeB = (b as any).createdAt ? new Date((b as any).createdAt).getTime() : 0;
+      comp = timeA - timeB;
+    }
+    return sortOrder === 'asc' ? comp : -comp;
+  });
+
   // DataGrid keyboard navigation (Columns: 0: #, 1: Context, 2: Title, 3: Assignee, 4: Priority, 5: Due Date, 6: Status, 7: Actions)
   const { gridProps, getRowProps, getCellProps } = useDataGridKeyboard(
-    filteredTasks.length,
+    sortedTasks.length,
     8,
     {
       gridId: 'tasks-grid',
       onActivate: (row: number, col: number) => {
-        const task = filteredTasks[row];
+        const task = sortedTasks[row];
         if (!task) return;
         if (col === 6 || col === 7) {
           handleStatusToggle(task);
@@ -429,23 +538,61 @@ export default function Tasks() {
   };
 
   const getPriorityBadge = (priority: string) => {
-    const variants: Record<string, 'danger' | 'warning' | 'primary' | 'neutral'> = {
-      urgent: 'danger',
-      high: 'danger',
-      normal: 'primary',
-      low: 'neutral',
-    };
-    return <Badge label={priority.toUpperCase()} variant={variants[priority] || 'neutral'} size="small" />;
+    switch (priority) {
+      case 'urgent':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
+            Urgent
+          </span>
+        );
+      case 'high':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            Tinggi
+          </span>
+        );
+      case 'normal':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+            Biasa
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+            Rendah
+          </span>
+        );
+    }
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
-        return <Badge label="Selesai" variant="success" size="small" />;
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-2xs">
+            <CheckCircle2 size={13} className="text-emerald-600" />
+            Selesai
+          </span>
+        );
       case 'in_progress':
-        return <Badge label="Pengerjaan" variant="warning" size="small" />;
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
+            <Clock size={13} className="text-amber-600" />
+            Sedang Dikerjakan
+          </span>
+        );
       default:
-        return <Badge label="Tertunda" variant="neutral" size="small" />;
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+            <Circle size={13} className="text-slate-400" />
+            Tertunda
+          </span>
+        );
     }
   };
 
@@ -457,11 +604,99 @@ export default function Tasks() {
 
   const stats = {
     total: tasks.length,
+    my: tasks.filter(t => t.assignedTo?._id === user?._id).length,
     office: tasks.filter(t => (t.scope || 'project') === 'office').length,
     project: tasks.filter(t => (t.scope || 'project') === 'project').length,
     completed: tasks.filter(t => t.status === 'completed').length,
     inProgress: tasks.filter(t => t.status === 'in_progress').length,
     pending: tasks.filter(t => t.status === 'pending').length,
+    overdue: tasks.filter(t => {
+      if (t.status === 'completed' || !t.dueDate) return false;
+      return new Date(t.dueDate).getTime() < Date.now();
+    }).length,
+    nearDeadline: tasks.filter(t => {
+      if (t.status === 'completed' || !t.dueDate) return false;
+      const diffHours = (new Date(t.dueDate).getTime() - Date.now()) / (1000 * 60 * 60);
+      return diffHours > 0 && diffHours <= 48;
+    }).length,
+  };
+
+  const completionRate = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
+
+  const hasActiveFilters = 
+    searchQuery.trim() !== '' ||
+    statusFilter !== 'all' ||
+    priorityFilter !== 'all' ||
+    projectFilter !== '' ||
+    departmentFilter !== 'all' ||
+    urgencyFilter !== 'all' ||
+    assigneeFilter !== 'all' ||
+    scopeFilter !== 'all';
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setPriorityFilter('all');
+    setProjectFilter('');
+    setDepartmentFilter('all');
+    setUrgencyFilter('all');
+    setAssigneeFilter('all');
+    setScopeFilter('all');
+    setSearchParams({});
+    setAnnouncement('Semua filter berhasil direset ke tampilan default.');
+  };
+
+  const handleExportCSV = () => {
+    if (sortedTasks.length === 0) {
+      alert('Tidak ada data tugas yang dapat diekspor.');
+      return;
+    }
+
+    const headers = [
+      'No',
+      'Lingkup',
+      'Departemen / Proyek',
+      'Judul Tugas',
+      'Deskripsi',
+      'Pelaksana (Assignee)',
+      'Jabatan/Role',
+      'Prioritas',
+      'Tenggat Waktu',
+      'Status',
+      'Total Subtugas',
+      'Subtugas Selesai',
+      'Bukti Selesai Terverifikasi',
+      'Catatan Bukti'
+    ];
+
+    const rows = sortedTasks.map((t, idx) => [
+      idx + 1,
+      t.scope === 'office' ? 'Kantor' : 'Proyek',
+      t.scope === 'office' ? (t.department || 'General') : (t.projectId?.nama || '-'),
+      `"${(t.title || '').replace(/"/g, '""')}"`,
+      `"${(t.description || '').replace(/"/g, '""')}"`,
+      `"${t.assignedTo?.fullName || 'Belum Ditugaskan'}"`,
+      `"${t.assignedTo?.position || t.assignedTo?.role || '-'}"`,
+      t.priority.toUpperCase(),
+      t.dueDate ? formatWIBDate(t.dueDate, { day: 'numeric', month: 'short', year: 'numeric' }) : '-',
+      t.status === 'completed' ? 'Selesai' : t.status === 'in_progress' ? 'Dalam Pengerjaan' : 'Tertunda',
+      t.subtasks?.length || 0,
+      t.subtasks?.filter(s => s.isCompleted).length || 0,
+      t.completionEvidence?.photoUrl ? 'Ya' : 'Tidak',
+      `"${(t.completionEvidence?.notes || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `MTERP_Tasks_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setAnnouncement('Data tugas berhasil diekspor ke file CSV.');
   };
 
   return (
@@ -497,204 +732,498 @@ export default function Tasks() {
         )}
       </div>
 
-      {/* Header */}
+      {/* Enterprise Page Header */}
       <div className="flex justify-between items-start mb-6 gap-4 flex-wrap max-sm:flex-col max-sm:gap-3">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center shadow-xs">
             <ClipboardList size={26} />
           </div>
           <div>
-            <h1 className="text-2xl font-extrabold text-text-primary m-0 tracking-tight max-sm:text-xl">
-              {t('tasks.title')}
-            </h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-black text-text-primary m-0 tracking-tight max-sm:text-xl">
+                {t('tasks.title')}
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-slate-100 text-slate-700 border border-slate-300 tracking-wider">
+                <Sparkles size={11} className="text-primary" />
+                ERP Workbench
+              </span>
+            </div>
             <p className="text-sm text-text-muted mt-0.5 mb-0">
-              Pusat penugasan operasional kantor dan eksekusi proyek lapangan
+              Pusat kendali penugasan divisi kantor, kepatuhan SOP, dan pengendalian mutu proyek lapangan
             </p>
           </div>
         </div>
         
-        {canManageTasks && (
-          <Button 
-            title={t('tasks.actions.addTask')}
-            icon={Plus} 
-            onClick={handleOpenCreate}
-            variant="primary"
+        <div className="flex items-center gap-2 flex-wrap max-sm:w-full max-sm:justify-between">
+          <Button
+            title="Segarkan"
+            icon={RotateCcw}
+            onClick={() => fetchTasks(true)}
+            loading={isRefreshing}
+            variant="outline"
+            size="medium"
           />
-        )}
-      </div>
-
-      {/* Scope Switcher Tabs (Semua / Kantor / Proyek) */}
-      <div className="flex items-center gap-2 border-b border-border-light pb-2 overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => setScopeFilter('all')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-            scopeFilter === 'all'
-              ? 'bg-primary text-white shadow-xs'
-              : 'bg-bg-secondary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-          }`}
-        >
-          <Layers size={14} />
-          <span>Semua Lingkup</span>
-          <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
-            {stats.total}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setScopeFilter('office')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-            scopeFilter === 'office'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'bg-bg-secondary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-          }`}
-        >
-          <Building2 size={14} />
-          <span>🏛️ Tugas Kantor & Manajemen</span>
-          <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-100 text-indigo-800">
-            {stats.office}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setScopeFilter('project')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-            scopeFilter === 'project'
-              ? 'bg-emerald-600 text-white shadow-xs'
-              : 'bg-bg-secondary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-          }`}
-        >
-          <Briefcase size={14} />
-          <span>🏗️ Tugas Proyek Lapangan</span>
-          <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800">
-            {stats.project}
-          </span>
-        </button>
-      </div>
-
-      {/* Enterprise KPI Metric Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6 max-lg:grid-cols-2">
-        <div 
-          onClick={() => setStatusFilter('all')}
-          className={`bg-bg-white border rounded-xl p-4 flex justify-between items-center shadow-xs cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${statusFilter === 'all' ? 'border-primary ring-2 ring-primary/15' : 'border-border-light'}`}
-        >
-          <div className="flex flex-col">
-            <span className="text-2xl font-extrabold text-text-primary leading-tight font-mono tabular-nums">{filteredTasks.length}</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-text-muted mt-0.5">Tugas Sesuai Filter</span>
-          </div>
-          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-100 text-slate-600">
-            <ClipboardList size={20} />
-          </div>
-        </div>
-
-        <div 
-          onClick={() => setStatusFilter('pending')}
-          className={`bg-bg-white border rounded-xl p-4 flex justify-between items-center shadow-xs cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${statusFilter === 'pending' ? 'border-slate-500 ring-2 ring-slate-400/20' : 'border-border-light'}`}
-        >
-          <div className="flex flex-col">
-            <span className="text-2xl font-extrabold text-slate-700 leading-tight font-mono tabular-nums">{stats.pending}</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-text-muted mt-0.5">{t('tasks.stats.pending')}</span>
-          </div>
-          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-100 text-slate-600">
-            <Circle size={20} />
-          </div>
-        </div>
-
-        <div 
-          onClick={() => setStatusFilter('in_progress')}
-          className={`bg-bg-white border rounded-xl p-4 flex justify-between items-center shadow-xs cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${statusFilter === 'in_progress' ? 'border-amber-500 ring-2 ring-amber-400/20' : 'border-border-light'}`}
-        >
-          <div className="flex flex-col">
-            <span className="text-2xl font-extrabold text-amber-700 leading-tight font-mono tabular-nums">{stats.inProgress}</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-text-muted mt-0.5">{t('tasks.stats.inProgress')}</span>
-          </div>
-          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-amber-100 text-amber-600">
-            <Clock size={20} />
-          </div>
-        </div>
-
-        <div 
-          onClick={() => setStatusFilter('completed')}
-          className={`bg-bg-white border rounded-xl p-4 flex justify-between items-center shadow-xs cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${statusFilter === 'completed' ? 'border-emerald-500 ring-2 ring-emerald-400/20' : 'border-border-light'}`}
-        >
-          <div className="flex flex-col">
-            <span className="text-2xl font-extrabold text-emerald-700 leading-tight font-mono tabular-nums">{stats.completed}</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-text-muted mt-0.5">{t('tasks.stats.completed')}</span>
-          </div>
-          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-100 text-emerald-600">
-            <Check size={20} />
-          </div>
-        </div>
-      </div>
-
-      {/* Toolbar: Search, Filters & View Toggle */}
-      <div className="flex justify-between items-center gap-3 mb-5 flex-wrap max-lg:flex-col max-lg:items-stretch">
-        <div className="flex items-center gap-2 flex-1 min-w-[260px] max-lg:w-full flex-wrap">
-          <div className="flex-1 min-w-[200px]">
-            <Input
-              placeholder="Cari tugas, deskripsi, departemen, proyek, personil..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              icon={Search}
+          <Button
+            title="Ekspor CSV"
+            icon={Download}
+            onClick={handleExportCSV}
+            variant="secondary"
+            size="medium"
+          />
+          {canManageTasks && (
+            <Button 
+              title={t('tasks.actions.addTask')}
+              icon={Plus} 
+              onClick={handleOpenCreate}
+              variant="primary"
+              size="medium"
             />
+          )}
+        </div>
+      </div>
+
+      {/* Enterprise KPI Metrics Ribbon (5 Interactive Tiles) */}
+      <div className="grid grid-cols-5 gap-3.5 mb-6 max-xl:grid-cols-3 max-md:grid-cols-2 max-sm:grid-cols-1">
+        {/* 1: Total */}
+        <div 
+          onClick={() => { setScopeFilter('all'); setStatusFilter('all'); setUrgencyFilter('all'); }}
+          className={`bg-bg-white border rounded-xl p-3.5 flex justify-between items-center shadow-xs cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${
+            scopeFilter === 'all' && statusFilter === 'all' && urgencyFilter === 'all'
+              ? 'border-primary ring-2 ring-primary/20 bg-primary/[0.02]' 
+              : 'border-border-light hover:border-border-medium'
+          }`}
+          title="Tampilkan semua tugas"
+        >
+          <div className="flex flex-col min-w-0">
+            <span className="text-2xl font-black text-text-primary leading-none font-mono tabular-nums tracking-tight">
+              {stats.total}
+            </span>
+            <span className="text-xs font-bold text-text-secondary mt-1 truncate">Total Tugas</span>
+            <span className="text-[10px] text-text-muted mt-0.5 truncate">{stats.office} Kantor • {stats.project} Proyek</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-100 text-slate-700 shrink-0">
+            <Layers size={18} />
+          </div>
+        </div>
+
+        {/* 2: Tugas Saya (Focus High-Contrast) */}
+        <div 
+          onClick={() => { setScopeFilter('my'); setStatusFilter('all'); setUrgencyFilter('all'); }}
+          className={`bg-bg-white border rounded-xl p-3.5 flex justify-between items-center shadow-xs cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${
+            scopeFilter === 'my'
+              ? 'border-indigo-600 ring-2 ring-indigo-500/30 bg-indigo-50/40' 
+              : 'border-indigo-200 bg-indigo-50/20 hover:border-indigo-400'
+          }`}
+          title="Filter hanya tugas yang ditugaskan kepada saya"
+        >
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-2xl font-black text-indigo-700 leading-none font-mono tabular-nums tracking-tight">
+                {stats.my}
+              </span>
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-indigo-600 text-white">
+                Fokus
+              </span>
+            </div>
+            <span className="text-xs font-bold text-indigo-950 mt-1 truncate">Tugas Saya</span>
+            <span className="text-[10px] text-indigo-700/80 mt-0.5 truncate">Tanggung jawab Anda</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-600 text-white shadow-xs shrink-0">
+            <User size={18} />
+          </div>
+        </div>
+
+        {/* 3: In Progress */}
+        <div 
+          onClick={() => { setStatusFilter('in_progress'); setUrgencyFilter('all'); }}
+          className={`bg-bg-white border rounded-xl p-3.5 flex justify-between items-center shadow-xs cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${
+            statusFilter === 'in_progress'
+              ? 'border-amber-500 ring-2 ring-amber-400/25 bg-amber-50/30' 
+              : 'border-border-light hover:border-border-medium'
+          }`}
+          title="Filter tugas sedang dikerjakan"
+        >
+          <div className="flex flex-col min-w-0">
+            <span className="text-2xl font-black text-amber-700 leading-none font-mono tabular-nums tracking-tight">
+              {stats.inProgress}
+            </span>
+            <span className="text-xs font-bold text-text-secondary mt-1 truncate">Sedang Berjalan</span>
+            <span className="text-[10px] text-text-muted mt-0.5 truncate">{stats.pending} Tertunda</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-amber-100 text-amber-700 shrink-0">
+            <Clock size={18} />
+          </div>
+        </div>
+
+        {/* 4: Selesai */}
+        <div 
+          onClick={() => { setStatusFilter('completed'); setUrgencyFilter('all'); }}
+          className={`bg-bg-white border rounded-xl p-3.5 flex justify-between items-center shadow-xs cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${
+            statusFilter === 'completed'
+              ? 'border-emerald-500 ring-2 ring-emerald-400/25 bg-emerald-50/30' 
+              : 'border-border-light hover:border-border-medium'
+          }`}
+          title="Filter tugas selesai terverifikasi"
+        >
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-2xl font-black text-emerald-700 leading-none font-mono tabular-nums tracking-tight">
+                {stats.completed}
+              </span>
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800">
+                {completionRate}%
+              </span>
+            </div>
+            <span className="text-xs font-bold text-text-secondary mt-1 truncate">Tuntas Terverifikasi</span>
+            <span className="text-[10px] text-text-muted mt-0.5 truncate">Bukti foto tersimpan</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100 text-emerald-700 shrink-0">
+            <CheckCircle2 size={18} />
+          </div>
+        </div>
+
+        {/* 5: Urgent / Overdue */}
+        <div 
+          onClick={() => { setUrgencyFilter(urgencyFilter === 'overdue' ? 'all' : 'overdue'); setStatusFilter('all'); }}
+          className={`bg-bg-white border rounded-xl p-3.5 flex justify-between items-center shadow-xs cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${
+            urgencyFilter === 'overdue'
+              ? 'border-rose-600 ring-2 ring-rose-500/30 bg-rose-50/40' 
+              : (stats.overdue + stats.nearDeadline > 0 ? 'border-rose-200 bg-rose-50/15 hover:border-rose-400' : 'border-border-light')
+          }`}
+          title="Filter tugas terlambat atau mendekati tenggat"
+        >
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className={`text-2xl font-black leading-none font-mono tabular-nums tracking-tight ${stats.overdue > 0 ? 'text-rose-700' : 'text-text-primary'}`}>
+                {stats.overdue + stats.nearDeadline}
+              </span>
+              {stats.overdue > 0 && (
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-rose-600 text-white animate-pulse">
+                  Kritis
+                </span>
+              )}
+            </div>
+            <span className="text-xs font-bold text-text-secondary mt-1 truncate">Tenggat Kritis</span>
+            <span className="text-[10px] text-rose-700 mt-0.5 truncate">
+              {stats.overdue} Lewat • {stats.nearDeadline} ≤48 Jam
+            </span>
+          </div>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${stats.overdue > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+            <AlertTriangle size={18} />
+          </div>
+        </div>
+      </div>
+
+      {/* Enterprise Filter Workbench Card */}
+      <div className="bg-bg-white border border-border-light rounded-xl p-4 shadow-xs space-y-3.5">
+        {/* Row 1: Scope Segmented Switcher & Search Bar */}
+        <div className="flex items-center justify-between gap-3 flex-wrap max-lg:flex-col max-lg:items-stretch">
+          {/* Segmented Scope Tabs */}
+          <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200/80 overflow-x-auto gap-1">
+            <button
+              type="button"
+              onClick={() => setScopeFilter('all')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                scopeFilter === 'all'
+                  ? 'bg-white text-text-primary shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Layers size={13} />
+              <span>Semua Lingkup</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${scopeFilter === 'all' ? 'bg-primary/10 text-primary font-bold' : 'bg-slate-200 text-slate-700'}`}>
+                {stats.total}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setScopeFilter('my')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                scopeFilter === 'my'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-indigo-900 hover:bg-indigo-50/80'
+              }`}
+            >
+              <User size={13} />
+              <span>Tugas Saya</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${scopeFilter === 'my' ? 'bg-white/25 text-white' : 'bg-indigo-100 text-indigo-800'}`}>
+                {stats.my}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setScopeFilter('office')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                scopeFilter === 'office'
+                  ? 'bg-slate-800 text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Building2 size={13} />
+              <span>Kantor & SOP</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${scopeFilter === 'office' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                {stats.office}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setScopeFilter('project')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                scopeFilter === 'project'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Briefcase size={13} />
+              <span>Proyek Lapangan</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${scopeFilter === 'project' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                {stats.project}
+              </span>
+            </button>
           </div>
 
-          {/* Department Filter (Visible when viewing office or all) */}
+          {/* Quick Search with Clear */}
+          <div className="relative min-w-[280px] max-lg:w-full flex-1 max-w-md">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari tugas, deskripsi, pelaksana, kode proyek..."
+              className="w-full pl-9 pr-8 py-2 text-xs font-medium text-text-primary bg-slate-50 border border-border-medium rounded-lg focus:outline-none focus:border-primary focus:bg-white transition-all shadow-2xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5 rounded cursor-pointer"
+                title="Hapus pencarian"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: Multi-Facet ERP Filter Toolbar */}
+        <div className="flex items-center gap-2 pt-2 border-t border-border-light flex-wrap">
+          <div className="flex items-center gap-1 text-xs font-bold text-text-muted uppercase tracking-wider pr-1">
+            <Filter size={13} className="text-primary" />
+            <span>Filter:</span>
+          </div>
+
+          {/* Status Facet */}
+          <div className="relative min-w-[140px]">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="w-full py-1.5 px-2.5 pr-7 border border-border-medium rounded-lg text-xs font-semibold text-text-primary bg-bg-white appearance-none cursor-pointer focus:outline-none focus:border-primary shadow-2xs"
+              title="Filter Status Eksekusi"
+            >
+              <option value="all">Semua Status</option>
+              <option value="pending">Tertunda (Pending)</option>
+              <option value="in_progress">Dalam Pengerjaan</option>
+              <option value="completed">Selesai (Completed)</option>
+            </select>
+            <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+          </div>
+
+          {/* Priority Facet */}
+          <div className="relative min-w-[130px]">
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value as PriorityFilter)}
+              className="w-full py-1.5 px-2.5 pr-7 border border-border-medium rounded-lg text-xs font-semibold text-text-primary bg-bg-white appearance-none cursor-pointer focus:outline-none focus:border-primary shadow-2xs"
+              title="Filter Prioritas"
+            >
+              <option value="all">Semua Prioritas</option>
+              <option value="urgent">🔴 Urgent</option>
+              <option value="high">🟠 Tinggi</option>
+              <option value="normal">🔵 Biasa</option>
+              <option value="low">⚪ Rendah</option>
+            </select>
+            <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+          </div>
+
+          {/* Department Facet (Visible when office or all) */}
           {(scopeFilter === 'office' || scopeFilter === 'all') && (
-            <div className="relative min-w-[160px] max-sm:w-full">
+            <div className="relative min-w-[150px]">
               <select
                 value={departmentFilter}
                 onChange={(e) => setDepartmentFilter(e.target.value)}
-                className="w-full py-2.5 px-3 pr-8 border border-border-medium rounded-lg text-xs font-medium text-text-primary bg-bg-white appearance-none cursor-pointer focus:outline-none focus:border-primary"
-                title="Filter berdasarkan departemen kantor"
+                className="w-full py-1.5 px-2.5 pr-7 border border-border-medium rounded-lg text-xs font-semibold text-text-primary bg-bg-white appearance-none cursor-pointer focus:outline-none focus:border-primary shadow-2xs"
+                title="Filter Departemen Kantor"
               >
                 <option value="all">Semua Departemen</option>
                 {OFFICE_DEPARTMENTS.map(dept => (
                   <option key={dept} value={dept}>{dept}</option>
                 ))}
               </select>
-              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
             </div>
           )}
 
-          {/* Project Filter (Visible when viewing project or all) */}
+          {/* Project Facet (Visible when project or all) */}
           {(scopeFilter === 'project' || scopeFilter === 'all') && projects.length > 0 && (
-            <div className="relative min-w-[160px] max-sm:w-full">
+            <div className="relative min-w-[160px] max-w-[200px]">
               <select
                 value={projectFilter}
                 onChange={(e) => setProjectFilter(e.target.value)}
-                className="w-full py-2.5 px-3 pr-8 border border-border-medium rounded-lg text-xs font-medium text-text-primary bg-bg-white appearance-none cursor-pointer focus:outline-none focus:border-primary"
-                title="Filter berdasarkan proyek"
+                className="w-full py-1.5 px-2.5 pr-7 border border-border-medium rounded-lg text-xs font-semibold text-text-primary bg-bg-white appearance-none cursor-pointer focus:outline-none focus:border-primary truncate shadow-2xs"
+                title="Filter Proyek Lapangan"
               >
-                <option value="">Semua Proyek</option>
+                <option value="">Semua Proyek Lapangan</option>
                 {projects.map(p => (
                   <option key={p._id} value={p._id}>{p.nama}</option>
                 ))}
               </select>
-              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
             </div>
           )}
 
-          <div className="relative min-w-[130px] max-sm:w-full">
+          {/* Urgency Facet */}
+          <div className="relative min-w-[140px]">
             <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value as PriorityFilter)}
-              className="w-full py-2.5 px-3 pr-8 border border-border-medium rounded-lg text-xs font-medium text-text-primary bg-bg-white appearance-none cursor-pointer focus:outline-none focus:border-primary"
-              title="Filter prioritas"
+              value={urgencyFilter}
+              onChange={(e) => setUrgencyFilter(e.target.value as any)}
+              className={`w-full py-1.5 px-2.5 pr-7 border rounded-lg text-xs font-semibold appearance-none cursor-pointer focus:outline-none focus:border-primary shadow-2xs ${
+                urgencyFilter !== 'all' ? 'border-rose-400 bg-rose-50 text-rose-800' : 'border-border-medium bg-bg-white text-text-primary'
+              }`}
+              title="Filter Urgensi Tenggat"
             >
-              <option value="all">Semua Prioritas</option>
-              <option value="urgent">Urgent</option>
-              <option value="high">High</option>
-              <option value="normal">Normal</option>
-              <option value="low">Low</option>
+              <option value="all">Semua Tenggat</option>
+              <option value="overdue">⚠️ Lewat Tenggat Saja</option>
+              <option value="near_deadline">⏳ Mendekati Tenggat (≤48 Jam)</option>
             </select>
-            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+            <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
           </div>
+
+          {/* Assignee Facet */}
+          <div className="relative min-w-[150px]">
+            <select
+              value={assigneeFilter}
+              onChange={(e) => setAssigneeFilter(e.target.value)}
+              className="w-full py-1.5 px-2.5 pr-7 border border-border-medium rounded-lg text-xs font-semibold text-text-primary bg-bg-white appearance-none cursor-pointer focus:outline-none focus:border-primary shadow-2xs"
+              title="Filter Personil Pelaksana"
+            >
+              <option value="all">Semua Pelaksana</option>
+              <option value="my">👤 Ditugaskan ke Saya</option>
+              <option value="unassigned">⚠️ Belum Ada Pelaksana</option>
+              {users.map(u => (
+                <option key={u._id} value={u._id}>{u.fullName}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+          </div>
+
+          {/* Reset Filters Action */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 border border-rose-200 transition-colors cursor-pointer"
+              title="Reset semua filter ke default"
+            >
+              <X size={12} />
+              <span>Reset Filter</span>
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        {/* Row 3: Active Filters Removable Chips */}
+        {hasActiveFilters && (
+          <div className="flex items-center gap-1.5 pt-2 border-t border-dashed border-border-light flex-wrap text-xs">
+            <span className="text-[11px] font-bold text-text-muted uppercase">Aktif:</span>
+            {scopeFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[11px] font-semibold border border-slate-300">
+                Lingkup: {scopeFilter === 'my' ? 'Tugas Saya' : scopeFilter === 'office' ? 'Kantor' : 'Proyek'}
+                <X size={11} className="cursor-pointer hover:text-rose-600" onClick={() => setScopeFilter('all')} />
+              </span>
+            )}
+            {statusFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-[11px] font-semibold border border-amber-300">
+                Status: {statusFilter === 'pending' ? 'Tertunda' : statusFilter === 'in_progress' ? 'Pengerjaan' : 'Selesai'}
+                <X size={11} className="cursor-pointer hover:text-rose-600" onClick={() => setStatusFilter('all')} />
+              </span>
+            )}
+            {priorityFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 text-sky-800 text-[11px] font-semibold border border-sky-300">
+                Prioritas: {priorityFilter.toUpperCase()}
+                <X size={11} className="cursor-pointer hover:text-rose-600" onClick={() => setPriorityFilter('all')} />
+              </span>
+            )}
+            {projectFilter && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 text-[11px] font-semibold border border-emerald-300">
+                Proyek: {projects.find(p => p._id === projectFilter)?.nama || projectFilter}
+                <X size={11} className="cursor-pointer hover:text-rose-600" onClick={() => { setProjectFilter(''); setSearchParams({}); }} />
+              </span>
+            )}
+            {departmentFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-800 text-[11px] font-semibold border border-indigo-300">
+                Departemen: {departmentFilter}
+                <X size={11} className="cursor-pointer hover:text-rose-600" onClick={() => setDepartmentFilter('all')} />
+              </span>
+            )}
+            {urgencyFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 text-[11px] font-semibold border border-rose-300">
+                Urgensi: {urgencyFilter === 'overdue' ? 'Lewat Tenggat' : '≤48 Jam'}
+                <X size={11} className="cursor-pointer hover:text-rose-600" onClick={() => setUrgencyFilter('all')} />
+              </span>
+            )}
+            {assigneeFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-800 text-[11px] font-semibold border border-purple-300">
+                Pelaksana: {assigneeFilter === 'my' ? 'Saya' : assigneeFilter === 'unassigned' ? 'Belum Ada' : users.find(u => u._id === assigneeFilter)?.fullName || 'Spesifik'}
+                <X size={11} className="cursor-pointer hover:text-rose-600" onClick={() => setAssigneeFilter('all')} />
+              </span>
+            )}
+            {searchQuery && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[11px] font-semibold border border-slate-300">
+                Cari: "{searchQuery}"
+                <X size={11} className="cursor-pointer hover:text-rose-600" onClick={() => setSearchQuery('')} />
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Table Controls & Summary Ribbon */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 text-xs text-text-secondary">
+          <span className="font-black text-text-primary font-mono text-sm tabular-nums">{sortedTasks.length}</span>
+          <span className="font-medium text-text-muted">tugas ditampilkan</span>
+          {sortedTasks.length < tasks.length && (
+            <span className="text-[11px] text-text-muted">(dari total {tasks.length} tugas)</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Quick Sort selector */}
+          <div className="flex items-center gap-1.5 bg-bg-white border border-border-light rounded-lg px-2.5 py-1.5 shadow-2xs">
+            <span className="text-[11px] font-semibold text-text-muted">Urutkan:</span>
+            <select
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value as any)}
+              className="text-xs font-bold text-text-primary bg-transparent border-none focus:outline-none cursor-pointer"
+            >
+              <option value="dueDate">Tenggat Target</option>
+              <option value="priority">Prioritas</option>
+              <option value="title">Judul Tugas</option>
+              <option value="status">Status</option>
+              <option value="createdAt">Tanggal Dibuat</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+              className="p-0.5 text-text-muted hover:text-primary transition-colors cursor-pointer"
+              title={sortOrder === 'asc' ? 'Urutan: Naik (Ascending)' : 'Urutan: Turun (Descending)'}
+            >
+              {sortOrder === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
+            </button>
+          </div>
+
           {/* Density Switcher (visible in table mode) */}
           {viewMode === 'table' && (
             <div className="flex items-center bg-bg-white border border-border-light rounded-lg p-0.5 shadow-2xs">
@@ -704,7 +1233,7 @@ export default function Tasks() {
                 className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
                   tableDensity === 'compact' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
                 }`}
-                title="Kepadatan Rapat (Compact)"
+                title="Kepadatan Rapat (Compact ERP)"
               >
                 Rapat
               </button>
@@ -714,7 +1243,7 @@ export default function Tasks() {
                 className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
                   tableDensity === 'normal' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
                 }`}
-                title="Kepadatan Standar (Normal)"
+                title="Kepadatan Standar"
               >
                 Standar
               </button>
@@ -724,7 +1253,7 @@ export default function Tasks() {
                 className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
                   tableDensity === 'comfortable' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
                 }`}
-                title="Kepadatan Lapang (Comfortable)"
+                title="Kepadatan Lapang"
               >
                 Lapang
               </button>
@@ -739,10 +1268,10 @@ export default function Tasks() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-all cursor-pointer ${
                 viewMode === 'table' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
               }`}
-              title="Tampilan Tabel Fiori"
+              title="Tampilan Tabel ERP Fiori"
             >
               <List size={14} />
-              <span className="hidden sm:inline">Tabel</span>
+              <span className="hidden sm:inline">Tabel ERP</span>
             </button>
             <button
               type="button"
@@ -750,7 +1279,7 @@ export default function Tasks() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-all cursor-pointer ${
                 viewMode === 'cards' ? 'bg-primary text-white shadow-xs' : 'text-text-secondary hover:text-text-primary'
               }`}
-              title="Tampilan Kartu"
+              title="Tampilan Kartu / Kanban"
             >
               <LayoutGrid size={14} />
               <span className="hidden sm:inline">Kartu</span>
@@ -777,20 +1306,20 @@ export default function Tasks() {
       )}
 
       {/* Empty State */}
-      {!loading && !error && filteredTasks.length === 0 && (
+      {!loading && !error && sortedTasks.length === 0 && (
         <EmptyState
           icon={ClipboardList}
-          title={searchQuery || statusFilter !== 'all' ? 'Tidak Ada Tugas yang Cocok' : t('tasks.empty.title')}
+          title={hasActiveFilters ? 'Tidak Ada Tugas yang Cocok dengan Filter' : t('tasks.empty.title')}
           description={
-            searchQuery || statusFilter !== 'all'
-              ? 'Silakan sesuaikan kata kunci pencarian atau filter status untuk menemukan data.'
+            hasActiveFilters
+              ? 'Silakan sesuaikan kriteria pencarian, status, atau klik tombol "Reset Filter" di atas.'
               : canManageTasks ? t('tasks.empty.descManager') : t('tasks.empty.descWorker')
           }
         />
       )}
 
-      {/* Table Mode (SAP Fiori List Report) */}
-      {!loading && !error && filteredTasks.length > 0 && viewMode === 'table' && (
+      {/* Table Mode (SAP Fiori Enterprise List Report) */}
+      {!loading && !error && sortedTasks.length > 0 && viewMode === 'table' && (
         <Card className="overflow-hidden border border-border-light shadow-sm">
           <div className="overflow-x-auto">
             <table
@@ -798,32 +1327,110 @@ export default function Tasks() {
               aria-label="Tabel Tugas Terpadu Kantor dan Proyek"
               className="w-full border-collapse text-left"
             >
-              <thead role="rowgroup" className="bg-bg-secondary border-b border-border text-xs font-bold uppercase tracking-wider text-text-muted">
+              <thead role="rowgroup" className="bg-slate-100/90 border-b border-border text-xs font-bold uppercase tracking-wider text-text-secondary select-none">
                 <tr role="row">
-                  <th role="columnheader" aria-colindex={1} className="py-2.5 px-3 w-12 text-center">#</th>
-                  <th role="columnheader" aria-colindex={2} className="py-2.5 px-4 min-w-[180px]">Lingkup & Konteks</th>
-                  <th role="columnheader" aria-colindex={3} className="py-2.5 px-4 min-w-[260px]">Tugas & Subtugas</th>
-                  <th role="columnheader" aria-colindex={4} className="py-2.5 px-4 min-w-[150px]">Penugasan</th>
-                  <th role="columnheader" aria-colindex={5} className="py-2.5 px-3 min-w-[100px] text-center">Prioritas</th>
-                  <th role="columnheader" aria-colindex={6} className="py-2.5 px-4 min-w-[130px] font-mono tabular-nums">Tenggat Waktu</th>
-                  <th role="columnheader" aria-colindex={7} className="py-2.5 px-4 min-w-[150px] text-center">Status</th>
-                  <th role="columnheader" aria-colindex={8} className="py-2.5 px-4 min-w-[160px] text-right sticky right-0 bg-bg-secondary shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.06)]">
-                    Aksi Cepat
+                  <th role="columnheader" aria-colindex={1} className="py-3 px-3 w-12 text-center text-text-muted font-mono">#</th>
+                  <th 
+                    role="columnheader" 
+                    aria-colindex={2} 
+                    onClick={() => handleSort('title')}
+                    className="py-3 px-4 min-w-[180px] cursor-pointer hover:bg-slate-200/60 transition-colors"
+                    title="Klik untuk mengurutkan"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Lingkup & Konteks</span>
+                    </div>
+                  </th>
+                  <th 
+                    role="columnheader" 
+                    aria-colindex={3} 
+                    onClick={() => handleSort('title')}
+                    className="py-3 px-4 min-w-[280px] cursor-pointer hover:bg-slate-200/60 transition-colors"
+                    title="Klik untuk mengurutkan berdasarkan judul"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Tugas, WBS & Subtugas</span>
+                      {sortField === 'title' ? (
+                        sortOrder === 'asc' ? <ArrowUp size={13} className="text-primary" /> : <ArrowDown size={13} className="text-primary" />
+                      ) : (
+                        <ArrowUpDown size={12} className="text-text-muted opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+                  <th role="columnheader" aria-colindex={4} className="py-3 px-4 min-w-[170px]">
+                    <span>Pelaksana (Assignee)</span>
+                  </th>
+                  <th 
+                    role="columnheader" 
+                    aria-colindex={5} 
+                    onClick={() => handleSort('priority')}
+                    className="py-3 px-3 min-w-[110px] text-center cursor-pointer hover:bg-slate-200/60 transition-colors"
+                    title="Klik untuk mengurutkan prioritas"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Prioritas</span>
+                      {sortField === 'priority' ? (
+                        sortOrder === 'asc' ? <ArrowUp size={13} className="text-primary" /> : <ArrowDown size={13} className="text-primary" />
+                      ) : (
+                        <ArrowUpDown size={12} className="text-text-muted opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+                  <th 
+                    role="columnheader" 
+                    aria-colindex={6} 
+                    onClick={() => handleSort('dueDate')}
+                    className="py-3 px-4 min-w-[140px] cursor-pointer hover:bg-slate-200/60 transition-colors"
+                    title="Klik untuk mengurutkan tenggat"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Tenggat Target</span>
+                      {sortField === 'dueDate' ? (
+                        sortOrder === 'asc' ? <ArrowUp size={13} className="text-primary" /> : <ArrowDown size={13} className="text-primary" />
+                      ) : (
+                        <ArrowUpDown size={12} className="text-text-muted opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+                  <th 
+                    role="columnheader" 
+                    aria-colindex={7} 
+                    onClick={() => handleSort('status')}
+                    className="py-3 px-4 min-w-[150px] text-center cursor-pointer hover:bg-slate-200/60 transition-colors"
+                    title="Klik untuk mengurutkan status"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Status Eksekusi</span>
+                      {sortField === 'status' ? (
+                        sortOrder === 'asc' ? <ArrowUp size={13} className="text-primary" /> : <ArrowDown size={13} className="text-primary" />
+                      ) : (
+                        <ArrowUpDown size={12} className="text-text-muted opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+                  <th role="columnheader" aria-colindex={8} className="py-3 px-4 min-w-[170px] text-right sticky right-0 bg-slate-100 shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.06)] z-10">
+                    <span>Aksi Cepat</span>
                   </th>
                 </tr>
               </thead>
               <tbody role="rowgroup" className="divide-y divide-border-light bg-bg-white text-text-primary text-sm">
-                {filteredTasks.map((task, rowIndex) => {
+                {sortedTasks.map((task, rowIndex) => {
                   const isCompleted = task.status === 'completed';
+                  const isMyTask = task.assignedTo?._id === user?._id;
                   const taskScope = task.scope || 'project';
                   const subtasksTotal = task.subtasks?.length || 0;
                   const subtasksDone = task.subtasks?.filter(s => s.isCompleted).length || 0;
+                  const isSubtasksExpanded = expandedSubtaskTaskId === task._id;
 
                   return (
                     <tr
                       key={task._id}
                       {...getRowProps(rowIndex)}
-                      className={`hover:bg-slate-50/80 transition-colors ${isCompleted ? 'bg-slate-50/50' : ''}`}
+                      className={`hover:bg-slate-50/90 transition-all ${
+                        isMyTask 
+                          ? 'border-l-[6px] border-l-primary bg-primary/[0.035]' 
+                          : 'border-l-[6px] border-l-transparent'
+                      } ${isCompleted ? 'bg-slate-50/40 opacity-80' : ''}`}
                     >
                       {/* 0: # */}
                       <td
@@ -844,7 +1451,7 @@ export default function Tasks() {
                               <Building2 size={12} />
                               Kantor
                             </span>
-                            <span className="text-xs font-semibold text-text-secondary truncate max-w-[160px]">
+                            <span className="text-xs font-bold text-text-primary truncate max-w-[160px]">
                               {task.department || 'General'}
                             </span>
                             {task.projectId && (
@@ -859,7 +1466,7 @@ export default function Tasks() {
                               <Briefcase size={12} />
                               Proyek
                             </span>
-                            <span className="text-xs font-semibold text-text-secondary truncate max-w-[160px]">
+                            <span className="text-xs font-bold text-text-primary truncate max-w-[160px]">
                               {task.projectId?.nama || 'Proyek Lapangan'}
                             </span>
                           </div>
@@ -873,17 +1480,32 @@ export default function Tasks() {
                       >
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2 flex-wrap">
+                            {isMyTask && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-primary text-white shadow-2xs tracking-wide">
+                                <User size={10} />
+                                Tugas Anda
+                              </span>
+                            )}
                             <span className={`font-semibold ${isCompleted ? 'line-through text-text-muted' : 'text-text-primary'}`}>
                               {task.title}
                             </span>
                             {task.workItemId && (
-                              <Badge label="WORK ITEM" variant="primary" size="small" />
+                              <Badge label="WBS" variant="primary" size="small" />
                             )}
                             {subtasksTotal > 0 && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                                <CheckSquare size={10} />
-                                {subtasksDone}/{subtasksTotal}
-                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedSubtaskTaskId(isSubtasksExpanded ? null : task._id);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors cursor-pointer"
+                                title="Klik untuk membuka checklist dan mencentang subtugas"
+                              >
+                                <CheckSquare size={11} className="text-primary" />
+                                <span>Subtugas {subtasksDone}/{subtasksTotal}</span>
+                                <ChevronDown size={11} className={`transition-transform duration-200 ${isSubtasksExpanded ? 'rotate-180 text-primary' : 'text-slate-500'}`} />
+                              </button>
                             )}
                           </div>
                           {task.description && (
@@ -899,6 +1521,72 @@ export default function Tasks() {
                               />
                             </div>
                           )}
+
+                          {/* Expandable interactive subtask checklist drawer */}
+                          {isSubtasksExpanded && task.subtasks && (
+                            <div 
+                              className="mt-2 p-3 bg-bg-secondary/70 rounded-xl border border-border-light space-y-2 animate-in slide-in-from-top-1 duration-150 max-w-md shadow-xs"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="text-[11px] font-bold text-text-secondary flex items-center justify-between pb-1.5 border-b border-border-light">
+                                <span className="flex items-center gap-1.5 text-text-primary">
+                                  <CheckSquare size={13} className="text-primary" />
+                                  Checklist Subtugas ({subtasksDone}/{subtasksTotal} Selesai)
+                                </span>
+                                <span className="font-mono text-xs px-2 py-0.2 rounded bg-primary/10 text-primary font-bold">
+                                  {Math.round((subtasksDone / subtasksTotal) * 100)}%
+                                </span>
+                              </div>
+                              <div className="space-y-1.5 pt-1 max-h-[160px] overflow-y-auto pr-1">
+                                {task.subtasks.map((st, sIdx) => (
+                                  <label 
+                                    key={sIdx} 
+                                    className="flex items-center gap-2.5 text-xs text-text-primary p-1.5 rounded-lg hover:bg-white cursor-pointer transition-colors border border-transparent hover:border-border-light"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={st.isCompleted}
+                                      onChange={() => handleToggleSubtask(task, sIdx)}
+                                      className="w-4 h-4 rounded border-border-medium text-primary focus:ring-primary/20 cursor-pointer transition-transform active:scale-90"
+                                    />
+                                    <span className={st.isCompleted ? 'line-through text-text-muted font-normal' : 'font-medium'}>
+                                      {st.title}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {isCompleted && task.completionEvidence?.photoUrl && (
+                            <div className="flex items-center gap-2 mt-1.5 p-1.5 bg-emerald-50/80 border border-emerald-200/90 rounded-lg max-w-fit">
+                              <PhotoView src={getImageUrl(task.completionEvidence.photoUrl)}>
+                                <div className="relative w-8 h-8 rounded-md overflow-hidden border border-emerald-300 cursor-pointer shrink-0 group">
+                                  <img 
+                                    src={getImageUrl(task.completionEvidence.photoUrl)} 
+                                    alt="Bukti Selesai" 
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                                  />
+                                  <div className="absolute inset-0 bg-black/25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Eye size={12} className="text-white" />
+                                  </div>
+                                </div>
+                              </PhotoView>
+                              <div className="flex flex-col text-[11px] leading-tight pr-1">
+                                <span className="font-bold text-emerald-800 flex items-center gap-1">
+                                  <CheckCircle2 size={11} className="text-emerald-600" />
+                                  Bukti Terverifikasi
+                                </span>
+                                <span className="text-text-muted truncate max-w-[200px]">
+                                  Oleh: {task.completionEvidence.submittedBy?.fullName || 'Personil'}
+                                </span>
+                                {task.completionEvidence.notes && (
+                                  <span className="text-text-secondary italic text-[10px] truncate max-w-[200px]">
+                                    "{task.completionEvidence.notes}"
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </td>
 
@@ -908,17 +1596,24 @@ export default function Tasks() {
                         className={`${densityPadding}`}
                       >
                         {task.assignedTo ? (
-                          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-                            <User size={13} className="text-text-muted shrink-0" />
-                            <div className="flex flex-col">
-                              <span className="font-medium text-text-primary">{task.assignedTo.fullName}</span>
-                              <span className="text-[10px] text-text-muted capitalize">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
+                              isMyTask ? 'bg-primary text-white shadow-2xs' : 'bg-slate-200 text-slate-700'
+                            }`}>
+                              {task.assignedTo.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className={`font-semibold text-xs truncate max-w-[130px] ${isMyTask ? 'text-primary font-bold' : 'text-text-primary'}`}>
+                                {task.assignedTo.fullName}
+                              </span>
+                              <span className="text-[10px] text-text-muted capitalize truncate max-w-[130px]">
                                 {task.assignedTo.position || task.assignedTo.role}
                               </span>
                             </div>
                           </div>
                         ) : (
-                          <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-medium">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                            <AlertCircle size={11} className="text-amber-600" />
                             Belum Ditugaskan
                           </span>
                         )}
@@ -935,12 +1630,41 @@ export default function Tasks() {
                       {/* 5: Due Date */}
                       <td
                         {...getCellProps(rowIndex, 5)}
-                        className={`${densityPadding} font-mono tabular-nums text-xs text-text-secondary`}
+                        className={`${densityPadding} font-mono tabular-nums text-xs`}
                       >
                         {task.dueDate ? (
-                          <div className="flex items-center gap-1.5">
-                            <Calendar size={13} className="text-text-muted shrink-0" />
-                            <span>{formatWIBDate(task.dueDate, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 text-text-secondary font-medium">
+                              <Calendar size={13} className="text-text-muted shrink-0" />
+                              <span>{formatWIBDate(task.dueDate, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                            </div>
+                            {!isCompleted && (() => {
+                              const diffHours = (new Date(task.dueDate).getTime() - Date.now()) / (1000 * 60 * 60);
+                              if (diffHours < 0) {
+                                const daysOverdue = Math.abs(Math.floor(diffHours / 24));
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-300 animate-pulse w-fit">
+                                    <AlertTriangle size={10} />
+                                    Terlambat {daysOverdue > 0 ? `${daysOverdue}h` : ''}
+                                  </span>
+                                );
+                              } else if (diffHours <= 24) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 w-fit">
+                                    <Clock size={10} />
+                                    Hari Ini
+                                  </span>
+                                );
+                              } else if (diffHours <= 48) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 w-fit">
+                                    <Clock size={10} />
+                                    2 Hari Lagi
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                         ) : (
                           <span className="text-text-muted italic">-</span>
@@ -952,7 +1676,7 @@ export default function Tasks() {
                         {...getCellProps(rowIndex, 6)}
                         className={`${densityPadding} text-center`}
                       >
-                        <div className="inline-flex items-center gap-1.5">
+                        <div className="inline-flex items-center justify-center">
                           {getStatusBadge(task.status)}
                         </div>
                       </td>
@@ -960,7 +1684,7 @@ export default function Tasks() {
                       {/* 7: Quick Actions (Sticky Right) */}
                       <td
                         {...getCellProps(rowIndex, 7)}
-                        className={`${densityPadding} text-right sticky right-0 bg-bg-white shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.06)]`}
+                        className={`${densityPadding} text-right sticky right-0 bg-bg-white shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.06)] z-10`}
                       >
                         <div className="flex items-center justify-end gap-1.5">
                           {task.status === 'pending' && (
@@ -978,22 +1702,47 @@ export default function Tasks() {
                             <button
                               type="button"
                               onClick={() => handleSetStatus(task, 'completed')}
-                              className="px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
-                              title="Tandai Selesai"
+                              className="px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                              title="Tandai Selesai (Wajib Unggah Bukti)"
                             >
                               <Check size={12} />
                               <span>Selesai</span>
                             </button>
                           )}
                           {task.status === 'completed' && (
+                            <>
+                              {task.completionEvidence?.photoUrl && (
+                                <PhotoView src={getImageUrl(task.completionEvidence.photoUrl)}>
+                                  <button
+                                    type="button"
+                                    className="px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                                    title="Lihat Foto Bukti Penyelesaian"
+                                  >
+                                    <Camera size={12} />
+                                    <span>Bukti</span>
+                                  </button>
+                                </PhotoView>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleSetStatus(task, 'pending')}
+                                className="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1"
+                                title="Buka Kembali"
+                              >
+                                <RotateCcw size={12} />
+                                <span>Buka</span>
+                              </button>
+                            </>
+                          )}
+                          {canManageTasks && task.status !== 'completed' && task.assignedTo && (
                             <button
                               type="button"
-                              onClick={() => handleSetStatus(task, 'pending')}
-                              className="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1"
-                              title="Buka Kembali"
+                              onClick={() => handleSendReminder(task)}
+                              disabled={remindingTaskId === task._id}
+                              className="p-1.5 rounded-md text-amber-600 hover:text-amber-800 hover:bg-amber-50 transition-colors cursor-pointer border border-transparent hover:border-amber-200"
+                              title={`Kirim Pengingat Web Push ke ${task.assignedTo.fullName}`}
                             >
-                              <RotateCcw size={12} />
-                              <span>Buka</span>
+                              <Bell size={14} className={remindingTaskId === task._id ? 'animate-spin' : ''} />
                             </button>
                           )}
                           {canManageTasks && (
@@ -1015,17 +1764,21 @@ export default function Tasks() {
             </table>
           </div>
 
-          <div className="px-4 py-3 bg-bg-secondary/40 border-t border-border-light flex items-center justify-between text-xs text-text-muted">
-            <span>Total {filteredTasks.length} tugas ditemukan</span>
-            <span className="hidden sm:inline">Navigasi sel dengan tombol Panah (<kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd>), <kbd>Enter</kbd> untuk toggle</span>
+          <div className="px-4 py-3 bg-slate-50 border-t border-border-light flex items-center justify-between text-xs text-text-muted flex-wrap gap-2">
+            <span className="font-medium">Total {sortedTasks.length} tugas ditemukan</span>
+            <span className="hidden sm:inline text-text-secondary">
+              Navigasi keyboard: Gunakan tombol Panah (<kbd className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">↑</kbd> <kbd className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">↓</kbd> <kbd className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">←</kbd> <kbd className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">→</kbd>), <kbd className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Enter</kbd> untuk eksekusi aksi
+            </span>
           </div>
         </Card>
       )}
 
       {/* Cards Mode (Kanban Style) */}
-      {!loading && !error && filteredTasks.length > 0 && viewMode === 'cards' && (
+      {!loading && !error && sortedTasks.length > 0 && viewMode === 'cards' && (
         <div className="flex flex-col gap-3">
-          {filteredTasks.map((task) => {
+          {sortedTasks.map((task) => {
+            const isCompleted = task.status === 'completed';
+            const isMyTask = task.assignedTo?._id === user?._id;
             const taskScope = task.scope || 'project';
             const subtasksTotal = task.subtasks?.length || 0;
             const subtasksDone = task.subtasks?.filter(s => s.isCompleted).length || 0;
@@ -1033,7 +1786,11 @@ export default function Tasks() {
             return (
               <Card 
                 key={task._id} 
-                className={`flex items-start gap-4 p-4 cursor-default transition-all duration-150 hover:translate-x-1 max-sm:flex-col max-sm:gap-3 ${task.status === 'completed' ? 'opacity-75 bg-slate-50/50' : ''}`}
+                className={`flex items-start gap-4 p-4.5 cursor-default transition-all duration-200 hover:shadow-md max-sm:flex-col max-sm:gap-3 rounded-xl border ${
+                  isMyTask 
+                    ? 'border-l-[6px] border-l-primary ring-2 ring-primary/25 bg-gradient-to-r from-primary/[0.04] to-bg-white shadow-sm' 
+                    : 'border-l-[6px] border-l-transparent border-border-light'
+                } ${isCompleted ? 'opacity-80 bg-slate-50/50' : 'bg-bg-white'}`}
               >
                 <div className="flex items-center pt-[2px] max-sm:self-start">
                   <button 
@@ -1047,6 +1804,13 @@ export default function Tasks() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    {isMyTask && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-primary text-white shadow-2xs tracking-wide">
+                        <User size={11} />
+                        Tugas Anda
+                      </span>
+                    )}
+
                     {taskScope === 'office' ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
                         <Building2 size={12} />
@@ -1063,10 +1827,37 @@ export default function Tasks() {
                       {task.title}
                     </h3>
                     {task.workItemId && (
-                      <Badge label="WORK ITEM" variant="primary" size="small" />
+                      <Badge label="WBS" variant="primary" size="small" />
                     )}
                     {getPriorityBadge(task.priority)}
                     {getStatusBadge(task.status)}
+
+                    {!isCompleted && task.dueDate && (() => {
+                      const diffHours = (new Date(task.dueDate).getTime() - Date.now()) / (1000 * 60 * 60);
+                      if (diffHours < 0) {
+                        return (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-rose-100 text-rose-800 border border-rose-300 animate-pulse">
+                            <AlertTriangle size={11} />
+                            Terlambat
+                          </span>
+                        );
+                      } else if (diffHours <= 24) {
+                        return (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                            <Clock size={11} />
+                            Tenggat Hari Ini
+                          </span>
+                        );
+                      } else if (diffHours <= 48) {
+                        return (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            <Clock size={11} />
+                            2 Hari Lagi
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
 
                   {task.description && (
@@ -1075,24 +1866,38 @@ export default function Tasks() {
 
                   {/* Subtask checklist if present */}
                   {subtasksTotal > 0 && (
-                    <div className="mb-3 p-3 bg-bg-secondary/40 rounded-lg border border-border-light space-y-2">
+                    <div className="mb-3 p-3 bg-bg-secondary/60 rounded-xl border border-border-light space-y-2.5">
                       <div className="flex items-center justify-between text-xs font-semibold text-text-secondary">
-                        <span className="flex items-center gap-1">
-                          <CheckSquare size={13} className="text-primary" />
-                          Subtugas ({subtasksDone}/{subtasksTotal})
+                        <span className="flex items-center gap-1.5 text-text-primary">
+                          <CheckSquare size={14} className="text-primary" />
+                          <span className="font-bold">Checklist Subtugas</span>
+                          <span className="text-text-muted">({subtasksDone}/{subtasksTotal} Selesai)</span>
                         </span>
-                        <span className="font-mono">{Math.round((subtasksDone / subtasksTotal) * 100)}%</span>
+                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-primary/10 text-primary font-bold">
+                          {Math.round((subtasksDone / subtasksTotal) * 100)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                        <div 
+                          className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${Math.round((subtasksDone / subtasksTotal) * 100)}%` }}
+                        />
                       </div>
                       <div className="space-y-1.5 pt-1">
                         {task.subtasks!.map((st, idx) => (
-                          <label key={idx} className="flex items-center gap-2 text-xs text-text-primary cursor-pointer hover:text-primary">
+                          <label 
+                            key={idx} 
+                            className="flex items-center gap-2.5 text-xs text-text-primary p-1.5 rounded-lg hover:bg-white cursor-pointer transition-all border border-transparent hover:border-border-light"
+                          >
                             <input
                               type="checkbox"
                               checked={st.isCompleted}
                               onChange={() => handleToggleSubtask(task, idx)}
-                              className="rounded border-border text-primary focus:ring-primary/20 cursor-pointer"
+                              className="w-4 h-4 rounded border-border-medium text-primary focus:ring-primary/20 cursor-pointer transition-transform active:scale-90"
                             />
-                            <span className={st.isCompleted ? 'line-through text-text-muted' : ''}>{st.title}</span>
+                            <span className={st.isCompleted ? 'line-through text-text-muted font-normal' : 'font-medium'}>
+                              {st.title}
+                            </span>
                           </label>
                         ))}
                       </div>
@@ -1107,7 +1912,7 @@ export default function Tasks() {
                       </span>
                     )}
                     {task.assignedTo && (
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1 font-medium text-text-secondary">
                         <User size={13} />
                         {task.assignedTo.fullName} ({task.assignedTo.position || task.assignedTo.role})
                       </span>
@@ -1119,6 +1924,40 @@ export default function Tasks() {
                       </span>
                     )}
                   </div>
+
+                  {task.status === 'completed' && task.completionEvidence?.photoUrl && (
+                    <div className="mt-3 p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl flex items-center gap-3">
+                      <PhotoView src={getImageUrl(task.completionEvidence.photoUrl)}>
+                        <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-emerald-300 cursor-pointer shrink-0 shadow-2xs group">
+                          <img 
+                            src={getImageUrl(task.completionEvidence.photoUrl)} 
+                            alt="Bukti Penyelesaian" 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                          <div className="absolute inset-0 bg-black/25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ZoomIn size={14} className="text-white" />
+                          </div>
+                        </div>
+                      </PhotoView>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
+                          <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                          <span>Bukti Penyelesaian Terverifikasi</span>
+                        </div>
+                        {task.completionEvidence.notes && (
+                          <p className="text-xs text-text-secondary mt-0.5 mb-1 italic line-clamp-2">
+                            "{task.completionEvidence.notes}"
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 text-[11px] text-text-muted mt-0.5 flex-wrap">
+                          <span>Oleh: <strong className="text-text-primary">{task.completionEvidence.submittedBy?.fullName || 'Personil'}</strong></span>
+                          {task.completionEvidence.submittedAt && (
+                            <span>• {formatWIBDate(task.completionEvidence.submittedAt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} WIB</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 max-sm:self-end max-sm:mt-2">
@@ -1132,13 +1971,36 @@ export default function Tasks() {
                     />
                   )}
                   {task.status === 'completed' && (
-                    <Button
-                      title="Buka Kembali"
-                      icon={RotateCcw}
-                      onClick={() => handleSetStatus(task, 'pending')}
-                      variant="outline"
-                      size="small"
-                    />
+                    <>
+                      {task.completionEvidence?.photoUrl && (
+                        <PhotoView src={getImageUrl(task.completionEvidence.photoUrl)}>
+                          <Button
+                            title="Lihat Foto"
+                            icon={Camera}
+                            variant="secondary"
+                            size="small"
+                          />
+                        </PhotoView>
+                      )}
+                      <Button
+                        title="Buka Kembali"
+                        icon={RotateCcw}
+                        onClick={() => handleSetStatus(task, 'pending')}
+                        variant="outline"
+                        size="small"
+                      />
+                    </>
+                  )}
+                  {canManageTasks && task.status !== 'completed' && task.assignedTo && (
+                    <button
+                      type="button"
+                      onClick={() => handleSendReminder(task)}
+                      disabled={remindingTaskId === task._id}
+                      className="p-1.5 rounded-md text-amber-600 hover:text-amber-800 hover:bg-amber-50 transition-colors cursor-pointer border border-transparent hover:border-amber-200"
+                      title={`Kirim Pengingat Web Push ke ${task.assignedTo.fullName}`}
+                    >
+                      <Bell size={16} className={remindingTaskId === task._id ? 'animate-spin' : ''} />
+                    </button>
                   )}
                   {canManageTasks && (
                     <Button
@@ -1432,6 +2294,14 @@ export default function Tasks() {
           </div>
         </div>
       )}
+
+      {/* Task Completion Evidence Modal */}
+      <TaskCompletionModal
+        task={completingTask}
+        isOpen={!!completingTask}
+        onClose={() => setCompletingTask(null)}
+        onSuccess={handleCompletionSuccess}
+      />
     </div>
   );
 }
