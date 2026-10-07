@@ -4,10 +4,10 @@ import {
   ArrowLeft, Wrench, User, Warehouse, Plus,
   ChevronDown, X, AlertCircle, Package, Search,
   CheckCircle2, Settings, AlertTriangle, Calendar, MapPin, UserX,
-  Camera,
+  Camera, FileSpreadsheet,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import api from '../api/api';
+import api, { exportToolsExcel } from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, EmptyState, Input } from '../components/shared';
 import { PhotoView } from 'react-photo-view';
@@ -71,6 +71,7 @@ export default function ProjectTools() {
   const [returnPhotoPreview, setReturnPhotoPreview] = useState<string | null>(null);
   const [returnCondition, setReturnCondition] = useState('Baik');
   const [submitting, setSubmitting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const canManageTools = user?.role && ['owner', 'director', 'supervisor', 'asset_admin'].includes(user.role);
 
@@ -187,6 +188,19 @@ export default function ProjectTools() {
     }
   };
 
+  const handleExportExcel = async () => {
+    if (!projectId) return;
+    setIsExporting(true);
+    try {
+      await exportToolsExcel({ projectId });
+    } catch (err: any) {
+      console.error('Failed to export project tools:', err);
+      alert(err?.response?.data?.msg || 'Gagal mengekspor data peralatan ke Excel');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleReturnPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -250,15 +264,33 @@ export default function ProjectTools() {
           <h1 className="text-xl font-bold text-text-primary m-0">{t('projectTools.title')}</h1>
           <p className="text-sm text-text-muted m-0">{project?.nama || t('projectTools.fallbackProject')}</p>
         </div>
-        {canManageTools && (
-          <Button
-            title={t('projectTools.actions.addTool')}
-            icon={Plus}
-            onClick={() => setShowAddModal(true)}
-            variant="primary"
-            size="small"
-          />
-        )}
+        <div className="flex items-center gap-2">
+          {tools.length > 0 && (
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={isExporting}
+              className="flex items-center gap-1.5 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-md text-xs font-semibold transition-all shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer"
+              title="Ekspor ke Excel (.xlsx)"
+            >
+              {isExporting ? (
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <FileSpreadsheet size={15} />
+              )}
+              <span>Ekspor</span>
+            </button>
+          )}
+          {canManageTools && (
+            <Button
+              title={t('projectTools.actions.addTool')}
+              icon={Plus}
+              onClick={() => setShowAddModal(true)}
+              variant="primary"
+              size="small"
+            />
+          )}
+        </div>
       </div>
 
       {/* Mini Stats */}

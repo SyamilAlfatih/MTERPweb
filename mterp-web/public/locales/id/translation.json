@@ -317,10 +317,28 @@
     },
     "actions": {
       "add": "Tambah Alat",
+      "exportExcel": "Ekspor Excel (.xlsx)",
       "edit": "Edit",
       "delete": "Hapus",
       "cancel": "Batal",
       "saveChanges": "Simpan Perubahan"
+    },
+    "export": {
+      "title": "Ekspor Inventaris Alat",
+      "subtitle": "Unduh data inventaris peralatan ke format Microsoft Excel (.xlsx)",
+      "scope": "Cakupan Data",
+      "scopeCurrent": "Sesuai Filter & Pencarian Saat Ini",
+      "scopeAll": "Semua Alat di Inventaris",
+      "columns": "Pilihan Kolom",
+      "selectAll": "Pilih Semua",
+      "presetDefault": "Standar",
+      "presetCompact": "Ringkas",
+      "includeHeaders": "Sertakan Baris Judul Header",
+      "download": "Unduh File Excel (.xlsx)",
+      "downloading": "Mengekspor...",
+      "selectAtLeastOneColumn": "Pilih minimal satu kolom untuk diekspor",
+      "successMsg": "File Excel (.xlsx) berhasil diunduh!",
+      "failedMsg": "Gagal mengekspor file Excel"
     },
     "messages": {
       "deleteConfirm": "Hapus \"{{name}}\"? Tindakan ini tidak dapat dibatalkan.",

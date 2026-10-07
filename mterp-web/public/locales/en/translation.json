@@ -317,10 +317,28 @@
     },
     "actions": {
       "add": "Add Tool",
+      "exportExcel": "Export Excel (.xlsx)",
       "edit": "Edit",
       "delete": "Delete",
       "cancel": "Cancel",
       "saveChanges": "Save Changes"
+    },
+    "export": {
+      "title": "Export Tools Inventory",
+      "subtitle": "Download equipment inventory data to Microsoft Excel (.xlsx) format",
+      "scope": "Data Scope",
+      "scopeCurrent": "Current Filtered & Search Results",
+      "scopeAll": "All Tools in Inventory",
+      "columns": "Select Columns",
+      "selectAll": "Select All",
+      "presetDefault": "Default",
+      "presetCompact": "Compact",
+      "includeHeaders": "Include Header Row",
+      "download": "Download Excel File (.xlsx)",
+      "downloading": "Exporting...",
+      "selectAtLeastOneColumn": "Please select at least one column to export",
+      "successMsg": "Excel file (.xlsx) downloaded successfully!",
+      "failedMsg": "Failed to export Excel file"
     },
     "messages": {
       "deleteConfirm": "Delete \"{{name}}\"? This cannot be undone.",

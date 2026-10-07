@@ -87,6 +87,37 @@ export const deleteTool = async (id: string) => {
   return response.data;
 };
 
+export const exportToolsExcel = async (params?: {
+  search?: string;
+  kondisi?: string;
+  projectId?: string;
+  columns?: string[];
+  headers?: boolean;
+}): Promise<void> => {
+  const queryParams = new URLSearchParams();
+  if (params?.search) queryParams.append('search', params.search);
+  if (params?.kondisi && params.kondisi !== 'all') queryParams.append('kondisi', params.kondisi);
+  if (params?.projectId) queryParams.append('projectId', params.projectId);
+  if (params?.columns && params.columns.length > 0) queryParams.append('columns', params.columns.join(','));
+  if (params?.headers !== undefined) queryParams.append('headers', params.headers ? 'true' : 'false');
+
+  const response = await api.get(`/tools/export-excel?${queryParams.toString()}`, {
+    responseType: 'blob',
+  });
+  const blob = new Blob([response.data], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const dateStr = new Date().toISOString().split('T')[0];
+  link.setAttribute('download', `MTERP_Inventaris_Alat_${dateStr}.xlsx`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
 // === MATERIAL REQUESTS API ===
 
 export const createMaterialRequest = async (data: CreateMaterialRequestDTO) => {

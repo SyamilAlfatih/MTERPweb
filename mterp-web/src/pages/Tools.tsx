@@ -3,11 +3,11 @@ import {
   Search, Wrench, Plus, Package, MapPin, User,
   Calendar, Edit3, Trash2, X, ChevronDown, AlertTriangle,
   CheckCircle2, Settings, Archive, Camera, UserX, Warehouse,
-  LayoutGrid, List
+  LayoutGrid, List, FileSpreadsheet, Download
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import api, { getToolDashboard, createTool, updateTool, deleteTool } from '../api/api';
+import api, { getToolDashboard, createTool, updateTool, deleteTool, exportToolsExcel } from '../api/api';
 import { Card, Input, Badge, EmptyState, LoadingOverlay, Button } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import { PhotoView } from 'react-photo-view';
@@ -33,6 +33,25 @@ const FILTERS: { key: FilterType; label: string; icon: any }[] = [
   { key: 'Maintenance', label: 'Service', icon: Settings },
   { key: 'Rusak', label: 'Damaged', icon: AlertTriangle },
 ];
+
+const EXPORTABLE_TOOL_COLUMNS = [
+  { key: 'no', label: 'No', default: true },
+  { key: 'nama', label: 'Nama Alat / Mesin', default: true },
+  { key: 'kategori', label: 'Kategori', default: true },
+  { key: 'kondisi', label: 'Kondisi', default: true },
+  { key: 'stok', label: 'Stok', default: true },
+  { key: 'satuan', label: 'Satuan', default: true },
+  { key: 'lokasi', label: 'Lokasi Penyimpanan', default: true },
+  { key: 'status', label: 'Status Penggunaan', default: true },
+  { key: 'assignedTo', label: 'Penanggung Jawab', default: true },
+  { key: 'project', label: 'Proyek Terkait', default: true },
+  { key: 'lastChecked', label: 'Pengecekan Terakhir', default: true },
+  { key: 'createdAt', label: 'Tanggal Terdaftar', default: false },
+  { key: 'notes', label: 'Catatan', default: false },
+];
+
+const DEFAULT_EXPORT_COLUMNS = EXPORTABLE_TOOL_COLUMNS.filter(c => c.default).map(c => c.key);
+const COMPACT_EXPORT_COLUMNS = ['no', 'nama', 'kondisi', 'stok', 'lokasi', 'status'];
 
 const EMPTY_FORM = {
   nama: '', kategori: '', stok: 1, satuan: 'unit', kondisi: 'Baik', lokasi: 'Warehouse'
@@ -74,10 +93,24 @@ export default function Tools() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Export states
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportScope, setExportScope] = useState<'current' | 'all'>('current');
+  const [selectedExportColumns, setSelectedExportColumns] = useState<string[]>(DEFAULT_EXPORT_COLUMNS);
+  const [includeExportHeaders, setIncludeExportHeaders] = useState(true);
+  const [exportSuccess, setExportSuccess] = useState(false);
+
   const toolModalRef = useRef<HTMLDivElement>(null);
   useFocusTrap(toolModalRef, { 
     isActive: showAddModal || !!editingTool, 
     onEscape: () => { setShowAddModal(false); setEditingTool(null); } 
+  });
+
+  const exportModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(exportModalRef, {
+    isActive: showExportModal,
+    onEscape: () => setShowExportModal(false),
   });
 
   const canManage = user?.role && ['owner', 'director', 'asset_admin'].includes(user.role);
@@ -242,14 +275,35 @@ export default function Tools() {
             <p className="text-sm text-text-muted m-0 mt-[2px]">{t('tools.subtitle')}</p>
           </div>
         </div>
-        {canManage && (
-          <Button
-            title={t('tools.actions.add')}
-            icon={Plus}
-            onClick={openAddModal}
-            variant="primary"
-          />
-        )}
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              setExportScope(search || filter !== 'all' ? 'current' : 'all');
+              setShowExportModal(true);
+            }}
+            disabled={tools.length === 0 || isExporting}
+            className="flex items-center gap-2 py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-md text-sm font-semibold transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            title={t('tools.actions.exportExcel')}
+          >
+            {isExporting ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <FileSpreadsheet size={16} />
+            )}
+            <span className="max-sm:hidden">{t('tools.actions.exportExcel')}</span>
+            <span className="hidden max-sm:inline">.xlsx</span>
+          </button>
+
+          {canManage && (
+            <Button
+              title={t('tools.actions.add')}
+              icon={Plus}
+              onClick={openAddModal}
+              variant="primary"
+            />
+          )}
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -801,6 +855,249 @@ export default function Tools() {
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Export to Excel Modal */}
+      {showExportModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]"
+          onClick={() => setShowExportModal(false)}
+        >
+          <div
+            ref={exportModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-export-title"
+            className="bg-bg-white rounded-xl w-full max-w-[540px] max-h-[90vh] overflow-y-auto shadow-2xl border border-border-light flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-border-light bg-slate-50/60">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-emerald-100/80 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                  <FileSpreadsheet size={22} />
+                </div>
+                <div>
+                  <h2 id="modal-export-title" className="m-0 font-bold text-base text-text-primary">
+                    {t('tools.export.title')}
+                  </h2>
+                  <p className="m-0 text-xs text-text-muted mt-0.5">
+                    {t('tools.export.subtitle')}
+                  </p>
+                </div>
+              </div>
+              <button
+                className="p-1.5 border-none bg-transparent cursor-pointer text-text-muted rounded-md flex hover:bg-bg-secondary hover:text-text-primary transition-colors"
+                onClick={() => setShowExportModal(false)}
+                aria-label="Tutup"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-5 flex flex-col gap-5">
+              {/* Scope Selector */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-text-muted block mb-2">
+                  {t('tools.export.scope')}
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setExportScope('current')}
+                    className={`flex flex-col text-left p-3 rounded-lg border text-xs transition-all cursor-pointer ${
+                      exportScope === 'current'
+                        ? 'border-emerald-500 bg-emerald-50/60 text-text-primary ring-1 ring-emerald-500 shadow-xs'
+                        : 'border-border-light bg-bg-white text-text-secondary hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-bold text-text-primary">
+                      <span>{t('tools.export.scopeCurrent')}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">
+                        {filteredTools.length}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-text-muted mt-1 leading-snug">
+                      {search || filter !== 'all'
+                        ? `${filter !== 'all' ? `Filter: ${filter}` : ''} ${search ? `| "${search}"` : ''}`
+                        : 'Menampilkan data yang difilter'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setExportScope('all')}
+                    className={`flex flex-col text-left p-3 rounded-lg border text-xs transition-all cursor-pointer ${
+                      exportScope === 'all'
+                        ? 'border-emerald-500 bg-emerald-50/60 text-text-primary ring-1 ring-emerald-500 shadow-xs'
+                        : 'border-border-light bg-bg-white text-text-secondary hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-bold text-text-primary">
+                      <span>{t('tools.export.scopeAll')}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[11px] font-extrabold">
+                        {tools.length}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-text-muted mt-1 leading-snug">
+                      Seluruh item di database tanpa filter
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Column Selection */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-text-muted">
+                    {t('tools.export.columns')} ({selectedExportColumns.length}/{EXPORTABLE_TOOL_COLUMNS.length})
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedExportColumns(EXPORTABLE_TOOL_COLUMNS.map(c => c.key))}
+                      className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                    >
+                      {t('tools.export.selectAll')}
+                    </button>
+                    <span className="text-border-light">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedExportColumns(DEFAULT_EXPORT_COLUMNS)}
+                      className="text-[11px] font-bold text-primary hover:text-primary-light hover:underline cursor-pointer"
+                    >
+                      {t('tools.export.presetDefault')}
+                    </button>
+                    <span className="text-border-light">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedExportColumns(COMPACT_EXPORT_COLUMNS)}
+                      className="text-[11px] font-bold text-text-secondary hover:text-text-primary hover:underline cursor-pointer"
+                    >
+                      {t('tools.export.presetCompact')}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto p-2.5 border border-border-light rounded-xl bg-slate-50/50">
+                  {EXPORTABLE_TOOL_COLUMNS.map(col => {
+                    const isChecked = selectedExportColumns.includes(col.key);
+                    return (
+                      <label
+                        key={col.key}
+                        className={`flex items-center gap-2.5 p-2 rounded-lg text-xs font-semibold cursor-pointer transition-all border ${
+                          isChecked
+                            ? 'bg-bg-white border-emerald-300 text-text-primary shadow-xs'
+                            : 'bg-transparent border-transparent text-text-muted hover:bg-white/60'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (selectedExportColumns.includes(col.key)) {
+                              if (selectedExportColumns.length > 1) {
+                                setSelectedExportColumns(selectedExportColumns.filter(k => k !== col.key));
+                              }
+                            } else {
+                              setSelectedExportColumns([...selectedExportColumns, col.key]);
+                            }
+                          }}
+                          className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                        />
+                        <span className="truncate">{col.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Header Row Option & Info */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-bg-secondary border border-border-light">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-text-primary select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeExportHeaders}
+                    onChange={e => setIncludeExportHeaders(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                  />
+                  <span>{t('tools.export.includeHeaders')}</span>
+                </label>
+                <span className="text-[11px] text-text-muted font-mono">Format: .xlsx</span>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-border-light bg-slate-50/60">
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                className="py-2.5 px-4 rounded-lg text-xs font-bold text-text-secondary hover:bg-bg-secondary border border-border-light transition-all cursor-pointer"
+              >
+                {t('tools.actions.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (selectedExportColumns.length === 0) {
+                    alert(t('tools.export.selectAtLeastOneColumn'));
+                    return;
+                  }
+
+                  setIsExporting(true);
+                  try {
+                    const params: {
+                      search?: string;
+                      kondisi?: string;
+                      columns: string[];
+                      headers: boolean;
+                    } = {
+                      columns: selectedExportColumns,
+                      headers: includeExportHeaders,
+                    };
+
+                    if (exportScope === 'current') {
+                      if (search.trim()) params.search = search.trim();
+                      if (filter !== 'all') params.kondisi = filter;
+                    }
+
+                    await exportToolsExcel(params);
+                    setShowExportModal(false);
+                    setExportSuccess(true);
+                    setTimeout(() => setExportSuccess(false), 4000);
+                  } catch (err: any) {
+                    console.error('Failed to export tools to Excel:', err);
+                    alert(err.response?.data?.msg || t('tools.export.failedMsg'));
+                  } finally {
+                    setIsExporting(false);
+                  }
+                }}
+                disabled={isExporting || selectedExportColumns.length === 0}
+                className="flex items-center gap-2 py-2.5 px-5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-emerald-700/20 active:scale-95 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {isExporting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>{t('tools.export.downloading')}</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={16} />
+                    <span>{t('tools.export.download')}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast Notification on Success */}
+      {exportSuccess && (
+        <div className="fixed bottom-6 right-6 z-[1100] flex items-center gap-2.5 bg-slate-900 text-white py-3 px-4 rounded-xl shadow-2xl border border-slate-700 animate-[fade-in-up_0.2s_ease_both]">
+          <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold">{t('tools.export.successMsg')}</span>
         </div>
       )}
     </div>
