@@ -26,6 +26,7 @@ const {
   apiKeyRoutes,
   rabRoutes,
   localPurchaseRoutes,
+  spklRoutes,
 } = require('./routes');
 const updatesRoutes = require('./routes/updates');
 const dashboardRoutes = require('./routes/dashboard');
@@ -108,6 +109,7 @@ app.use('/api/pekerja', pekerjaRoutes);
 app.use('/api/apikeys', apiKeyRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/attendance-session', attendanceSessionRoutes);
+app.use('/api/spkl', spklRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

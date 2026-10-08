@@ -19,6 +19,8 @@ const ProjectResource = require('./ProjectResource');
 const RABItem = require('./RABItem');
 const LocalPurchase = require('./LocalPurchase');
 const PushSubscription = require('./PushSubscription');
+const SPKL = require('./SPKL');
+const SPKLBatch = require('./SPKLBatch');
 
 module.exports = {
   User,
@@ -42,5 +44,8 @@ module.exports = {
   RABItem,
   LocalPurchase,
   PushSubscription,
+  SPKL,
+  SPKLBatch,
 };
+
 

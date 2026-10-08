@@ -24,22 +24,33 @@ const auth = async (req, res, next) => {
 
 // Role-based access control middleware
 const roleHierarchy = {
-  director: ['director', 'president_director', 'operational_director'],
-  supervisor: ['supervisor', 'site_manager', 'admin_project'],
-  admin: ['admin', 'admin_project']
+  owner: ['owner', 'director', 'president_director', 'operational_director', 'admin', 'admin_project', 'supervisor', 'site_manager'],
+  director: ['director', 'president_director', 'operational_director', 'owner'],
+  project_manager: ['project_manager', 'site_manager', 'director', 'operational_director', 'president_director', 'owner'],
+  supervisor: ['supervisor', 'site_manager', 'admin_project', 'foreman', 'owner'],
+  finance: ['finance', 'admin_project', 'director', 'operational_director', 'president_director', 'owner'],
+  admin: ['admin', 'admin_project', 'owner']
 };
 
 const authorize = (...roles) => {
   return (req, res, next) => {
-    let expandedRoles = new Set(roles);
+    const userRole = (req.user?.role || '').toLowerCase();
+    
+    // Owner always has universal system access
+    if (userRole === 'owner') {
+      return next();
+    }
+
+    let expandedRoles = new Set(roles.map(r => r.toLowerCase()));
 
     roles.forEach(role => {
-      if (roleHierarchy[role]) {
-        roleHierarchy[role].forEach(r => expandedRoles.add(r));
+      const lowerRole = role.toLowerCase();
+      if (roleHierarchy[lowerRole]) {
+        roleHierarchy[lowerRole].forEach(r => expandedRoles.add(r.toLowerCase()));
       }
     });
 
-    if (!Array.from(expandedRoles).includes(req.user.role)) {
+    if (!expandedRoles.has(userRole)) {
       return res.status(403).json({ msg: 'Access denied. Insufficient permissions.' });
     }
     next();

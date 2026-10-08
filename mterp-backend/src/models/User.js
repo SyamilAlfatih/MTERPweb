@@ -41,6 +41,16 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  nik: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  department: {
+    type: String,
+    trim: true,
+    default: 'Operasional Lapangan',
+  },
   isVerified: {
     type: Boolean,
     default: false,

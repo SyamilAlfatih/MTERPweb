@@ -20,6 +20,7 @@ const notificationSchema = new mongoose.Schema({
       'project_created',
       'report_approved',
       'attendance_permit',
+      'spkl',
       'general',
     ],
     default: 'general',
@@ -40,6 +41,8 @@ const notificationSchema = new mongoose.Schema({
     requestId: { type: mongoose.Schema.Types.ObjectId, ref: 'Request' },
     kasbonId: { type: mongoose.Schema.Types.ObjectId, ref: 'Kasbon' },
     reportId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProjectReport' },
+    spklId: { type: mongoose.Schema.Types.ObjectId, ref: 'SPKL' },
+    url: { type: String },
   },
   isRead: {
     type: Boolean,

@@ -160,6 +160,15 @@ const NAV_ITEMS: NavItem[] = [
     bg: '#FEE2E2',
   },
   {
+    id: 'spkl',
+    label: 'Surat Lembur (SPKL)',
+    icon: FileText,
+    route: '/spkl',
+    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin', 'foreman', 'worker', 'tukang', 'helper'],
+    color: '#2563EB',
+    bg: '#EFF6FF',
+  },
+  {
     id: 'slip-gaji',
     label: 'sidebar.payroll',
     icon: Receipt,

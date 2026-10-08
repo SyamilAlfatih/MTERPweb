@@ -99,6 +99,11 @@ const attendanceSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'AttendanceSession',
   },
+  spklId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SPKL',
+    default: null,
+  },
   notes: String,
   workType: {
     type: String,

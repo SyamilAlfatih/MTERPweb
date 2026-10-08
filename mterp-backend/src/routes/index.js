@@ -13,6 +13,7 @@ const apiKeyRoutes = require('./apikeys');
 const projectPlanRoutes = require('./projectPlan');
 const rabRoutes = require('./rab');
 const localPurchaseRoutes = require('./localPurchases');
+const spklRoutes = require('./spkl');
 
 module.exports = {
   authRoutes,
@@ -30,5 +31,7 @@ module.exports = {
   apiKeyRoutes,
   rabRoutes,
   localPurchaseRoutes,
+  spklRoutes,
 };
+
 

@@ -8,6 +8,7 @@ let io = null;
  * Determine destination URL for push notification click deep linking
  */
 function resolveNotificationUrl(doc) {
+  if (doc.data?.spklId || doc.type === 'spkl') return '/spkl';
   if (doc.data?.taskId) return `/tasks?id=${doc.data.taskId}`;
   if (doc.data?.requestId) return `/requests`;
   if (doc.data?.kasbonId) return `/kasbon`;

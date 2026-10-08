@@ -2394,6 +2394,20 @@ export default function AttendanceLogs() {
             </div>
 
             <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* SPKL System Link Banner */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-blue-900 block">Butuh Bukti Penugasan & Rincian Tugas?</span>
+                  <span className="text-xs font-semibold text-blue-800">Isi Form Resmi SPKL (1:1 Sesuai Standar ISO/SMK3)</span>
+                </div>
+                <a
+                  href="/spkl"
+                  className="px-2.5 py-1.5 text-[10px] font-extrabold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shrink-0"
+                >
+                  Buka SPKL →
+                </a>
+              </div>
+
               {/* Worker & Date Picker */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

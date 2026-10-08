@@ -44,6 +44,7 @@ const ProjectDocuments = lazyWithRetry(() => import('./pages/ProjectDocuments'),
 const Notifications    = lazyWithRetry(() => import('./pages/Notifications'), 'Notifications');
 const ProjectPlan      = lazyWithRetry(() => import('./pages/ProjectPlan'), 'ProjectPlan');
 const ProjectSwakelola = lazyWithRetry(() => import('./pages/ProjectSwakelola'), 'ProjectSwakelola');
+const OvertimeSPKL     = lazyWithRetry(() => import('./pages/OvertimeSPKL'), 'OvertimeSPKL');
 
 // ─── Page loading fallback ────────────────────────────────────────────────────
 function PageLoader() {
@@ -129,6 +130,8 @@ function App() {
                       <Route path="/swakelola" element={<ProjectSwakelola />} />
                       <Route path="/project-swakelola/:id" element={<ProjectSwakelola />} />
                       <Route path="/project/:id/swakelola" element={<ProjectSwakelola />} />
+                      <Route path="/spkl" element={<OvertimeSPKL />} />
+                      <Route path="/overtime" element={<OvertimeSPKL />} />
                     </Route>
 
                     {/* Fallback */}
