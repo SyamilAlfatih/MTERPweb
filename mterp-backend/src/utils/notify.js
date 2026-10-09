@@ -1,5 +1,6 @@
 const { Notification, User } = require('../models');
 const { sendPushToUsers } = require('./webPush');
+const whatsappGateway = require('../services/whatsappGateway');
 
 // Will be set by server.js after socket.io is initialized
 let io = null;
@@ -116,4 +117,45 @@ async function notifyByRole(roles, notifData, excludeUserId) {
   }
 }
 
-module.exports = { notify, notifyByRole, setIO };
+/**
+ * Notify all active personnel in a corporate department via WhatsApp,
+ * and additionally create in-app notifications for verified users matching that department.
+ *
+ * @param {string|string[]} department - e.g. 'Procurement' or ['Procurement', 'Finance']
+ * @param {string} waMessage - Pre-formatted WhatsApp text
+ * @param {Object} [notifData] - Optional in-app notification payload { title, message, type, data }
+ * @param {Object} [options] - Options for WhatsApp gateway (e.g. groupId, priority)
+ */
+async function notifyDepartmentWithWA(department, waMessage, notifData, options = {}) {
+  try {
+    // 1. Dispatch WhatsApp message to target department contacts and group
+    whatsappGateway
+      .sendToDepartment(department, waMessage, options)
+      .catch((err) => console.warn(`[WA Gateway] notifyDepartment error:`, err.message));
+
+    // 2. If in-app notification data is provided, also notify relevant MTERP users in that department
+    if (notifData && notifData.title) {
+      const depts = Array.isArray(department) ? department : [department];
+      const deptRegexes = depts.map((d) => new RegExp(d.trim(), 'i'));
+      const users = await User.find({
+        department: { $in: deptRegexes },
+        isVerified: true,
+      }).select('_id').lean();
+
+      if (users.length > 0) {
+        const items = users.map((u) => ({
+          recipient: u._id.toString(),
+          type: notifData.type || 'general',
+          title: notifData.title,
+          message: notifData.message,
+          data: notifData.data || {},
+        }));
+        await notify(items);
+      }
+    }
+  } catch (err) {
+    console.warn('notifyDepartmentWithWA error:', err.message);
+  }
+}
+
+module.exports = { notify, notifyByRole, notifyDepartmentWithWA, setIO };

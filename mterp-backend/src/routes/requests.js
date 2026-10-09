@@ -4,6 +4,8 @@ const { Request, Project, User, Supply } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const { notify, notifyByRole } = require('../utils/notify');
 const { withTransaction } = require('../utils/transaction');
+const whatsappGateway = require('../services/whatsappGateway');
+const whatsappTemplates = require('../utils/whatsappTemplates');
 
 const router = express.Router();
 
@@ -110,14 +112,14 @@ router.post('/', auth, async (req, res) => {
     await request.save();
     
     // Populate for response
-    await request.populate('requestedBy', 'fullName role');
+    await request.populate('requestedBy', 'fullName role phone');
     await request.populate('projectId', 'nama lokasi');
     
     res.status(201).json(request);
 
-    // Notify managers about new material request (fire-and-forget)
+    // 1. In-app & Web Push notification to managers (fire-and-forget)
     notifyByRole(
-      ['owner', 'director'],
+      ['owner', 'director', 'asset_admin'],
       {
         type: 'general',
         title: 'New Material Request',
@@ -126,6 +128,16 @@ router.post('/', auth, async (req, res) => {
       },
       req.user._id.toString()
     ).catch(console.error);
+
+    // 2. WhatsApp dispatch to Procurement department (fire-and-forget)
+    const waProcurementMemo = whatsappTemplates.formatMaterialRequestCreated(request);
+    whatsappGateway
+      .sendToDepartment('Procurement', waProcurementMemo, {
+        groupId: process.env.WA_PROCUREMENT_GROUP_ID,
+        priority: request.urgency === 'High' ? 'high' : 'normal',
+        metadata: { requestId: request._id.toString(), event: 'created' },
+      })
+      .catch((waErr) => console.warn('[WA Procurement Dispatch Error]:', waErr.message));
   } catch (error) {
     console.error('Create request error:', error);
     res.status(500).json({ msg: 'Server error' });
@@ -228,7 +240,7 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (r
     });
 
     // Populate for response outside transaction
-    await request.populate('requestedBy', 'fullName role');
+    await request.populate('requestedBy', 'fullName role phone');
     await request.populate('projectId', 'nama lokasi');
     await request.populate('approvedBy', 'fullName');
 
@@ -237,6 +249,8 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (r
     // Notify the requester about approval/rejection (fire-and-forget)
     if ((status === 'Approved' || status === 'Rejected') && request.requestedBy) {
       const recipientId = typeof request.requestedBy === 'object' ? request.requestedBy._id : request.requestedBy;
+      
+      // 1. In-App & Web Push Notification
       notify({
         recipient: recipientId,
         type: status === 'Approved' ? 'request_approved' : 'request_rejected',
@@ -246,6 +260,26 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (r
           : `Your request for "${request.item}" was rejected${rejectionReason ? ': ' + rejectionReason : ''}`,
         data: { requestId: request._id },
       }).catch(console.error);
+
+      // 2. WhatsApp Notification to Procurement Team (On Approval: proceed with PO / Sourcing)
+      if (status === 'Approved') {
+        const waProcurementMemo = whatsappTemplates.formatMaterialRequestStatus(request, 'Approved');
+        whatsappGateway
+          .sendToDepartment('Procurement', waProcurementMemo, {
+            groupId: process.env.WA_PROCUREMENT_GROUP_ID,
+            metadata: { requestId: request._id.toString(), event: 'approved' },
+          })
+          .catch((waErr) => console.warn('[WA Procurement Approval Error]:', waErr.message));
+      }
+
+      // 3. WhatsApp Direct Notification to Requester (Personal Mobile)
+      const userPhone = typeof request.requestedBy === 'object' ? request.requestedBy.phone : null;
+      if (userPhone) {
+        const waUserMemo = whatsappTemplates.formatMaterialRequestStatus(request, status, rejectionReason);
+        whatsappGateway
+          .sendToUser(userPhone, waUserMemo)
+          .catch((waErr) => console.warn('[WA User Status Alert Error]:', waErr.message));
+      }
     }
   } catch (error) {
     console.error('Update request error:', error);

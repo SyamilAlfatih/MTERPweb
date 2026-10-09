@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const { Kasbon, User } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const { notify, notifyByRole } = require('../utils/notify');
+const whatsappGateway = require('../services/whatsappGateway');
+const whatsappTemplates = require('../utils/whatsappTemplates');
 
 const router = express.Router();
 
@@ -55,11 +57,11 @@ router.post('/', auth, async (req, res) => {
     });
     
     await kasbon.save();
-    await kasbon.populate('userId', 'fullName role');
+    await kasbon.populate('userId', 'fullName role phone');
     
     res.status(201).json(kasbon);
 
-    // Notify managers about new kasbon request (fire-and-forget)
+    // 1. In-app & Web Push notification to managers (fire-and-forget)
     notifyByRole(
       ['owner', 'director'],
       {
@@ -70,6 +72,15 @@ router.post('/', auth, async (req, res) => {
       },
       req.user._id.toString()
     ).catch(console.error);
+
+    // 2. WhatsApp dispatch to Finance Department (fire-and-forget)
+    const waFinanceMemo = whatsappTemplates.formatKasbonAlert(kasbon, 'submitted');
+    whatsappGateway
+      .sendToDepartment('Finance', waFinanceMemo, {
+        groupId: process.env.WA_FINANCE_GROUP_ID,
+        metadata: { kasbonId: kasbon._id.toString(), event: 'submitted' },
+      })
+      .catch((waErr) => console.warn('[WA Finance Kasbon Error]:', waErr.message));
   } catch (error) {
     console.error('Create kasbon error:', error);
     res.status(500).json({ msg: 'Server error' });
@@ -116,7 +127,7 @@ router.put('/:id', auth, authorize('owner', 'director'), async (req, res) => {
       { $set: updateData },
       { new: true }
     )
-      .populate('userId', 'fullName role')
+      .populate('userId', 'fullName role phone')
       .populate('approvedBy', 'fullName');
     
     if (!kasbon) {
@@ -128,6 +139,8 @@ router.put('/:id', auth, authorize('owner', 'director'), async (req, res) => {
     // Notify the kasbon requester about approval/rejection (fire-and-forget)
     if ((status === 'Approved' || status === 'Rejected') && kasbon.userId) {
       const recipientId = typeof kasbon.userId === 'object' ? kasbon.userId._id : kasbon.userId;
+      
+      // 1. In-app & Web Push notification
       notify({
         recipient: recipientId,
         type: status === 'Approved' ? 'kasbon_approved' : 'kasbon_rejected',
@@ -137,6 +150,29 @@ router.put('/:id', auth, authorize('owner', 'director'), async (req, res) => {
           : `Your kasbon request was rejected${rejectionReason ? ': ' + rejectionReason : ''}`,
         data: { kasbonId: kasbon._id },
       }).catch(console.error);
+
+      // 2. WhatsApp Direct Alert to Requester (if phone registered)
+      const userPhone = typeof kasbon.userId === 'object' ? kasbon.userId.phone : null;
+      if (userPhone) {
+        const waUserMemo = status === 'Approved'
+          ? `💰 *KASBON DISETUJUI*\nPT MEGA TAMA ENERCO — MTERP\n\nPengajuan kasbon Anda sebesar *${whatsappTemplates.formatRupiah(kasbon.amount)}* telah disetujui.\nSilakan konfirmasi ke bagian Keuangan untuk proses pencairan.`
+          : `❌ *KASBON DITOLAK*\nPT MEGA TAMA ENERCO — MTERP\n\nPengajuan kasbon Anda sebesar *${whatsappTemplates.formatRupiah(kasbon.amount)}* tidak dapat disetujui.\nAlasan: ${rejectionReason || 'Tidak ada catatan'}`;
+        
+        whatsappGateway
+          .sendToUser(userPhone, waUserMemo)
+          .catch((waErr) => console.warn('[WA Kasbon Requester Error]:', waErr.message));
+      }
+
+      // 3. WhatsApp Alert to Finance Desk on Approval
+      if (status === 'Approved') {
+        const waFinanceMemo = whatsappTemplates.formatKasbonAlert(kasbon, 'approved');
+        whatsappGateway
+          .sendToDepartment('Finance', waFinanceMemo, {
+            groupId: process.env.WA_FINANCE_GROUP_ID,
+            metadata: { kasbonId: kasbon._id.toString(), event: 'approved' },
+          })
+          .catch((waErr) => console.warn('[WA Kasbon Finance Approval Error]:', waErr.message));
+      }
     }
   } catch (error) {
     console.error('Update kasbon error:', error);

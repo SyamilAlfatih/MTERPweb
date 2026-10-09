@@ -5,6 +5,8 @@ const { SPKL, SPKLBatch, User, Project, Attendance, ProjectTask } = require('../
 const { auth, authorize } = require('../middleware/auth');
 const { withTransaction } = require('../utils/transaction');
 const { notify, notifyByRole } = require('../utils/notify');
+const whatsappGateway = require('../services/whatsappGateway');
+const whatsappTemplates = require('../utils/whatsappTemplates');
 
 const router = express.Router();
 
@@ -968,6 +970,15 @@ router.post(
           data: { spklId: spkl._id, url: '/spkl' },
         }, (req.user._id || req.user.id));
       }
+
+      // WhatsApp Alert to Finance & HR Desk (fire-and-forget)
+      const waSpklMemo = whatsappTemplates.formatSpklFinalApproved(spkl);
+      whatsappGateway
+        .sendToDepartment('Finance', waSpklMemo, {
+          groupId: process.env.WA_FINANCE_GROUP_ID,
+          metadata: { spklId: spkl._id.toString(), event: 'pm_approved' },
+        })
+        .catch((waErr) => console.warn('[WA SPKL Finance Alert Warning]:', waErr.message));
 
       res.json({ success: true, message: 'SPKL berhasil disetujui Project Manager', spkl });
     } catch (error) {
