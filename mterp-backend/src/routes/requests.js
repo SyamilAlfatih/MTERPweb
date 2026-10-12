@@ -1,42 +1,102 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { Request, Project, User, Supply } = require('../models');
+const { Request, Project, User, Supply, RABItem, ProjectTask } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
-const { notify, notifyByRole } = require('../utils/notify');
+const { notify, notifyByRole, notifyUserWithWA } = require('../utils/notify');
 const { withTransaction } = require('../utils/transaction');
+const upload = require('../middleware/upload');
+const { generatePrNumber, generatePoNumber } = require('../utils/procurementNumbering');
 const whatsappGateway = require('../services/whatsappGateway');
 const whatsappTemplates = require('../utils/whatsappTemplates');
 
 const router = express.Router();
 
-// GET /api/requests - Get all requests (with optional status filter)
+// Helper to populate complete procurement order details
+function populateProcurement(query) {
+  return query
+    .populate('requestedBy', 'fullName role phone nik')
+    .populate('projectId', 'nama lokasi')
+    .populate('approvedBy', 'fullName role')
+    .populate('reviewedBy.user', 'fullName role')
+    .populate('opsApprovedBy.user', 'fullName role')
+    .populate('financeApprovedBy.user', 'fullName role')
+    .populate('assignedReviewerId', 'fullName role phone email')
+    .populate('assignedOpsApproverId', 'fullName role phone email')
+    .populate('assignedFinanceApproverId', 'fullName role phone email')
+    .populate('deliveryProof.receivedBy', 'fullName role')
+    .populate('items.rabItemId', 'wbsCode description unitRate unitOfMeasure budgetedQuantity committedQuantity realizedQuantity');
+}
+
+// GET /api/requests/authorizers - Get candidate users configured for Reviewer, Ops Approver, Finance Approver (Owner Only)
+router.get('/authorizers', auth, authorize('owner'), async (req, res) => {
+  try {
+    const allUsers = await User.find({ isVerified: true })
+      .select('_id fullName role position department email phone')
+      .sort({ fullName: 1 })
+      .lean();
+
+    const reviewers = allUsers.filter((u) =>
+      ['supervisor', 'site_manager', 'foreman', 'admin_project', 'director', 'operational_director', 'owner'].includes(u.role)
+    );
+    const opsApprovers = allUsers.filter((u) =>
+      ['operational_director', 'director', 'president_director', 'owner', 'site_manager'].includes(u.role)
+    );
+    const financeApprovers = allUsers.filter((u) =>
+      ['director', 'president_director', 'owner'].includes(u.role)
+    );
+
+    res.json({
+      all: allUsers,
+      reviewers,
+      opsApprovers,
+      financeApprovers,
+    });
+  } catch (error) {
+    console.error('Get authorizers error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// GET /api/requests - Get all requests / procurement orders (with filters)
 router.get('/', auth, async (req, res) => {
   try {
-    const { status, projectId } = req.query;
+    const { status, projectId, search } = req.query;
     let query = {};
-    
-    // Filter by status
+
+    // Filter by status (supports comma-separated list e.g. "PR_PENDING,PR_REVIEWED")
     if (status) {
-      query.status = status;
+      if (status.includes(',')) {
+        query.status = { $in: status.split(',').map((s) => s.trim()) };
+      } else {
+        query.status = status;
+      }
     }
-    
+
     // Filter by project
     if (projectId) {
       query.projectId = projectId;
     }
-    
-    // Non-admin users only see their own requests
-    if (['worker', 'supervisor', 'asset_admin'].includes(req.user.role)) {
+
+    // Search query by PR Number, PO Number, or Item name
+    if (search) {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      query.$or = [
+        { prNumber: searchRegex },
+        { poNumber: searchRegex },
+        { item: searchRegex },
+        { 'items.item': searchRegex },
+      ];
+    }
+
+    // Workers and helpers only see their own requests; supervisors, directors, asset admins see all
+    if (['worker', 'tukang', 'helper'].includes(req.user.role)) {
       query.requestedBy = req.user._id;
     }
-    
-    const requests = await Request.find(query)
-      .populate('requestedBy', 'fullName role')
-      .populate('projectId', 'nama lokasi')
-      .populate('approvedBy', 'fullName')
-      .sort({ createdAt: -1 })
-      .lean();
-    
+
+    const requests = await populateProcurement(
+      Request.find(query).sort({ createdAt: -1 })
+    ).lean();
+
     res.json(requests);
   } catch (error) {
     console.error('Get requests error:', error);
@@ -44,19 +104,15 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// GET /api/requests/:id - Get single request
+// GET /api/requests/:id - Get single procurement order
 router.get('/:id', auth, async (req, res) => {
   try {
-    const request = await Request.findById(req.params.id)
-      .populate('requestedBy', 'fullName role')
-      .populate('projectId', 'nama lokasi')
-      .populate('approvedBy', 'fullName')
-      .lean();
-    
+    const request = await populateProcurement(Request.findById(req.params.id)).lean();
+
     if (!request) {
       return res.status(404).json({ msg: 'Request not found' });
     }
-    
+
     res.json(request);
   } catch (error) {
     console.error('Get request error:', error);
@@ -64,225 +120,1079 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// POST /api/requests - Create material request
+// POST /api/requests - Create Purchase Request (Supports Multi-Item & Legacy Single-Item)
 router.post('/', auth, async (req, res) => {
   try {
-    const { item, qty, dateNeeded, purpose, costEstimate, projectId, urgency, unit } = req.body;
-    
-    if (!item || !item.trim()) {
-      return res.status(400).json({ msg: 'Item name is required' });
-    }
-    if (qty === undefined || qty === null || String(qty).trim() === '') {
-      return res.status(400).json({ msg: 'Quantity is required' });
-    }
-    
-    let finalQty = qty;
-    let finalUnit = unit || 'Pcs';
-    
-    if (typeof qty === 'string') {
-      const match = String(qty).trim().match(/^([\d.]+)\s*(.*)$/);
-      if (match) {
-        finalQty = Number(match[1]);
-        if (match[2] && (!unit || unit === 'Pcs')) {
-          finalUnit = match[2];
-        }
-      } else {
-        finalQty = Number(qty);
-      }
-    } else {
-      finalQty = Number(qty);
-    }
-    
-    if (isNaN(finalQty)) {
-      return res.status(400).json({ msg: 'Quantity must be a valid number' });
-    }
-    
-    const request = new Request({
-      item,
-      qty: finalQty,
-      unit: finalUnit,
+    const {
+      projectId,
       dateNeeded,
+      urgency,
       purpose,
-      costEstimate: Number(costEstimate) || 0,
-      projectId: projectId || undefined,
-      urgency: urgency || 'Normal',
-      requestedBy: req.user._id,
-    });
-    
-    await request.save();
-    
-    // Populate for response
-    await request.populate('requestedBy', 'fullName role phone');
-    await request.populate('projectId', 'nama lokasi');
-    
-    res.status(201).json(request);
+      items: incomingItems,
+      assignedReviewerId: reqReviewerId,
+      assignedOpsApproverId: reqOpsId,
+      assignedFinanceApproverId: reqFinId,
+      // Legacy single-item fields
+      item: legacyItem,
+      qty: legacyQty,
+      unit: legacyUnit,
+      costEstimate: legacyCostEstimate,
+    } = req.body;
 
-    // 1. In-app & Web Push notification to managers (fire-and-forget)
+    // Hardening: Only role 'owner' is permitted to configure or assign PR/PO authorizers
+    const isOwnerUser = req.user.role === 'owner';
+    const assignedReviewerId = isOwnerUser ? reqReviewerId : undefined;
+    const assignedOpsApproverId = isOwnerUser ? reqOpsId : undefined;
+    const assignedFinanceApproverId = isOwnerUser ? reqFinId : undefined;
+
+    let parsedItems = [];
+
+    // 1. Process Multi-Item array if supplied
+    if (Array.isArray(incomingItems) && incomingItems.length > 0) {
+      parsedItems = incomingItems.map((itm) => {
+        const q = Number(itm.qty) || 0;
+        const rate = Number(itm.budgetUnitRate) || 0;
+        return {
+          isRabBased: Boolean(itm.isRabBased),
+          rabItemId: itm.rabItemId || undefined,
+          wbsCode: itm.wbsCode || '',
+          item: String(itm.item || '').trim(),
+          specifications: String(itm.specifications || '').trim(),
+          qty: q,
+          unit: itm.unit || 'Pcs',
+          budgetUnitRate: rate,
+          targetPriceRange: {
+            min: Number(itm.targetPriceRange?.min) || rate * 0.9,
+            max: Number(itm.targetPriceRange?.max) || rate * 1.1,
+          },
+          totalBudget: Number(itm.totalBudget) || q * rate,
+        };
+      }).filter((itm) => itm.item.length > 0 && itm.qty > 0);
+    } else if (legacyItem && legacyItem.trim()) {
+      // 2. Fallback to legacy single item
+      const q = Number(legacyQty) || 1;
+      const cost = Number(legacyCostEstimate) || 0;
+      parsedItems = [{
+        isRabBased: false,
+        item: legacyItem.trim(),
+        specifications: '',
+        qty: q,
+        unit: legacyUnit || 'Pcs',
+        budgetUnitRate: cost / q,
+        targetPriceRange: { min: (cost / q) * 0.9, max: (cost / q) * 1.1 },
+        totalBudget: cost,
+      }];
+    }
+
+    if (parsedItems.length === 0) {
+      return res.status(400).json({ msg: 'At least one valid material line item is required' });
+    }
+
+    // Auto-generate Unique PR Number
+    const prNumber = await generatePrNumber(projectId, req.user._id);
+
+    // Calculate total budget across all line items
+    const totalEstimatedBudget = parsedItems.reduce((acc, itm) => acc + itm.totalBudget, 0);
+
+    const newRequest = new Request({
+      prNumber,
+      projectId: projectId || undefined,
+      dateNeeded: dateNeeded || '',
+      urgency: urgency || 'Normal',
+      purpose: purpose || '',
+      items: parsedItems,
+      totalEstimatedBudget,
+      status: 'PR_PENDING',
+      requestedBy: req.user._id,
+      assignedReviewerId: assignedReviewerId || undefined,
+      assignedOpsApproverId: assignedOpsApproverId || undefined,
+      assignedFinanceApproverId: assignedFinanceApproverId || undefined,
+      // Sync legacy fields
+      item: parsedItems.map((i) => i.item).join(', '),
+      qty: parsedItems.reduce((acc, i) => acc + i.qty, 0),
+      unit: parsedItems[0]?.unit || 'Pcs',
+      costEstimate: totalEstimatedBudget,
+    });
+
+    await newRequest.save();
+
+    // Populate for response
+    const populated = await populateProcurement(Request.findById(newRequest._id));
+
+    res.status(201).json(populated);
+
+    // Notify assigned Reviewer if configured (In-app + Direct WhatsApp)
+    if (populated.assignedReviewerId) {
+      const reviewerUser = populated.assignedReviewerId;
+      const waMemo = whatsappTemplates.formatAuthorizerAssigned(
+        populated,
+        'Peninjau Teknis & Kuantitas (Reviewer)',
+        reviewerUser,
+        req.user
+      );
+      notifyUserWithWA(
+        reviewerUser._id,
+        {
+          type: 'general',
+          title: `Penugasan Reviu PR (${prNumber})`,
+          message: `Anda ditugaskan oleh ${req.user.fullName || 'Owner'} sebagai Peninjau Teknis untuk PR ${prNumber} (${populated.projectId?.nama || 'Proyek'}).`,
+          data: { requestId: newRequest._id },
+        },
+        waMemo
+      ).catch(console.warn);
+    }
+
+    // Notify assigned Ops Approver if configured (In-app + Direct WhatsApp)
+    if (populated.assignedOpsApproverId) {
+      const opsUser = populated.assignedOpsApproverId;
+      const waMemo = whatsappTemplates.formatAuthorizerAssigned(
+        populated,
+        'Otorisasi Operasional PR (Ops Approver)',
+        opsUser,
+        req.user
+      );
+      notifyUserWithWA(
+        opsUser._id,
+        {
+          type: 'general',
+          title: `Penugasan Otorisasi Operasional (${prNumber})`,
+          message: `Anda ditugaskan oleh ${req.user.fullName || 'Owner'} untuk Otorisasi Operasional PR ${prNumber} (${populated.projectId?.nama || 'Proyek'}).`,
+          data: { requestId: newRequest._id },
+        },
+        waMemo
+      ).catch(console.warn);
+    }
+
+    // Notify assigned Finance Approver if configured (In-app + Direct WhatsApp)
+    if (populated.assignedFinanceApproverId) {
+      const finUser = populated.assignedFinanceApproverId;
+      const waMemo = whatsappTemplates.formatAuthorizerAssigned(
+        populated,
+        'Otorisasi Keuangan PO (Finance Approver)',
+        finUser,
+        req.user
+      );
+      notifyUserWithWA(
+        finUser._id,
+        {
+          type: 'general',
+          title: `Penugasan Otorisasi Keuangan (${prNumber})`,
+          message: `Anda ditugaskan oleh ${req.user.fullName || 'Owner'} untuk Otorisasi Keuangan PO ${prNumber} (${populated.projectId?.nama || 'Proyek'}).`,
+          data: { requestId: newRequest._id },
+        },
+        waMemo
+      ).catch(console.warn);
+    }
+
+    // In-app & Push notifications to Supervisor/QC and Management
     notifyByRole(
-      ['owner', 'director', 'asset_admin'],
+      ['owner', 'director', 'operational_director', 'supervisor', 'asset_admin'],
       {
         type: 'general',
-        title: 'New Material Request',
-        message: `${request.requestedBy?.fullName || 'A user'} requested ${finalQty} ${finalUnit} of "${item}"`,
-        data: { requestId: request._id },
+        title: `New Purchase Request (${prNumber})`,
+        message: `${populated.requestedBy?.fullName || 'User'} submitted PR with ${parsedItems.length} item(s) for ${populated.projectId?.nama || 'General'}`,
+        data: { requestId: newRequest._id },
       },
       req.user._id.toString()
     ).catch(console.error);
 
-    // 2. WhatsApp dispatch to Procurement department (fire-and-forget)
-    const waProcurementMemo = whatsappTemplates.formatMaterialRequestCreated(request);
-    whatsappGateway
-      .sendToDepartment('Procurement', waProcurementMemo, {
+    // WhatsApp dispatch to Procurement & Site Team (fire-and-forget)
+    try {
+      const waMemo = whatsappTemplates.formatMaterialRequestCreated(populated);
+      whatsappGateway.sendToDepartment('Procurement', waMemo, {
         groupId: process.env.WA_PROCUREMENT_GROUP_ID,
-        priority: request.urgency === 'High' ? 'high' : 'normal',
-        metadata: { requestId: request._id.toString(), event: 'created' },
-      })
-      .catch((waErr) => console.warn('[WA Procurement Dispatch Error]:', waErr.message));
+        priority: newRequest.urgency === 'High' || newRequest.urgency === 'Urgent' ? 'high' : 'normal',
+        metadata: { requestId: newRequest._id.toString(), prNumber, event: 'pr_created' },
+      }).catch(console.warn);
+    } catch (waErr) {
+      console.warn('[WA Dispatch Error]:', waErr.message);
+    }
   } catch (error) {
     console.error('Create request error:', error);
     res.status(500).json({ msg: 'Server error' });
   }
 });
 
-// PUT /api/requests/:id - Update request (approve/reject)
-router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (req, res) => {
+// PUT /api/requests/:id/review - Tier 1: Technical Review / Reject by Supervisor / QC / QA (Passphrase Protected)
+router.put('/:id/review', auth, authorize('owner', 'director', 'operational_director', 'site_manager', 'supervisor', 'admin_project'), async (req, res) => {
   try {
-    const { status, rejectionReason, passphrase } = req.body;
-    
-    // Require passphrase verification for approvals
-    if (status === 'Approved') {
-      if (!passphrase || passphrase.length < 4) {
-        return res.status(400).json({ msg: 'Passphrase is required (min 4 characters)' });
-      }
-      const user = await User.findById(req.user._id);
-      if (!user) {
-        return res.status(404).json({ msg: 'User not found' });
-      }
-      const isMatch = await bcrypt.compare(passphrase, user.password);
-      if (!isMatch) {
-        return res.status(400).json({ msg: 'Incorrect passphrase' });
-      }
-    }
-    
-    const updateData = { status };
-    
-    if (status === 'Approved') {
-      updateData.approvedBy = req.user._id;
-    }
-    
-    if (status === 'Rejected' && rejectionReason) {
-      updateData.rejectionReason = rejectionReason;
-    }
-    
-    const request = await withTransaction(async (session) => {
-      const updatedReq = session
-        ? await Request.findByIdAndUpdate(
-            req.params.id,
-            { $set: updateData },
-            { new: true, session }
-          )
-        : await Request.findByIdAndUpdate(
-            req.params.id,
-            { $set: updateData },
-            { new: true }
-          );
+    const { notes, passphrase, action, rejectionReason } = req.body;
 
-      if (!updatedReq) {
+    // 1. Mandatory Passphrase Verification
+    if (!passphrase || passphrase.length < 4) {
+      return res.status(400).json({ msg: 'Passphrase diperlukan untuk otentikasi reviu/penolakan (min 4 karakter)' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ msg: 'User tidak ditemukan' });
+
+    const isMatch = await bcrypt.compare(passphrase, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ msg: 'Passphrase / Kata sandi salah' });
+    }
+
+    const request = await Request.findById(req.params.id);
+    if (!request) {
+      return res.status(404).json({ msg: 'Request not found' });
+    }
+
+    if (request.status !== 'PR_PENDING' && request.status !== 'Pending') {
+      return res.status(400).json({ msg: `Cannot review/reject request in status: ${request.status}` });
+    }
+
+    // 2. Action: Reject PR by QC / SPV
+    if (action === 'reject') {
+      const reason = (rejectionReason || notes || '').trim();
+      if (!reason) {
+        return res.status(400).json({ msg: 'Alasan penolakan PR wajib diisi pada catatan' });
+      }
+
+      request.status = 'PR_REJECTED';
+      request.rejectionReason = reason;
+      request.reviewedBy = {
+        user: req.user._id,
+        role: req.user.role,
+        reviewedAt: new Date(),
+        notes: reason,
+      };
+
+      await request.save();
+      const updated = await populateProcurement(Request.findById(request._id));
+
+      res.json(updated);
+
+      // Notify Requester that PR was rejected by QC/SPV (In-app + Direct WhatsApp)
+      if (updated.requestedBy) {
+        let waRejectMemo = '';
+        try {
+          waRejectMemo = whatsappTemplates.formatMaterialRequestStatus(updated, 'PR_REJECTED', reason);
+        } catch (e) {
+          console.warn('formatMaterialRequestStatus error:', e.message);
+        }
+
+        notifyUserWithWA(
+          updated.requestedBy._id || updated.requestedBy,
+          {
+            type: 'request_rejected',
+            title: `PR Ditolak oleh QC (${updated.prNumber})`,
+            message: `Purchase Request ${updated.prNumber} ditolak oleh ${req.user.fullName} (${req.user.role}). Alasan: ${reason}`,
+            data: { requestId: updated._id },
+          },
+          waRejectMemo
+        ).catch(console.warn);
+      }
+
+      // Notify Management of the rejection
+      notifyByRole(
+        ['owner', 'director', 'operational_director', 'supervisor', 'admin_project'],
+        {
+          type: 'general',
+          title: `PR Ditolak QC: ${updated.prNumber}`,
+          message: `Ditolak oleh ${req.user.fullName}. Alasan: ${reason}`,
+          data: { requestId: updated._id },
+        },
+        req.user._id.toString()
+      ).catch(console.error);
+
+      return;
+    }
+
+    // 3. Action: Approve / Verify PR
+    request.reviewedBy = {
+      user: req.user._id,
+      role: req.user.role,
+      reviewedAt: new Date(),
+      notes: notes || '',
+    };
+    request.status = 'PR_REVIEWED';
+
+    await request.save();
+    const updated = await populateProcurement(Request.findById(request._id));
+
+    res.json(updated);
+
+    // Notify Operations Director
+    notifyByRole(
+      ['operational_director', 'director', 'owner'],
+      {
+        type: 'general',
+        title: `PR Reviewed: ${request.prNumber || request.item}`,
+        message: `Reviewed by ${req.user.fullName || 'Supervisor'}. Ready for Ops Director approval.`,
+        data: { requestId: request._id },
+      },
+      req.user._id.toString()
+    ).catch(console.error);
+
+    // Generate WhatsApp reviewed memo
+    let waMemo = '';
+    try {
+      waMemo = whatsappTemplates.formatPrReviewed(updated);
+    } catch (e) {
+      console.warn('formatPrReviewed error:', e.message);
+    }
+
+    // Notify assigned Ops Approver if configured (In-App + Direct WhatsApp)
+    if (updated.assignedOpsApproverId) {
+      notifyUserWithWA(
+        updated.assignedOpsApproverId._id || updated.assignedOpsApproverId,
+        {
+          type: 'general',
+          title: `Otorisasi PR Menunggu Anda (${updated.prNumber})`,
+          message: `PR ${updated.prNumber} telah selesai diverifikasi QC oleh ${req.user.fullName} dan membutuhkan persetujuan Direktur Operasional Anda.`,
+          data: { requestId: updated._id },
+        },
+        waMemo
+      ).catch(console.warn);
+    }
+
+    // Notify requester that their PR has passed technical review
+    if (updated.requestedBy) {
+      notifyUserWithWA(
+        updated.requestedBy._id || updated.requestedBy,
+        {
+          type: 'general',
+          title: `PR Terverifikasi Teknis (${updated.prNumber})`,
+          message: `PR ${updated.prNumber} telah diverifikasi oleh ${req.user.fullName} dan diteruskan ke Direktur Operasional.`,
+          data: { requestId: updated._id },
+        }
+      ).catch(console.warn);
+    }
+
+    // Broadcast WhatsApp dispatch to Operations Department
+    try {
+      if (waMemo) {
+        whatsappGateway.sendToDepartment('Operations', waMemo, {
+          metadata: { requestId: updated._id.toString(), prNumber: updated.prNumber, event: 'pr_reviewed' },
+        }).catch(console.warn);
+      }
+    } catch (waErr) {
+      console.warn('[WA Dispatch Error]:', waErr.message);
+    }
+  } catch (error) {
+    console.error('Review request error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// PUT /api/requests/:id/ops-approve - Tier 2: Approval by Operations Director
+router.put('/:id/ops-approve', auth, authorize('owner', 'president_director', 'operational_director', 'director'), async (req, res) => {
+  try {
+    const { passphrase, notes } = req.body;
+
+    if (!passphrase || passphrase.length < 4) {
+      return res.status(400).json({ msg: 'Passphrase is required (min 4 characters)' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ msg: 'User not found' });
+
+    const isMatch = await bcrypt.compare(passphrase, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ msg: 'Incorrect passphrase' });
+    }
+
+    const updated = await withTransaction(async (session) => {
+      const reqDoc = await Request.findById(req.params.id).session(session);
+      if (!reqDoc) {
         const err = new Error('Request not found');
         err.statusCode = 404;
         throw err;
       }
 
-      // Add approved material to supply plan atomically
-      if (status === 'Approved' && updatedReq.projectId) {
-        const supplyQuery = {
-          projectId: updatedReq.projectId,
-          item: updatedReq.item,
-          status: 'Pending'
-        };
+      reqDoc.opsApprovedBy = {
+        user: req.user._id,
+        approvedAt: new Date(),
+        notes: notes || '',
+      };
+      reqDoc.status = 'PR_APPROVED';
+      // Sync legacy approvedBy
+      reqDoc.approvedBy = req.user._id;
 
-        const existingSupply = session
-          ? await Supply.findOne(supplyQuery).session(session)
-          : await Supply.findOne(supplyQuery);
-
-        if (existingSupply) {
-          if (session) {
-            await Supply.updateOne(
-              { _id: existingSupply._id },
-              { $inc: { qty: Number(updatedReq.qty) || 0 } },
+      // Update committedQuantity in RABItems atomically for all RAB-linked items
+      if (Array.isArray(reqDoc.items)) {
+        for (const itm of reqDoc.items) {
+          if (itm.isRabBased && itm.rabItemId) {
+            await RABItem.findByIdAndUpdate(
+              itm.rabItemId,
+              { $inc: { committedQuantity: Number(itm.qty) || 0 } },
               { session }
             );
-          } else {
-            await Supply.updateOne(
-              { _id: existingSupply._id },
-              { $inc: { qty: Number(updatedReq.qty) || 0 } }
-            );
-          }
-        } else {
-          const newSupply = new Supply({
-            projectId: updatedReq.projectId,
-            item: updatedReq.item,
-            qty: Number(updatedReq.qty) || 0,
-            unit: updatedReq.unit || 'Pcs',
-            cost: updatedReq.costEstimate || 0,
-            status: 'Pending'
-          });
-
-          if (session) {
-            await newSupply.save({ session });
-          } else {
-            await newSupply.save();
+            if (ProjectTask) {
+              await ProjectTask.findByIdAndUpdate(
+                itm.rabItemId,
+                { $inc: { committedQuantity: Number(itm.qty) || 0 } },
+                { session }
+              );
+            }
           }
         }
       }
 
-      return updatedReq;
+      await reqDoc.save({ session });
+      return reqDoc;
     });
 
-    // Populate for response outside transaction
-    await request.populate('requestedBy', 'fullName role phone');
-    await request.populate('projectId', 'nama lokasi');
-    await request.populate('approvedBy', 'fullName');
+    const populated = await populateProcurement(Request.findById(updated._id));
+    res.json(populated);
 
-    res.json(request);
+    // Notify requester that PR was approved by Ops Director
+    if (populated.requestedBy) {
+      notifyUserWithWA(
+        populated.requestedBy._id || populated.requestedBy,
+        {
+          type: 'request_approved',
+          title: `PR Disetujui: ${populated.prNumber}`,
+          message: `PR ${populated.prNumber} telah disetujui oleh Direktur Operasional (${req.user.fullName}). Tim pengadaan sedang memulai sourcing vendor.`,
+          data: { requestId: populated._id },
+        }
+      ).catch(console.warn);
+    }
 
-    // Notify the requester about approval/rejection (fire-and-forget)
-    if ((status === 'Approved' || status === 'Rejected') && request.requestedBy) {
-      const recipientId = typeof request.requestedBy === 'object' ? request.requestedBy._id : request.requestedBy;
-      
-      // 1. In-App & Web Push Notification
-      notify({
-        recipient: recipientId,
-        type: status === 'Approved' ? 'request_approved' : 'request_rejected',
-        title: status === 'Approved' ? 'Request Approved' : 'Request Rejected',
-        message: status === 'Approved'
-          ? `Your request for "${request.item}" has been approved`
-          : `Your request for "${request.item}" was rejected${rejectionReason ? ': ' + rejectionReason : ''}`,
-        data: { requestId: request._id },
-      }).catch(console.error);
+    // Notify Procurement team to begin vendor quotation & price comparison
+    notifyByRole(
+      ['asset_admin', 'admin_project', 'director', 'owner'],
+      {
+        type: 'request_approved',
+        title: `PR Approved: ${populated.prNumber}`,
+        message: `Approved by ${req.user.fullName}. Sourcing & Price comparison can proceed.`,
+        data: { requestId: populated._id },
+      },
+      req.user._id.toString()
+    ).catch(console.error);
 
-      // 2. WhatsApp Notification to Procurement Team (On Approval: proceed with PO / Sourcing)
-      if (status === 'Approved') {
-        const waProcurementMemo = whatsappTemplates.formatMaterialRequestStatus(request, 'Approved');
-        whatsappGateway
-          .sendToDepartment('Procurement', waProcurementMemo, {
-            groupId: process.env.WA_PROCUREMENT_GROUP_ID,
-            metadata: { requestId: request._id.toString(), event: 'approved' },
-          })
-          .catch((waErr) => console.warn('[WA Procurement Approval Error]:', waErr.message));
-      }
-
-      // 3. WhatsApp Direct Notification to Requester (Personal Mobile)
-      const userPhone = typeof request.requestedBy === 'object' ? request.requestedBy.phone : null;
-      if (userPhone) {
-        const waUserMemo = whatsappTemplates.formatMaterialRequestStatus(request, status, rejectionReason);
-        whatsappGateway
-          .sendToUser(userPhone, waUserMemo)
-          .catch((waErr) => console.warn('[WA User Status Alert Error]:', waErr.message));
-      }
+    // WhatsApp dispatch to Procurement Team (fire-and-forget)
+    try {
+      const waMemo = whatsappTemplates.formatPrApproved(populated);
+      whatsappGateway.sendToDepartment('Procurement', waMemo, {
+        groupId: process.env.WA_PROCUREMENT_GROUP_ID,
+        metadata: { requestId: populated._id.toString(), prNumber: populated.prNumber, event: 'pr_approved' },
+      }).catch(console.warn);
+    } catch (waErr) {
+      console.warn('[WA Dispatch Error]:', waErr.message);
     }
   } catch (error) {
-    console.error('Update request error:', error);
+    console.error('Ops approve error:', error);
+    res.status(500).json({ msg: error.message || 'Server error' });
+  }
+});
+
+// PUT /api/requests/:id/assign-authorizers - Reassign or configure authorizers for a PR (Owner Only)
+router.put('/:id/assign-authorizers', auth, authorize('owner'), async (req, res) => {
+  try {
+    const { assignedReviewerId, assignedOpsApproverId, assignedFinanceApproverId } = req.body;
+    const request = await Request.findById(req.params.id);
+    if (!request) return res.status(404).json({ msg: 'Request not found' });
+
+    const prevReviewer = request.assignedReviewerId?.toString();
+    const prevOps = request.assignedOpsApproverId?.toString();
+    const prevFinance = request.assignedFinanceApproverId?.toString();
+
+    if (assignedReviewerId !== undefined) request.assignedReviewerId = assignedReviewerId || undefined;
+    if (assignedOpsApproverId !== undefined) request.assignedOpsApproverId = assignedOpsApproverId || undefined;
+    if (assignedFinanceApproverId !== undefined) request.assignedFinanceApproverId = assignedFinanceApproverId || undefined;
+
+    await request.save();
+    const populated = await populateProcurement(Request.findById(request._id));
+    res.json(populated);
+
+    const projectName = populated.projectId?.nama || 'Proyek Umum';
+
+    // 1. Notify Reviewer if assigned or changed (In-App + Direct WhatsApp)
+    if (
+      populated.assignedReviewerId &&
+      populated.assignedReviewerId._id.toString() !== prevReviewer
+    ) {
+      const reviewerUser = populated.assignedReviewerId;
+      const waMsg = whatsappTemplates.formatAuthorizerAssigned(
+        populated,
+        'Peninjau Teknis & Kuantitas (Reviewer)',
+        reviewerUser,
+        req.user
+      );
+      notifyUserWithWA(
+        reviewerUser._id,
+        {
+          type: 'general',
+          title: `Penugasan Reviu PR (${populated.prNumber})`,
+          message: `Anda ditugaskan oleh ${req.user.fullName || 'Owner'} sebagai Peninjau Teknis untuk PR ${populated.prNumber} (${projectName}).`,
+          data: { requestId: populated._id },
+        },
+        waMsg
+      ).catch(console.warn);
+    }
+
+    // 2. Notify Ops Approver if assigned or changed (In-App + Direct WhatsApp)
+    if (
+      populated.assignedOpsApproverId &&
+      populated.assignedOpsApproverId._id.toString() !== prevOps
+    ) {
+      const opsUser = populated.assignedOpsApproverId;
+      const waMsg = whatsappTemplates.formatAuthorizerAssigned(
+        populated,
+        'Otorisasi Operasional PR (Ops Approver)',
+        opsUser,
+        req.user
+      );
+      notifyUserWithWA(
+        opsUser._id,
+        {
+          type: 'general',
+          title: `Penugasan Otorisasi Operasional (${populated.prNumber})`,
+          message: `Anda ditugaskan oleh ${req.user.fullName || 'Owner'} untuk Otorisasi Operasional PR ${populated.prNumber} (${projectName}).`,
+          data: { requestId: populated._id },
+        },
+        waMsg
+      ).catch(console.warn);
+    }
+
+    // 3. Notify Finance Approver if assigned or changed (In-App + Direct WhatsApp)
+    if (
+      populated.assignedFinanceApproverId &&
+      populated.assignedFinanceApproverId._id.toString() !== prevFinance
+    ) {
+      const finUser = populated.assignedFinanceApproverId;
+      const waMsg = whatsappTemplates.formatAuthorizerAssigned(
+        populated,
+        'Otorisasi Keuangan & Anggaran PO (Finance Approver)',
+        finUser,
+        req.user
+      );
+      notifyUserWithWA(
+        finUser._id,
+        {
+          type: 'general',
+          title: `Penugasan Otorisasi Keuangan PO (${populated.prNumber})`,
+          message: `Anda ditugaskan oleh ${req.user.fullName || 'Owner'} untuk Otorisasi Keuangan PO ${populated.prNumber} (${projectName}).`,
+          data: { requestId: populated._id },
+        },
+        waMsg
+      ).catch(console.warn);
+    }
+  } catch (error) {
+    console.error('Assign authorizers error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// PUT /api/requests/:id/compare-suppliers - Submit Multi-Supplier Quotation Matrix
+router.put('/:id/compare-suppliers', auth, authorize('owner', 'director', 'operational_director', 'asset_admin', 'admin_project'), async (req, res) => {
+  try {
+    const { comparisons, assignedFinanceApproverId } = req.body;
+
+    if (!Array.isArray(comparisons) || comparisons.length === 0) {
+      return res.status(400).json({ msg: 'At least one candidate supplier comparison quote is required' });
+    }
+
+    const request = await Request.findById(req.params.id);
+    if (!request) {
+      return res.status(404).json({ msg: 'Request not found' });
+    }
+
+    if (!['PR_APPROVED', 'PO_PENDING_FINANCE'].includes(request.status)) {
+      return res.status(400).json({ msg: `Cannot submit price comparisons in status: ${request.status}` });
+    }
+
+    // Security Hardening: Only role 'owner' can assign or modify the Finance Approver
+    if (req.user.role === 'owner' && assignedFinanceApproverId !== undefined) {
+      request.assignedFinanceApproverId = assignedFinanceApproverId || undefined;
+    }
+
+    // Normalize and compute line item prices for each supplier comparison
+    const normalizedComparisons = comparisons.map((comp) => {
+      let subtotal = 0;
+      let itemRates = [];
+
+      if (Array.isArray(comp.itemRates) && comp.itemRates.length > 0) {
+        itemRates = comp.itemRates.map((ir, idx) => {
+          const prItem = request.items?.[idx] || request.items?.find((i) => i.item === ir.itemName);
+          const q = prItem ? Number(prItem.qty) || 1 : 1;
+          const quotedUnitPrice = Number(ir.quotedUnitPrice) || 0;
+          const quotedTotalAmount = quotedUnitPrice * q;
+          subtotal += quotedTotalAmount;
+          return {
+            itemIndex: idx,
+            itemName: ir.itemName || prItem?.item || `Item ${idx + 1}`,
+            quotedUnitPrice,
+            quotedTotalAmount,
+          };
+        });
+      } else {
+        subtotal = Number(comp.subtotalItems) || 0;
+      }
+
+      const shippingCost = Number(comp.shippingCost) || 0;
+      const totalLandedCost = subtotal + shippingCost;
+
+      return {
+        supplierName: String(comp.supplierName || '').trim(),
+        location: String(comp.location || '').trim(),
+        contact: String(comp.contact || '').trim(),
+        itemRates,
+        subtotalItems: subtotal,
+        shippingCost,
+        totalLandedCost,
+        leadTimeDays: comp.leadTimeDays ? Number(comp.leadTimeDays) : undefined,
+        paymentTerms: comp.paymentTerms || 'Tempo 14 Hari',
+        notes: comp.notes || '',
+        isRecommended: Boolean(comp.isRecommended),
+      };
+    });
+
+    // Identify recommended supplier
+    let recommended = normalizedComparisons.find((c) => c.isRecommended);
+    if (!recommended) {
+      recommended = normalizedComparisons[0];
+      recommended.isRecommended = true;
+    }
+
+    request.comparisons = normalizedComparisons;
+    request.selectedSupplier = {
+      supplierName: recommended.supplierName,
+      location: recommended.location || '',
+      contact: recommended.contact || '',
+      subtotalItems: recommended.subtotalItems,
+      shippingCost: recommended.shippingCost,
+      totalLandedCost: recommended.totalLandedCost,
+      leadTimeDays: recommended.leadTimeDays,
+      paymentTerms: recommended.paymentTerms,
+    };
+
+    // Update item-level fixed PO prices from recommended supplier's itemRates
+    if (Array.isArray(recommended.itemRates) && recommended.itemRates.length > 0) {
+      request.items.forEach((item, idx) => {
+        const rateObj = recommended.itemRates.find((r) => r.itemIndex === idx || r.itemName === item.item);
+        if (rateObj && rateObj.quotedUnitPrice > 0) {
+          item.poUnitPrice = Number(rateObj.quotedUnitPrice);
+          item.poTotalAmount = item.qty * item.poUnitPrice;
+        } else {
+          item.poUnitPrice = item.budgetUnitRate;
+          item.poTotalAmount = item.qty * item.poUnitPrice;
+        }
+      });
+    }
+
+    request.poSubtotal = request.selectedSupplier.subtotalItems || request.items.reduce((acc, i) => acc + (i.poTotalAmount || 0), 0);
+    request.poShippingCost = request.selectedSupplier.shippingCost || 0;
+    request.poTotalAmount = request.poSubtotal + request.poShippingCost;
+    request.status = 'PO_PENDING_FINANCE';
+
+    await request.save();
+    const updated = await populateProcurement(Request.findById(request._id));
+
+    res.json(updated);
+
+    // Notify Finance Director & Budget Control
+    notifyByRole(
+      ['director', 'president_director', 'owner'],
+      {
+        type: 'general',
+        title: `PO Sourcing Ready: ${request.prNumber}`,
+        message: `Comparison with ${comparisons.length} supplier(s) submitted. Awaiting Finance approval.`,
+        data: { requestId: request._id },
+      },
+      req.user._id.toString()
+    ).catch(console.error);
+
+    // Generate WhatsApp Sourcing memo
+    let waMemo = '';
+    try {
+      waMemo = whatsappTemplates.formatPoSourcingSubmitted(updated);
+    } catch (e) {
+      console.warn('formatPoSourcingSubmitted error:', e.message);
+    }
+
+    // Notify specifically assigned Finance Approver if configured (In-app + Direct WhatsApp)
+    if (updated.assignedFinanceApproverId) {
+      notifyUserWithWA(
+        updated.assignedFinanceApproverId._id || updated.assignedFinanceApproverId,
+        {
+          type: 'general',
+          title: `Otorisasi PO Menunggu Anda (${updated.prNumber})`,
+          message: `Komparasi supplier untuk PR ${updated.prNumber} (${updated.projectId?.nama || 'Proyek'}) diajukan untuk persetujuan PO dan penerbitan surat pesanan.`,
+          data: { requestId: updated._id },
+        },
+        waMemo
+      ).catch(console.warn);
+    }
+
+    // WhatsApp broadcast to Finance Department
+    try {
+      if (waMemo) {
+        whatsappGateway.sendToDepartment('Finance', waMemo, {
+          metadata: { requestId: updated._id.toString(), prNumber: updated.prNumber, event: 'sourcing_submitted' },
+        }).catch(console.warn);
+      }
+    } catch (waErr) {
+      console.warn('[WA Dispatch Error]:', waErr.message);
+    }
+  } catch (error) {
+    console.error('Submit price comparison error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// PUT /api/requests/:id/finance-approve - Financial Sign-off & Tag MUST_PURCHASE
+router.put('/:id/finance-approve', auth, authorize('owner', 'president_director', 'director'), async (req, res) => {
+  try {
+    const { passphrase, notes } = req.body;
+
+    if (!passphrase || passphrase.length < 4) {
+      return res.status(400).json({ msg: 'Passphrase is required (min 4 characters)' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ msg: 'User not found' });
+
+    const isMatch = await bcrypt.compare(passphrase, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ msg: 'Incorrect passphrase' });
+    }
+
+    const request = await Request.findById(req.params.id);
+    if (!request) {
+      return res.status(404).json({ msg: 'Request not found' });
+    }
+
+    if (request.status !== 'PO_PENDING_FINANCE') {
+      return res.status(400).json({ msg: `Cannot approve PO in status: ${request.status}` });
+    }
+
+    // Generate official PO Number
+    const poNumber = await generatePoNumber(request.projectId, request.selectedSupplier?.supplierName);
+
+    request.poNumber = poNumber;
+    request.financeApprovedBy = {
+      user: req.user._id,
+      approvedAt: new Date(),
+      notes: notes || '',
+    };
+    request.status = 'MUST_PURCHASE';
+
+    await request.save();
+    const updated = await populateProcurement(Request.findById(request._id));
+
+    res.json(updated);
+
+    // Notify requester that PO has been approved and ready to purchase
+    if (updated.requestedBy) {
+      notifyUserWithWA(
+        updated.requestedBy._id || updated.requestedBy,
+        {
+          type: 'general',
+          title: `PO Resmi Disetujui (${poNumber})`,
+          message: `Purchase Order ${poNumber} untuk ${updated.selectedSupplier?.supplierName} telah disetujui Direktur Keuangan. Pengadaan siap dieksekusi.`,
+          data: { requestId: updated._id },
+        }
+      ).catch(console.warn);
+    }
+
+    // Notify Procurement team to execute purchase order
+    notifyByRole(
+      ['asset_admin', 'admin_project', 'director', 'owner'],
+      {
+        type: 'general',
+        title: `PO Approved (${poNumber})`,
+        message: `Finance Director approved PO for ${request.selectedSupplier?.supplierName}. Tagged as Must Purchase.`,
+        data: { requestId: request._id },
+      },
+      req.user._id.toString()
+    ).catch(console.error);
+
+    // WhatsApp dispatch to Procurement & Operations
+    try {
+      const waMemo = whatsappTemplates.formatPoApproved(updated);
+      whatsappGateway.sendToDepartment(['Procurement', 'Operations'], waMemo, {
+        groupId: process.env.WA_PROCUREMENT_GROUP_ID,
+        metadata: { requestId: updated._id.toString(), poNumber, event: 'po_approved' },
+      }).catch(console.warn);
+    } catch (waErr) {
+      console.warn('[WA Dispatch Error]:', waErr.message);
+    }
+  } catch (error) {
+    console.error('Finance approve error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// PUT /api/requests/:id/dispatch - In-Transit Dispatch (Upload Surat Jalan & Driver details)
+router.put(
+  '/:id/dispatch',
+  auth,
+  authorize('owner', 'director', 'operational_director', 'site_manager', 'supervisor', 'asset_admin', 'admin_project'),
+  upload.fields([
+    { name: 'suratJalanPhoto', maxCount: 1 },
+    { name: 'supplierNotaPhoto', maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const { driverName, driverPhone, vehiclePlate, eta, notes } = req.body;
+      const request = await Request.findById(req.params.id);
+
+      if (!request) {
+        return res.status(404).json({ msg: 'Request not found' });
+      }
+
+      let suratJalanUrl = req.body.suratJalanPhotoUrl || request.dispatchInfo?.suratJalanPhoto;
+      if (req.files?.suratJalanPhoto?.[0]) {
+        suratJalanUrl = `/uploads/documents/${req.files.suratJalanPhoto[0].filename}`;
+      }
+
+      let supplierNotaUrl = req.body.supplierNotaPhotoUrl || request.dispatchInfo?.supplierNotaPhoto;
+      if (req.files?.supplierNotaPhoto?.[0]) {
+        supplierNotaUrl = `/uploads/documents/${req.files.supplierNotaPhoto[0].filename}`;
+      }
+
+      request.dispatchInfo = {
+        suratJalanPhoto: suratJalanUrl || '',
+        supplierNotaPhoto: supplierNotaUrl || '',
+        driverName: driverName || '',
+        driverPhone: driverPhone || '',
+        vehiclePlate: vehiclePlate || '',
+        dispatchedAt: new Date(),
+        eta: eta || '',
+        notes: notes || '',
+      };
+      request.status = 'ON_THE_WAY';
+
+      await request.save();
+      const updated = await populateProcurement(Request.findById(request._id));
+
+      res.json(updated);
+
+      // Notify Site team with driver details
+      notifyByRole(
+        ['site_manager', 'supervisor', 'foreman', 'asset_admin'],
+        {
+          type: 'general',
+          title: `Material On The Way (${request.poNumber || request.prNumber})`,
+          message: `Dispatched by ${driverName || 'Driver'} (${vehiclePlate || 'Armada'}). Delivery en route to site.`,
+          data: { requestId: request._id },
+        },
+        req.user._id.toString()
+      ).catch(console.error);
+
+      // WhatsApp dispatch to Site Team
+      try {
+        const waMemo = whatsappTemplates.formatPoDispatched(updated);
+        whatsappGateway.sendToDepartment('Operations', waMemo, {
+          metadata: { requestId: updated._id.toString(), poNumber: updated.poNumber, event: 'po_dispatched' },
+        }).catch(console.warn);
+      } catch (waErr) {
+        console.warn('[WA Dispatch Error]:', waErr.message);
+      }
+    } catch (error) {
+      console.error('Dispatch error:', error);
+      res.status(500).json({ msg: 'Server error' });
+    }
+  }
+);
+
+// PUT /api/requests/:id/receive - Goods Receipt at Site with Mandatory Photo ➔ DONE
+router.put(
+  '/:id/receive',
+  auth,
+  authorize('owner', 'director', 'operational_director', 'site_manager', 'supervisor', 'foreman', 'asset_admin', 'admin_project'),
+  upload.single('sitePhoto'),
+  async (req, res) => {
+    try {
+      const { overallCondition, notes, receivedItems } = req.body;
+      const request = await Request.findById(req.params.id);
+
+      if (!request) {
+        return res.status(404).json({ msg: 'Request not found' });
+      }
+
+      let sitePhotoUrl = req.body.sitePhotoUrl || '';
+      if (req.file) {
+        sitePhotoUrl = `/uploads/photos/${req.file.filename}`;
+      }
+
+      if (!sitePhotoUrl && !request.deliveryProof?.sitePhoto) {
+        return res.status(400).json({ msg: 'Job-site physical arrival photo is mandatory' });
+      }
+
+      // Parse received items array if provided
+      let parsedItemReceiving = [];
+      if (receivedItems) {
+        try {
+          parsedItemReceiving = typeof receivedItems === 'string' ? JSON.parse(receivedItems) : receivedItems;
+        } catch {
+          // ignore parsing error
+        }
+      }
+
+      const updated = await withTransaction(async (session) => {
+        const reqDoc = await Request.findById(req.params.id).session(session);
+
+        // Update line items receivedQty & condition
+        if (Array.isArray(reqDoc.items)) {
+          reqDoc.items.forEach((itm, idx) => {
+            const match = parsedItemReceiving.find((p) => p.itemIndex === idx || p.itemId === String(itm._id));
+            if (match) {
+              itm.receivedQty = Number(match.receivedQty) >= 0 ? Number(match.receivedQty) : itm.qty;
+              itm.receivedCondition = match.receivedCondition || 'Good';
+              itm.itemNotes = match.itemNotes || '';
+            } else {
+              // Default to full quantity received if not specified
+              itm.receivedQty = itm.qty;
+              itm.receivedCondition = 'Good';
+            }
+          });
+        }
+
+        reqDoc.deliveryProof = {
+          sitePhoto: sitePhotoUrl || reqDoc.deliveryProof?.sitePhoto,
+          overallCondition: overallCondition || 'Good',
+          receivedBy: req.user._id,
+          receivedAt: new Date(),
+          notes: notes || '',
+        };
+        reqDoc.status = 'DELIVERED';
+
+        // ── Automated Stock Inflow into Supply Inventory ──
+        if (reqDoc.projectId && Array.isArray(reqDoc.items)) {
+          for (const itm of reqDoc.items) {
+            const qtyToAdd = Number(itm.receivedQty) > 0 ? Number(itm.receivedQty) : Number(itm.qty);
+            const itemCost = Number(itm.poUnitPrice) > 0 ? Number(itm.poUnitPrice) : Number(itm.budgetUnitRate);
+
+            const existingSupply = await Supply.findOne({
+              projectId: reqDoc.projectId,
+              item: itm.item,
+              status: 'Delivered',
+            }).session(session);
+
+            if (existingSupply) {
+              await Supply.updateOne(
+                { _id: existingSupply._id },
+                {
+                  $inc: { qty: qtyToAdd },
+                  $set: { actualCost: itemCost, deliveryDate: new Date() },
+                },
+                { session }
+              );
+            } else {
+              const newSupply = new Supply({
+                projectId: reqDoc.projectId,
+                item: itm.item,
+                qty: qtyToAdd,
+                unit: itm.unit || 'Pcs',
+                cost: itm.budgetUnitRate || itemCost,
+                actualCost: itemCost,
+                status: 'Delivered',
+                deliveryDate: new Date(),
+              });
+              await newSupply.save({ session });
+            }
+
+            // Realize RAB expenditure for RAB-linked items
+            if (itm.isRabBased && itm.rabItemId) {
+              await RABItem.findByIdAndUpdate(
+                itm.rabItemId,
+                {
+                  $inc: {
+                    realizedQuantity: qtyToAdd,
+                    realizedAmount: qtyToAdd * itemCost,
+                  },
+                },
+                { session }
+              );
+              if (ProjectTask) {
+                await ProjectTask.findByIdAndUpdate(
+                  itm.rabItemId,
+                  {
+                    $inc: {
+                      realizedQuantity: qtyToAdd,
+                      actualCost: qtyToAdd * itemCost,
+                      realizedAmount: qtyToAdd * itemCost,
+                    },
+                  },
+                  { session }
+                );
+              }
+            }
+          }
+        }
+
+        await reqDoc.save({ session });
+        return reqDoc;
+      });
+
+      const populated = await populateProcurement(Request.findById(updated._id));
+      res.json(populated);
+
+      // Notify Project Manager and Director that procurement is done
+      notifyByRole(
+        ['owner', 'director', 'operational_director', 'site_manager'],
+        {
+          type: 'general',
+          title: `Procurement Completed: ${populated.poNumber || populated.prNumber}`,
+          message: `Materials physically arrived on site and verified by ${req.user.fullName}. Stock updated.`,
+          data: { requestId: populated._id },
+        },
+        req.user._id.toString()
+      ).catch(console.error);
+
+      // WhatsApp dispatch to Management & Procurement
+      try {
+        const waMemo = whatsappTemplates.formatMaterialDelivered(populated);
+        whatsappGateway.sendToDepartment(['Procurement', 'Finance', 'Operations'], waMemo, {
+          metadata: { requestId: populated._id.toString(), poNumber: populated.poNumber, event: 'material_delivered' },
+        }).catch(console.warn);
+      } catch (waErr) {
+        console.warn('[WA Dispatch Error]:', waErr.message);
+      }
+    } catch (error) {
+      console.error('Receive goods error:', error);
+      res.status(500).json({ msg: error.message || 'Server error' });
+    }
+  }
+);
+
+// PUT /api/requests/:id - Legacy approve / reject endpoint for backward compatibility
+router.put('/:id', auth, authorize('owner', 'director', 'operational_director', 'asset_admin'), async (req, res) => {
+  try {
+    const { status, rejectionReason, passphrase } = req.body;
+
+    if (status === 'Approved') {
+      if (!passphrase || passphrase.length < 4) {
+        return res.status(400).json({ msg: 'Passphrase is required (min 4 characters)' });
+      }
+      const user = await User.findById(req.user._id);
+      if (!user) return res.status(404).json({ msg: 'User not found' });
+      const isMatch = await bcrypt.compare(passphrase, user.password);
+      if (!isMatch) return res.status(400).json({ msg: 'Incorrect passphrase' });
+    }
+
+    const request = await Request.findById(req.params.id);
+    if (!request) return res.status(404).json({ msg: 'Request not found' });
+
+    if (status === 'Approved') {
+      if (request.status === 'PO_PENDING_FINANCE') {
+        const poNumber = await generatePoNumber(request.projectId, request.selectedSupplier?.supplierName);
+        request.poNumber = poNumber;
+        request.financeApprovedBy = {
+          user: req.user._id,
+          approvedAt: new Date(),
+        };
+        request.status = 'MUST_PURCHASE';
+      } else {
+        request.status = 'PR_APPROVED';
+        request.approvedBy = req.user._id;
+        request.opsApprovedBy = { user: req.user._id, approvedAt: new Date() };
+      }
+    } else if (status === 'Rejected') {
+      request.status = 'PR_REJECTED';
+      request.rejectionReason = rejectionReason || '';
+    } else if (status) {
+      request.status = status;
+    }
+
+    await request.save();
+    const updated = await populateProcurement(Request.findById(request._id));
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Legacy update request error:', error);
     res.status(500).json({ msg: 'Server error' });
   }
 });
@@ -291,18 +1201,21 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), async (r
 router.delete('/:id', auth, async (req, res) => {
   try {
     const request = await Request.findById(req.params.id);
-    
     if (!request) {
       return res.status(404).json({ msg: 'Request not found' });
     }
-    
-    // Only owner or the requester can delete
+
     if (req.user.role !== 'owner' && request.requestedBy.toString() !== req.user._id.toString()) {
       return res.status(403).json({ msg: 'Not authorized' });
     }
-    
+
+    // Only allow deletion if not yet approved
+    if (['PR_APPROVED', 'MUST_PURCHASE', 'ON_THE_WAY', 'DELIVERED'].includes(request.status)) {
+      return res.status(400).json({ msg: 'Cannot delete an approved or active procurement order' });
+    }
+
     await request.deleteOne();
-    res.json({ msg: 'Request deleted' });
+    res.json({ msg: 'Request deleted successfully' });
   } catch (error) {
     console.error('Delete request error:', error);
     res.status(500).json({ msg: 'Server error' });

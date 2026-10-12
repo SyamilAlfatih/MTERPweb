@@ -15,6 +15,7 @@ import {
   ExcelImportPreview,
   RABItem,
   LocalPurchase,
+  ProcurementAuthorizersResponse,
 } from '../types';
 
 // API Base URL - use local backend or production
@@ -127,6 +128,59 @@ export const createMaterialRequest = async (data: CreateMaterialRequestDTO) => {
 
 export const updateMaterialRequestStatus = async (id: string, data: { status: string; rejectionReason?: string; passphrase?: string }) => {
   const response = await api.put(`/requests/${id}`, data);
+  return response.data;
+};
+
+export const reviewMaterialRequest = async (
+  id: string,
+  data: { notes?: string; passphrase: string; action?: 'approve' | 'reject'; rejectionReason?: string }
+) => {
+  const response = await api.put(`/requests/${id}/review`, data);
+  return response.data;
+};
+
+export const opsApproveMaterialRequest = async (id: string, data: { passphrase: string; notes?: string }) => {
+  const response = await api.put(`/requests/${id}/ops-approve`, data);
+  return response.data;
+};
+
+export const submitSupplierComparisons = async (
+  id: string,
+  data: { comparisons: any[]; assignedFinanceApproverId?: string }
+) => {
+  const response = await api.put(`/requests/${id}/compare-suppliers`, data);
+  return response.data;
+};
+
+export const getProcurementAuthorizers = async (): Promise<ProcurementAuthorizersResponse> => {
+  const response = await api.get('/requests/authorizers');
+  return response.data;
+};
+
+export const assignProcurementAuthorizers = async (
+  id: string,
+  data: { assignedReviewerId?: string; assignedOpsApproverId?: string; assignedFinanceApproverId?: string }
+) => {
+  const response = await api.put(`/requests/${id}/assign-authorizers`, data);
+  return response.data;
+};
+
+export const financeApproveMaterialRequest = async (id: string, data: { passphrase: string; notes?: string }) => {
+  const response = await api.put(`/requests/${id}/finance-approve`, data);
+  return response.data;
+};
+
+export const dispatchMaterialOrder = async (id: string, formData: FormData) => {
+  const response = await api.put(`/requests/${id}/dispatch`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const receiveMaterialOrder = async (id: string, formData: FormData) => {
+  const response = await api.put(`/requests/${id}/receive`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
   return response.data;
 };
 

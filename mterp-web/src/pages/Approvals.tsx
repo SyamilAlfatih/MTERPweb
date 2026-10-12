@@ -30,6 +30,11 @@ interface DetailedApprovalItem extends ApprovalItem {
   purpose?: string;
   unit?: string;
   estimatedCost?: number;
+  prNumber?: string;
+  poNumber?: string;
+  status?: string;
+  items?: any[];
+  comparisons?: any[];
 }
 
 type UnifiedApprovalItem =
@@ -77,26 +82,38 @@ export default function Approvals() {
     try {
       setError(null);
       const [requestsRes, ...kasbonRes] = await Promise.all([
-        api.get('/requests?status=Pending'),
+        api.get('/requests?status=Pending,PR_PENDING,PR_REVIEWED,PO_PENDING_FINANCE'),
         ...(isDirectorOrOwner ? [api.get('/kasbon?status=Pending')] : []),
       ]);
 
       // Map material requests with extra details for inspector pane
-      const mapped: DetailedApprovalItem[] = requestsRes.data.map((r: any) => ({
-        id: r._id,
-        requester: r.requestedBy?.fullName || r.requestedBy || 'Unknown',
-        role: r.requestedBy?.role || 'Staff',
-        item: r.item,
-        qty: r.qty,
-        unit: r.unit || 'unit',
-        urgency: r.urgency || 'Normal',
-        date: r.dateNeeded
-          ? formatWIBDate(r.dateNeeded, { day: 'numeric', month: 'short', year: 'numeric' })
-          : '-',
-        project: r.projectId?.nama || 'General',
-        purpose: r.purpose || '',
-        estimatedCost: r.estimatedCost || 0,
-      }));
+      const mapped: DetailedApprovalItem[] = requestsRes.data.map((r: any) => {
+        const hasMultiple = Array.isArray(r.items) && r.items.length > 1;
+        const mainItemName = hasMultiple
+          ? `${r.items[0]?.item} (+${r.items.length - 1} item lainnya)`
+          : (r.item || r.items?.[0]?.item || 'Material');
+
+        return {
+          id: r._id,
+          requester: r.requestedBy?.fullName || r.requestedBy || 'Unknown',
+          role: r.requestedBy?.role || 'Staff',
+          item: mainItemName,
+          qty: hasMultiple ? r.items.length : (r.qty || r.items?.[0]?.qty || 1),
+          unit: hasMultiple ? 'baris material' : (r.unit || r.items?.[0]?.unit || 'unit'),
+          urgency: r.urgency || 'Normal',
+          date: r.dateNeeded
+            ? formatWIBDate(r.dateNeeded, { day: 'numeric', month: 'short', year: 'numeric' })
+            : '-',
+          project: r.projectId?.nama || 'General',
+          purpose: r.purpose || '',
+          estimatedCost: r.totalEstimatedBudget || r.poTotalAmount || r.costEstimate || 0,
+          prNumber: r.prNumber,
+          poNumber: r.poNumber,
+          status: r.status,
+          items: r.items,
+          comparisons: r.comparisons,
+        };
+      });
       setApprovals(mapped);
 
       // Map kasbon requests (director/owner only)
@@ -560,6 +577,30 @@ export default function Approvals() {
                           </div>
                         </div>
 
+                        {/* PR / PO Numbers and Status */}
+                        {(req.prNumber || req.poNumber) && (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {req.prNumber && (
+                              <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-slate-100 text-slate-800">
+                                PR: {req.prNumber}
+                              </span>
+                            )}
+                            {req.poNumber && (
+                              <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-primary/10 text-primary">
+                                PO: {req.poNumber}
+                              </span>
+                            )}
+                            {req.status && (
+                              <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                {req.status === 'PR_PENDING' ? 'Menunggu QC Review' :
+                                 req.status === 'PR_REVIEWED' ? 'Menunggu Approval Ops Director' :
+                                 req.status === 'PO_PENDING_FINANCE' ? 'Menunggu Otorisasi Finance PO' :
+                                 req.status}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-xl bg-bg-secondary border border-border-light">
                           <div>
                             <span className="text-xs text-text-muted font-medium block">Jumlah & Satuan</span>
@@ -580,6 +621,56 @@ export default function Approvals() {
                             </span>
                           </div>
                         </div>
+
+                        {/* Multi-Item Line Items Table (Separate Nama and Spec Columns) */}
+                        {Array.isArray(req.items) && req.items.length > 0 && (
+                          <div className="space-y-2">
+                            <span className="text-xs font-bold text-text-muted uppercase tracking-wider block">
+                              Rincian Material ({req.items.length} Baris)
+                            </span>
+                            <div className="border border-border-light rounded-xl overflow-x-auto">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead className="bg-slate-50 border-b border-border-light text-[11px] font-black text-text-muted uppercase">
+                                  <tr>
+                                    <th className="py-2 px-2 w-8">No</th>
+                                    <th className="py-2 px-2">Nama Material</th>
+                                    <th className="py-2 px-2 text-primary">Spesifikasi / Spec</th>
+                                    <th className="py-2 px-2 text-center">Qty</th>
+                                    <th className="py-2 px-2 text-center">Satuan</th>
+                                    <th className="py-2 px-2 text-right">Tarif Est.</th>
+                                    <th className="py-2 px-2 text-right">Subtotal</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border-light">
+                                  {req.items.map((itm: any, idx: number) => (
+                                    <tr key={idx} className="hover:bg-slate-50/50">
+                                      <td className="py-2 px-2 text-text-muted">{idx + 1}</td>
+                                      <td className="py-2 px-2 font-bold text-text-primary">
+                                        {itm.item}
+                                        {itm.wbsCode && (
+                                          <span className="ml-1 text-[10px] text-slate-500 font-mono">
+                                            ({itm.wbsCode})
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="py-2 px-2 text-text-secondary italic">
+                                        {itm.specifications || '-'}
+                                      </td>
+                                      <td className="py-2 px-2 text-center font-bold">{itm.qty}</td>
+                                      <td className="py-2 px-2 text-center text-text-muted">{itm.unit}</td>
+                                      <td className="py-2 px-2 text-right font-mono">
+                                        {formatCurrency(itm.poUnitPrice || itm.budgetUnitRate || 0)}
+                                      </td>
+                                      <td className="py-2 px-2 text-right font-bold font-mono">
+                                        {formatCurrency(itm.poTotalAmount || itm.totalBudget || (itm.qty * (itm.poUnitPrice || itm.budgetUnitRate || 0)))}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
 
                         {req.estimatedCost ? (
                           <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 flex justify-between items-center">

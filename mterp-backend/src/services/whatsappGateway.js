@@ -1,10 +1,10 @@
 /**
  * WhatsApp Gateway Client for MTERP Enterprise
- * Integrates with Scraps WhatsApp Service (:8081)
+ * Integrates with Scraps WhatsApp Service (:8080)
  * Location: mterp-backend/src/services/whatsappGateway.js
  */
 
-const BASE_URL = process.env.WA_GATEWAY_URL || 'http://127.0.0.1:8081';
+const BASE_URL = process.env.WA_GATEWAY_URL || 'http://127.0.0.1:8080';
 const API_KEY = process.env.WA_GATEWAY_API_KEY;
 const ENABLED = process.env.WA_GATEWAY_ENABLED === 'true';
 

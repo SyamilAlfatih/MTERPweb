@@ -176,16 +176,6 @@ export interface CreateToolDTO {
   lokasi?: string;
 }
 
-export interface CreateMaterialRequestDTO {
-  item: string;
-  qty: string | number;
-  unit?: string;
-  projectId?: string;
-  dateNeeded: string;
-  urgency?: 'Low' | 'Normal' | 'High';
-  purpose?: string;
-  costEstimate?: number;
-}
 
 export interface AddProjectSupplyDTO {
   item: string;
@@ -199,22 +189,145 @@ export interface AddProjectSupplyDTO {
   status?: 'Pending' | 'Ordered' | 'Delivered';
 }
 
+export type ProcurementStatus =
+  | 'Pending'
+  | 'Approved'
+  | 'Rejected'
+  | 'PR_PENDING'
+  | 'PR_REVIEWED'
+  | 'PR_APPROVED'
+  | 'PR_REJECTED'
+  | 'PO_PENDING_FINANCE'
+  | 'MUST_PURCHASE'
+  | 'ON_THE_WAY'
+  | 'Delivered'
+  | 'DELIVERED';
+
+export interface CreateMaterialRequestDTO {
+  projectId?: string;
+  dateNeeded: string;
+  urgency?: 'Low' | 'Normal' | 'High' | 'Urgent';
+  purpose?: string;
+  items?: IProcurementItem[];
+  item?: string;
+  qty?: number | string;
+  unit?: string;
+  costEstimate?: number;
+  assignedReviewerId?: string;
+  assignedOpsApproverId?: string;
+  assignedFinanceApproverId?: string;
+}
+
+export interface ProcurementAuthorizersResponse {
+  all: Array<{ _id: string; fullName: string; role: string; position?: string; department?: string; email?: string; phone?: string }>;
+  reviewers: Array<{ _id: string; fullName: string; role: string; position?: string; department?: string; email?: string; phone?: string }>;
+  opsApprovers: Array<{ _id: string; fullName: string; role: string; position?: string; department?: string; email?: string; phone?: string }>;
+  financeApprovers: Array<{ _id: string; fullName: string; role: string; position?: string; department?: string; email?: string; phone?: string }>;
+}
+
+export interface IProcurementItem {
+  _id?: string;
+  isRabBased?: boolean;
+  rabItemId?: any;
+  wbsCode?: string;
+  item: string;
+  specifications?: string; // Separate column for specification
+  qty: number;
+  unit: string;
+  budgetUnitRate: number;
+  targetPriceRange?: { min: number; max: number };
+  totalBudget: number;
+  poUnitPrice?: number;
+  poTotalAmount?: number;
+  receivedQty?: number;
+  receivedCondition?: 'Good' | 'Damaged' | 'Partial' | 'Pending';
+  itemNotes?: string;
+}
+
+export interface ISupplierComparisonItemRate {
+  itemIndex: number;
+  itemName: string;
+  quotedUnitPrice: number;
+  quotedTotalAmount: number;
+}
+
+export interface ISupplierComparison {
+  supplierName: string;
+  location?: string;
+  contact?: string;
+  itemRates?: ISupplierComparisonItemRate[];
+  subtotalItems?: number;
+  shippingCost?: number;
+  totalLandedCost?: number;
+  leadTimeDays?: number;
+  paymentTerms?: string;
+  notes?: string;
+  isRecommended?: boolean;
+}
+
+export interface IDispatchInfo {
+  suratJalanPhoto?: string;
+  supplierNotaPhoto?: string;
+  driverName?: string;
+  driverPhone?: string;
+  vehiclePlate?: string;
+  dispatchedAt?: string;
+  eta?: string;
+  notes?: string;
+}
+
+export interface IDeliveryProof {
+  sitePhoto?: string;
+  overallCondition?: 'Good' | 'Damaged' | 'Partial';
+  receivedBy?: any;
+  receivedAt?: string;
+  notes?: string;
+}
+
 export interface MaterialRequest {
   _id?: string;
   id?: string;
+  prNumber?: string;
+  poNumber?: string;
   item: string;
   qty: string | number;
   unit?: string;
   dateNeeded: string;
-  status: 'Pending' | 'Approved' | 'Rejected';
-  requestedBy: { _id: string; fullName: string; role?: string } | string;
-  approvedBy?: { _id: string; fullName: string } | string;
-  projectId?: { _id: string; nama: string; lokasi?: string } | string;
-  costEstimate?: number;
+  status: ProcurementStatus;
+  urgency?: 'Low' | 'Normal' | 'High' | 'Urgent';
   purpose?: string;
-  urgency?: 'Low' | 'Normal' | 'High';
+  costEstimate?: number;
+  totalEstimatedBudget?: number;
+  
+  // Multi-item collection
+  items?: IProcurementItem[];
+  specifications?: string;
+
+  // Supplier & PO fields
+  comparisons?: ISupplierComparison[];
+  supplierComparisons?: ISupplierComparison[];
+  selectedSupplier?: ISupplierComparison;
+  poSubtotal?: number;
+  poShippingCost?: number;
+  poTotalAmount?: number;
+
+  // People & Audits
+  requestedBy: { _id: string; fullName: string; role?: string; phone?: string; nik?: string } | any;
+  approvedBy?: { _id: string; fullName: string } | any;
+  reviewedBy?: { user: any; role?: string; reviewedAt?: string; notes?: string };
+  opsApprovedBy?: { user: any; approvedAt?: string; notes?: string };
+  financeApprovedBy?: { user: any; approvedAt?: string; notes?: string };
+  assignedReviewerId?: { _id: string; fullName: string; role?: string; phone?: string } | any;
+  assignedOpsApproverId?: { _id: string; fullName: string; role?: string; phone?: string } | any;
+  assignedFinanceApproverId?: { _id: string; fullName: string; role?: string; phone?: string } | any;
+  projectId?: { _id: string; nama: string; lokasi?: string } | any;
   rejectionReason?: string;
+
+  // Delivery & Proof
+  dispatchInfo?: IDispatchInfo;
+  deliveryProof?: IDeliveryProof;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Tool {

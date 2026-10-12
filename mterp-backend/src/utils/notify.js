@@ -158,4 +158,47 @@ async function notifyDepartmentWithWA(department, waMessage, notifData, options 
   }
 }
 
-module.exports = { notify, notifyByRole, notifyDepartmentWithWA, setIO };
+/**
+ * Notify a specific user with In-App notification, Web Push, and optional direct WhatsApp message.
+ *
+ * @param {string} userId - Recipient User ObjectId or string
+ * @param {Object} notifData - { type, title, message, data }
+ * @param {string} [waMessage] - Optional formatted WhatsApp text to send to user's registered phone
+ */
+async function notifyUserWithWA(userId, notifData, waMessage) {
+  try {
+    if (!userId) return;
+    const targetId = typeof userId === 'object' && userId._id ? userId._id : userId;
+    let user = null;
+    if (targetId) {
+      user = await User.findById(targetId).select('fullName phone email').lean();
+    }
+    if (!user && typeof userId === 'object' && (userId.fullName || userId.phone)) {
+      user = userId;
+    }
+    if (!user) return;
+
+    // 1. In-app and Web Push notification
+    if (notifData && notifData.title) {
+      const recipientId = (user._id || targetId).toString();
+      await notify({
+        recipient: recipientId,
+        type: notifData.type || 'general',
+        title: notifData.title,
+        message: notifData.message,
+        data: notifData.data || {},
+      });
+    }
+
+    // 2. Direct WhatsApp dispatch if phone number is available
+    if (waMessage && user.phone) {
+      whatsappGateway.sendToUser(user.phone, waMessage).catch((err) => {
+        console.warn(`[WA Gateway] Failed sending direct notification to ${user.fullName} (${user.phone}):`, err.message);
+      });
+    }
+  } catch (err) {
+    console.warn('notifyUserWithWA error:', err.message);
+  }
+}
+
+module.exports = { notify, notifyByRole, notifyDepartmentWithWA, notifyUserWithWA, setIO };
