@@ -9,7 +9,15 @@
     "attendance": "Kehadiran",
     "payments": "Pembayaran Saya",
     "payroll": "Slip Gaji",
-    "logout": "Keluar"
+    "logout": "Keluar",
+    "groups": {
+      "overview": "Ikhtisar",
+      "operations": "Proyek & Operasional",
+      "supply_chain": "Logistik & Aset",
+      "workforce": "SDM & Presensi",
+      "finance": "Keuangan & Kontrol",
+      "admin": "Sistem & Administrasi"
+    }
   },
   "header": {
     "search": "Cari proyek, alat...",

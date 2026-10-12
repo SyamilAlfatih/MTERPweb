@@ -9,7 +9,15 @@
     "attendance": "Attendance",
     "payments": "My Payments",
     "payroll": "Salary Slips",
-    "logout": "Logout"
+    "logout": "Logout",
+    "groups": {
+      "overview": "Overview",
+      "operations": "Projects & Operations",
+      "supply_chain": "Logistics & Assets",
+      "workforce": "HR & Attendance",
+      "finance": "Finance & Controls",
+      "admin": "System & Administration"
+    }
   },
   "header": {
     "search": "Search projects, tools...",

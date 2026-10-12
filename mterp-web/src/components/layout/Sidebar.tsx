@@ -1,159 +1,19 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
-  Home,
-  BarChart3,
-  Briefcase,
-  Building2,
-  Wrench,
-  Clock,
-  ClipboardList,
-  CheckSquare,
-  Truck,
-  FileText,
-  DollarSign,
-  User,
-  LogOut,
   ChevronRight,
   ChevronLeft,
-  Receipt,
+  ChevronDown,
+  Wrench,
+  User,
   Globe,
-  UserCog,
+  LogOut,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSidebar } from '../../contexts/SidebarContext';
 import { getImageUrl } from '../../utils/image';
-
-interface NavItem {
-  id: string;
-  label: string;
-  icon: React.ElementType;
-  route: string;
-  roles: string[];
-}
-
-const NAV_ITEMS: NavItem[] = [
-  {
-    id: 'home',
-    label: 'Home',
-    icon: Home,
-    route: '/home',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'foreman', 'admin_project', 'asset_admin', 'worker', 'tukang', 'helper'],
-  },
-  {
-    id: 'dashboard',
-    label: 'sidebar.dashboard',
-    icon: BarChart3,
-    route: '/dashboard',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin', 'admin_project'],
-  },
-  {
-    id: 'projects',
-    label: 'sidebar.projects',
-    icon: Briefcase,
-    route: '/projects',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin'],
-  },
-  {
-    id: 'daily-report',
-    label: 'Daily Report',
-    icon: FileText,
-    route: '/daily-report',
-    roles: ['site_manager', 'supervisor', 'foreman', 'asset_admin', 'admin_project'],
-  },
-  {
-    id: 'tools',
-    label: 'sidebar.tools',
-    icon: Wrench,
-    route: '/tools',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin'],
-  },
-  {
-    id: 'materials',
-    label: 'sidebar.materials',
-    icon: Truck,
-    route: '/materials',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin'],
-  },
-  {
-    id: 'swakelola',
-    label: 'Swakelola SCM',
-    icon: Receipt,
-    route: '/swakelola',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin'],
-  },
-  {
-    id: 'office-attendance',
-    label: 'Presensi Kantor',
-    icon: Building2,
-    route: '/office-attendance',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'admin_project', 'asset_admin', 'device_admin'],
-  },
-  {
-    id: 'attendance',
-    label: 'Presensi Lapangan',
-    icon: Clock,
-    route: '/group-attendance',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin', 'admin_project', 'foreman'],
-  },
-  {
-    id: 'attendance-legacy',
-    label: 'sidebar.attendance',
-    icon: Clock,
-    route: '/attendance',
-    roles: ['worker', 'tukang', 'helper'],
-  },
-  {
-    id: 'tasks',
-    label: 'sidebar.tasks',
-    icon: ClipboardList,
-    route: '/tasks',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin', 'foreman', 'worker', 'tukang', 'helper'],
-  },
-  {
-    id: 'my-payments',
-    label: 'sidebar.payments',
-    icon: DollarSign,
-    route: '/my-payments',
-    roles: ['worker', 'tukang', 'helper', 'foreman'],
-  },
-  {
-    id: 'approvals',
-    label: 'sidebar.approvals',
-    icon: CheckSquare,
-    route: '/approvals',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin', 'admin_project'],
-  },
-  {
-    id: 'spkl',
-    label: 'Surat Lembur (SPKL)',
-    icon: FileText,
-    route: '/spkl',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin', 'foreman', 'worker', 'tukang', 'helper'],
-  },
-  {
-    id: 'slip-gaji',
-    label: 'sidebar.payroll',
-    icon: Receipt,
-    route: '/slip-gaji',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin'],
-  },
-  {
-    id: 'users',
-    label: 'User Management',
-    icon: User,
-    route: '/users',
-    roles: ['owner'],
-  },
-  {
-    id: 'project-assign',
-    label: 'Project Assignments',
-    icon: UserCog,
-    route: '/project-assign',
-    roles: ['owner', 'director', 'supervisor', 'asset_admin', 'admin_project'],
-  },
-];
+import { NAV_GROUPS, NavItemConfig, NavGroupConfig } from './navConfig';
 
 export default function Sidebar() {
   const { t, i18n } = useTranslation();
@@ -162,9 +22,59 @@ export default function Sidebar() {
   const location = useLocation();
   const userRole = user?.role?.toLowerCase() || 'worker';
 
-  const filteredItems = NAV_ITEMS.filter((item) =>
-    item.roles.includes(userRole)
-  );
+  // State for collapsible module groups (expanded/collapsed)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('mterp_collapsed_groups');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Filter groups and items according to the current user's role
+  const visibleGroups = useMemo(() => {
+    return NAV_GROUPS.map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.roles.includes(userRole)),
+    })).filter((group) => group.items.length > 0);
+  }, [userRole]);
+
+  // Automatically expand group containing the currently active route
+  useEffect(() => {
+    const currentPath = location.pathname;
+    const activeGroup = visibleGroups.find((group) =>
+      group.items.some(
+        (item) =>
+          currentPath === item.route ||
+          (item.route !== '/home' && currentPath.startsWith(item.route + '/'))
+      )
+    );
+
+    if (activeGroup && collapsedGroups[activeGroup.id]) {
+      setCollapsedGroups((prev) => {
+        const next = { ...prev, [activeGroup.id]: false };
+        try {
+          localStorage.setItem('mterp_collapsed_groups', JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+    }
+  }, [location.pathname, visibleGroups, collapsedGroups]);
+
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups((prev) => {
+      const next = { ...prev, [groupId]: !prev[groupId] };
+      try {
+        localStorage.setItem('mterp_collapsed_groups', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   const isProfileActive = location.pathname === '/profile';
 
@@ -199,7 +109,7 @@ export default function Sidebar() {
 
       {/* Brand Header */}
       <div
-        className={`flex items-center gap-3 pb-5 border-b border-white/10 mb-4 transition-all duration-200 ${
+        className={`flex items-center gap-3 pb-5 border-b border-white/10 mb-2 transition-all duration-200 ${
           isCollapsed ? 'justify-center' : 'justify-start'
         }`}
       >
@@ -218,62 +128,98 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Navigation items */}
-      <nav className="flex flex-col gap-1 flex-1 overflow-y-auto overflow-x-hidden pr-1 -mr-1 py-1">
-        {filteredItems.map((item) => {
-          const Icon = item.icon;
-          const isActive =
-            location.pathname === item.route ||
-            location.pathname.startsWith(item.route + '/');
-          const labelText = item.label.includes('sidebar.')
-            ? t(item.label)
-            : item.label;
+      {/* Navigation Groups */}
+      <nav className="flex flex-col gap-1 flex-1 overflow-y-auto overflow-x-hidden pr-1 -mr-1 py-1 scrollbar-thin scrollbar-thumb-white/10">
+        {visibleGroups.map((group, groupIndex) => {
+          const isGroupCollapsed = Boolean(collapsedGroups[group.id]);
+          const groupTitle = group.titleKey ? t(group.titleKey, group.defaultTitle) : group.defaultTitle;
 
           return (
-            <NavLink
-              key={item.id}
-              to={item.route}
-              title={isCollapsed ? labelText : undefined}
-              className={`flex items-center rounded-xl font-medium text-sm transition-all duration-150 relative group ${
-                isCollapsed
-                  ? 'justify-center py-2.5 px-0'
-                  : 'gap-3 py-2.5 px-3 hover:translate-x-0.5'
-              } ${
-                isActive
-                  ? 'bg-white/20 text-white font-bold shadow-sm'
-                  : 'text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              {/* Active Slide Indicator */}
-              {isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full animate-slide-indicator origin-center" />
+            <div key={group.id} className="flex flex-col">
+              {/* Divider in collapsed mode */}
+              {isCollapsed && groupIndex > 0 && (
+                <div className="w-8 mx-auto my-2 border-t border-white/15 shrink-0" />
               )}
 
-              <Icon
-                size={20}
-                className={`shrink-0 transition-transform group-hover:scale-110 ${
-                  isActive ? 'text-white' : 'text-white/80'
-                }`}
-              />
-
+              {/* Group Accordion Header (Expanded mode only) */}
               {!isCollapsed && (
-                <span className="truncate flex-1">{labelText}</span>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  aria-expanded={!isGroupCollapsed}
+                  className="w-full flex items-center justify-between px-2.5 pt-3 pb-1.5 text-[10px] font-black uppercase tracking-wider text-white/45 hover:text-white/80 transition-colors select-none group cursor-pointer"
+                >
+                  <span className="truncate">{groupTitle}</span>
+                  <ChevronDown
+                    size={12}
+                    className={`shrink-0 transition-transform duration-200 text-white/35 group-hover:text-white/70 ${
+                      isGroupCollapsed ? '-rotate-90' : 'rotate-0'
+                    }`}
+                  />
+                </button>
               )}
 
-              {!isCollapsed && isActive && (
-                <ChevronRight size={14} className="ml-auto opacity-60 shrink-0" />
+              {/* Group Nav Items */}
+              {(!isGroupCollapsed || isCollapsed) && (
+                <div className="flex flex-col gap-1">
+                  {group.items.map((item: NavItemConfig) => {
+                    const Icon = item.icon;
+                    const isActive =
+                      location.pathname === item.route ||
+                      (item.route !== '/home' && location.pathname.startsWith(item.route + '/'));
+                    const labelText = item.label.includes('sidebar.') ? t(item.label) : item.label;
+                    const tooltipText = isCollapsed ? `${groupTitle} • ${labelText}` : undefined;
+
+                    return (
+                      <NavLink
+                        key={item.id}
+                        to={item.route}
+                        title={tooltipText}
+                        className={`flex items-center rounded-xl font-medium text-sm transition-all duration-150 relative group ${
+                          isCollapsed
+                            ? 'justify-center py-2.5 px-0'
+                            : 'gap-3 py-2 px-3 hover:translate-x-0.5'
+                        } ${
+                          isActive
+                            ? 'bg-white/20 text-white font-bold shadow-sm'
+                            : 'text-white/70 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        {/* Active Slide Indicator */}
+                        {isActive && (
+                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full animate-slide-indicator origin-center" />
+                        )}
+
+                        <Icon
+                          size={19}
+                          className={`shrink-0 transition-transform group-hover:scale-110 ${
+                            isActive ? 'text-white' : 'text-white/80'
+                          }`}
+                        />
+
+                        {!isCollapsed && (
+                          <span className="truncate flex-1 text-[13.5px]">{labelText}</span>
+                        )}
+
+                        {!isCollapsed && isActive && (
+                          <ChevronRight size={14} className="ml-auto opacity-60 shrink-0" />
+                        )}
+                      </NavLink>
+                    );
+                  })}
+                </div>
               )}
-            </NavLink>
+            </div>
           );
         })}
       </nav>
 
       {/* Footer with Profile, Language & Logout */}
-      <div className="mt-auto pt-3 border-t border-white/10 flex flex-col gap-2">
+      <div className="mt-auto pt-3 border-t border-white/10 flex flex-col gap-2 shrink-0">
         {/* Profile Card / Icon */}
         <NavLink
           to="/profile"
-          title={isCollapsed ? (user?.fullName || 'Profile') : undefined}
+          title={isCollapsed ? user?.fullName || 'Profile' : undefined}
           className={`flex items-center rounded-xl transition-all relative ${
             isCollapsed
               ? 'justify-center py-2 px-0'

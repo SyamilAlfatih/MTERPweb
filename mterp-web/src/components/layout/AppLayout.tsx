@@ -14,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
+import Breadcrumbs from './Breadcrumbs';
 import { GlobalNearDeadlineWidget } from '../tasks/GlobalNearDeadlineWidget';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
@@ -92,27 +93,6 @@ export default function AppLayout() {
     return 'home.greeting.evening';
   };
 
-  const getPageTitle = () => {
-    const path = location.pathname;
-    const titles: Record<string, string> = {
-      '/home': t('nav.home', 'Home'),
-      '/dashboard': t('sidebar.dashboard', 'Dashboard'),
-      '/projects': t('sidebar.projects', 'Projects'),
-      '/tools': t('sidebar.tools', 'Tools'),
-      '/materials': t('sidebar.materials', 'Materials'),
-      '/attendance': t('sidebar.attendance', 'Attendance'),
-      '/attendance-recap': t('attendanceRecap.title', 'Attendance Recap'),
-      '/tasks': t('sidebar.tasks', 'Tasks'),
-      '/approvals': t('sidebar.approvals', 'Approvals'),
-      '/slip-gaji': t('sidebar.payroll', 'Payroll'),
-      '/my-payments': t('sidebar.payments', 'My Payments'),
-      '/daily-report': 'Daily Report',
-      '/users': 'User Management',
-      '/profile': 'Profile',
-      '/notifications': 'Notifications',
-    };
-    return Object.entries(titles).find(([k]) => path === k || path.startsWith(k + '/'))?.[1] ?? 'MTERP';
-  };
 
   const handleNotificationClick = (n: AppNotification) => {
     if (!n.isRead) markAsRead(n._id);
@@ -168,17 +148,17 @@ export default function AppLayout() {
         <header className="sticky top-0 z-40 flex items-center justify-between px-4 lg:px-6 bg-bg-white/95 backdrop-blur-md border-b border-border-light shadow-[0_1px_0_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.03)]"
           style={{ height: '64px' }}
         >
-          {/* Left: page title / greeting */}
-          <div className="flex flex-col justify-center min-w-0">
+          {/* Left: page title / breadcrumbs / greeting */}
+          <div className="flex items-center min-w-0 flex-1 mr-2 sm:mr-4">
             {isHome ? (
-              <>
+              <div className="flex flex-col justify-center min-w-0">
                 <span className="text-xs font-medium text-text-muted leading-tight">{t(getGreetingKey())}</span>
                 <span className="text-base font-black text-text-primary leading-tight truncate max-w-[200px] sm:max-w-none">
                   {user?.fullName?.split(' ')[0] || 'User'} 👋
                 </span>
-              </>
+              </div>
             ) : (
-              <h1 className="text-lg font-black text-text-primary tracking-tight m-0 leading-none">{getPageTitle()}</h1>
+              <Breadcrumbs />
             )}
           </div>
 

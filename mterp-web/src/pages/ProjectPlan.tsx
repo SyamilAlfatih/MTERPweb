@@ -56,12 +56,16 @@ import {
   X,
 } from 'lucide-react';
 import './ProjectPlan.css';
+import { useSetBreadcrumb } from '../contexts/BreadcrumbContext';
 
 export const ProjectPlan: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [project, setProject] = useState<any>(null);
+
+  // Synchronize dynamic project name to global breadcrumbs header
+  useSetBreadcrumb('project', project?.nama || project?.name);
   const [availableUsers, setAvailableUsers] = useState<any[]>([]);
   const [calendar, setCalendar] = useState<ProjectCalendar | null>(null);
   const [resources, setResources] = useState<ProjectResource[]>([]);

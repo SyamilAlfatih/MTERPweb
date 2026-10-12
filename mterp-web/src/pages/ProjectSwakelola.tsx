@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSwakelola } from '../contexts/SwakelolaContext';
+import { useSetBreadcrumb } from '../contexts/BreadcrumbContext';
 import { getImageUrl } from '../utils/image';
 import { formatDate } from '../utils/date';
 import { offlineDb, OfflinePurchaseRecord } from '../services/offlineDb';
@@ -114,6 +115,9 @@ export default function ProjectSwakelola() {
   // Active Project & Projects List
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectData | null>(null);
+
+  // Synchronize dynamic project name to global breadcrumbs header
+  useSetBreadcrumb('project', activeProject?.nama || activeProject?.name);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(id || '');
 
   // Tabs & Views

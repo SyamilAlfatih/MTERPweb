@@ -19,6 +19,7 @@ import api from '../api/api';
 import { Card, ProgressBar, Button, LoadingOverlay, Badge } from '../components/shared';
 import { ProjectData, WorkItem } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useSetBreadcrumb } from '../contexts/BreadcrumbContext';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
 import { getImageUrl } from '../utils/image';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -235,6 +236,9 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [project, setProject] = useState<ProjectData | null>(null);
+
+  // Synchronize dynamic project name to global breadcrumbs header
+  useSetBreadcrumb('project', project?.nama || project?.name);
   const [loading, setLoading] = useState(true);
   const [vizMode, setVizMode] = useState<'scurve' | 'gantt' | 'dynamic_scurve'>('scurve');
   const [scurveType, setScurveType] = useState<'financial' | 'physical'>('financial');

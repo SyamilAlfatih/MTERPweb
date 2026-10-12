@@ -1,192 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import {
-  Home,
-  BarChart3,
-  Briefcase,
-  Building2,
-  Wrench,
-  Clock,
-  ClipboardList,
-  CheckSquare,
-  Truck,
-  FileText,
-  Menu,
-  X,
-  LogOut,
-  User,
-  DollarSign,
-  Receipt,
-  UserCog,
-} from 'lucide-react';
+import { Menu, X, LogOut, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
-
-interface NavItem {
-  id: string;
-  label: string;
-  icon: React.ElementType;
-  route: string;
-  roles: string[];
-  color: string;
-  bg: string;
-}
-
-const NAV_ITEMS: NavItem[] = [
-  {
-    id: 'home',
-    label: 'Home',
-    icon: Home,
-    route: '/home',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'foreman', 'admin_project', 'asset_admin', 'worker', 'tukang', 'helper'],
-    color: '#6366F1',
-    bg: '#EEF2FF',
-  },
-  {
-    id: 'dashboard',
-    label: 'sidebar.dashboard',
-    icon: BarChart3,
-    route: '/dashboard',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin', 'admin_project'],
-    color: '#312E59',
-    bg: '#F0EDF6',
-  },
-  {
-    id: 'profile',
-    label: 'Profile',
-    icon: User,
-    route: '/profile',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'foreman', 'admin_project', 'asset_admin', 'worker', 'tukang', 'helper'],
-    color: '#6366F1',
-    bg: '#EEF2FF',
-  },
-  {
-    id: 'users',
-    label: 'User Management',
-    icon: User,
-    route: '/users',
-    roles: ['owner'],
-    color: '#E81CFF',
-    bg: '#FEEBFF',
-  },
-  {
-    id: 'projects',
-    label: 'sidebar.projects',
-    icon: Briefcase,
-    route: '/projects',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin'],
-    color: '#D97706',
-    bg: '#FEF3C7',
-  },
-  {
-    id: 'daily-report',
-    label: 'Daily Report',
-    icon: FileText,
-    route: '/daily-report',
-    roles: ['site_manager', 'supervisor', 'foreman', 'asset_admin', 'admin_project'],
-    color: '#3B82F6',
-    bg: '#DBEAFE',
-  },
-  {
-    id: 'tools',
-    label: 'sidebar.tools',
-    icon: Wrench,
-    route: '/tools',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin'],
-    color: '#0EA5E9',
-    bg: '#E0F2FE',
-  },
-  {
-    id: 'materials',
-    label: 'sidebar.materials',
-    icon: Truck,
-    route: '/materials',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin'],
-    color: '#8B5CF6',
-    bg: '#EDE9FE',
-  },
-  {
-    id: 'office-attendance',
-    label: 'Presensi Kantor',
-    icon: Building2,
-    route: '/office-attendance',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'admin_project', 'asset_admin', 'device_admin'],
-    color: '#6366F1',
-    bg: '#EEF2FF',
-  },
-  {
-    id: 'attendance',
-    label: 'Presensi Lapangan',
-    icon: Clock,
-    route: '/group-attendance',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin', 'admin_project', 'foreman'],
-    color: '#10B981',
-    bg: '#D1FAE5',
-  },
-  {
-    id: 'attendance-legacy',
-    label: 'sidebar.attendance',
-    icon: Clock,
-    route: '/attendance',
-    roles: ['worker', 'tukang', 'helper'],
-    color: '#10B981',
-    bg: '#D1FAE5',
-  },
-  {
-    id: 'tasks',
-    label: 'sidebar.tasks',
-    icon: ClipboardList,
-    route: '/tasks',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin', 'foreman', 'worker', 'tukang', 'helper'],
-    color: '#F59E0B',
-    bg: '#FEF3C7',
-  },
-  {
-    id: 'my-payments',
-    label: 'sidebar.payments',
-    icon: DollarSign,
-    route: '/my-payments',
-    roles: ['worker', 'tukang', 'helper', 'foreman'],
-    color: '#059669',
-    bg: '#D1FAE5',
-  },
-  {
-    id: 'approvals',
-    label: 'sidebar.approvals',
-    icon: CheckSquare,
-    route: '/approvals',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin', 'admin_project'],
-    color: '#EF4444',
-    bg: '#FEE2E2',
-  },
-  {
-    id: 'spkl',
-    label: 'Surat Lembur (SPKL)',
-    icon: FileText,
-    route: '/spkl',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin', 'foreman', 'worker', 'tukang', 'helper'],
-    color: '#2563EB',
-    bg: '#EFF6FF',
-  },
-  {
-    id: 'slip-gaji',
-    label: 'sidebar.payroll',
-    icon: Receipt,
-    route: '/slip-gaji',
-    roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'asset_admin'],
-    color: '#0D9488',
-    bg: '#CCFBF1',
-  },
-  {
-    id: 'project-assign',
-    label: 'Project Assignments',
-    icon: UserCog,
-    route: '/project-assign',
-    roles: ['owner', 'director', 'supervisor', 'asset_admin', 'admin_project'],
-    color: '#7C3AED',
-    bg: '#EDE9FE',
-  },
-];
+import { NAV_GROUPS, NavItemConfig } from './navConfig';
 
 export default function MobileNav() {
   const { t } = useTranslation();
@@ -196,9 +13,13 @@ export default function MobileNav() {
   const [isOpen, setIsOpen] = useState(false);
   const userRole = user?.role?.toLowerCase() || 'worker';
 
-  const filteredItems = NAV_ITEMS.filter((item) =>
-    item.roles.includes(userRole)
-  );
+  // Filter groups and items according to the current user's role
+  const visibleGroups = useMemo(() => {
+    return NAV_GROUPS.map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.roles.includes(userRole)),
+    })).filter((group) => group.items.length > 0);
+  }, [userRole]);
 
   const handleNavigation = (route: string) => {
     navigate(route);
@@ -214,78 +35,109 @@ export default function MobileNav() {
     <>
       {/* Overlay */}
       <div
-        className={`fixed inset-0 bg-black/50 backdrop-blur-sm transition-all duration-300 z-[998] lg:hidden ${
+        className={`fixed inset-0 bg-black/50 backdrop-blur-xs transition-all duration-300 z-[998] lg:hidden ${
           isOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
         }`}
         onClick={() => setIsOpen(false)}
       />
 
-      {/* Menu Items */}
-      <div 
-        className={`fixed bottom-24 right-6 transition-all duration-300 z-[999] lg:hidden ${
+      {/* Menu Drawer / Floating Panel */}
+      <div
+        className={`fixed bottom-24 right-4 sm:right-6 transition-all duration-300 z-[999] lg:hidden ${
           isOpen ? 'opacity-100 visible translate-y-0 scale-100' : 'opacity-0 invisible translate-y-5 scale-95'
         }`}
       >
-        <div className="flex flex-col gap-2 p-2 bg-bg-white rounded-[20px] shadow-[0_4px_20px_rgba(0,0,0,0.1),0_8px_32px_rgba(0,0,0,0.05)] max-h-[70vh] overflow-y-auto w-64">
-          {filteredItems.map((item, index) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.route ||
-              location.pathname.startsWith(item.route + '/');
+        <div className="flex flex-col gap-3 p-3 bg-bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.16)] border border-border-light max-h-[75vh] overflow-y-auto w-72 sm:w-80">
+          {/* Header in drawer */}
+          <div className="flex items-center justify-between pb-2 border-b border-border-light px-1">
+            <span className="text-xs font-black uppercase tracking-wider text-text-muted">Menu Navigasi</span>
+            <span className="text-[10px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-full">
+              {user?.role?.replace(/_/g, ' ') || 'Staff'}
+            </span>
+          </div>
+
+          {/* Grouped Modules */}
+          {visibleGroups.map((group) => {
+            const groupTitle = group.titleKey ? t(group.titleKey, group.defaultTitle) : group.defaultTitle;
 
             return (
-              <button
-                key={item.id}
-                className={`flex items-center gap-3 py-3 pr-4 pl-3 rounded-[14px] min-w-[180px] transition-all duration-300 transform ${
-                  isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-                } ${
-                  isActive ? 'bg-primary-bg' : 'bg-bg-secondary hover:bg-bg-white hover:-translate-x-1 active:scale-95'
-                }`}
-                onClick={() => handleNavigation(item.route)}
-                style={{
-                  transitionDelay: `${isOpen ? index * 40 : 0}ms`,
-                }}
-              >
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: item.bg }}>
-                  <Icon size={20} color={item.color} />
-                </div>
-                <span className={`text-[15px] whitespace-nowrap ${isActive ? 'text-primary font-semibold' : 'text-text-primary font-medium'}`}>
-                  {item.label.includes('sidebar.') ? t(item.label) : item.label}
+              <div key={group.id} className="flex flex-col gap-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-text-muted/70 px-2 pt-1">
+                  {groupTitle}
                 </span>
-              </button>
+
+                <div className="flex flex-col gap-1">
+                  {group.items.map((item: NavItemConfig) => {
+                    const Icon = item.icon;
+                    const isActive =
+                      location.pathname === item.route ||
+                      (item.route !== '/home' && location.pathname.startsWith(item.route + '/'));
+                    const labelText = item.label.includes('sidebar.') ? t(item.label) : item.label;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`flex items-center gap-3 py-2.5 px-3 rounded-xl transition-all duration-150 text-left cursor-pointer border-none ${
+                          isActive
+                            ? 'bg-primary/10 text-primary font-bold shadow-xs'
+                            : 'bg-transparent text-text-primary hover:bg-bg-secondary'
+                        }`}
+                        onClick={() => handleNavigation(item.route)}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                            isActive ? 'bg-primary text-white shadow-xs' : 'bg-bg-secondary text-text-secondary'
+                          }`}
+                        >
+                          <Icon size={16} />
+                        </div>
+                        <span className="text-xs sm:text-[13px] font-medium truncate flex-1">{labelText}</span>
+                        {isActive && <ChevronRight size={14} className="text-primary shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
 
           {/* Logout Button */}
           <button
-            className={`flex items-center gap-3 py-3 pr-4 pl-3 bg-bg-secondary rounded-[14px] min-w-[180px] transition-all duration-300 transform mt-1 border-t border-border-light pt-4 hover:bg-red-50 hover:-translate-x-1 active:scale-95 ${
-              isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-            }`}
+            type="button"
+            className="flex items-center gap-3 py-2.5 px-3 bg-red-50 hover:bg-red-100 rounded-xl transition-colors cursor-pointer border border-red-100 mt-2 text-left"
             onClick={handleLogout}
-            style={{ transitionDelay: `${isOpen ? filteredItems.length * 40 : 0}ms` }}
           >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-red-100">
-              <LogOut size={20} className="text-red-500" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-red-500 text-white shadow-xs">
+              <LogOut size={16} />
             </div>
-            <span className="text-[15px] font-medium text-text-primary whitespace-nowrap">{t('sidebar.logout')}</span>
+            <span className="text-xs sm:text-[13px] font-bold text-red-600 truncate">{t('sidebar.logout', 'Keluar')}</span>
           </button>
         </div>
       </div>
 
       {/* FAB Button */}
       <button
+        type="button"
         className={`fixed bottom-6 right-6 w-14 h-14 flex items-center justify-center z-[1000] cursor-pointer transition-all duration-300 lg:hidden shadow-[0_4px_20px_rgba(30,64,175,0.4),0_8px_32px_rgba(30,64,175,0.2)] active:scale-95 hover:scale-105 ${
-          isOpen ? 'rounded-full bg-bg-primary !shadow-[0_0_0_4px_rgba(30,64,175,0.15),0_4px_20px_rgba(0,0,0,0.1)]' : 'rounded-2xl bg-gradient-to-br from-primary to-primary-light text-white'
+          isOpen
+            ? 'rounded-full bg-bg-primary text-text-primary !shadow-[0_0_0_4px_rgba(30,64,175,0.15),0_4px_20px_rgba(0,0,0,0.1)]'
+            : 'rounded-2xl bg-gradient-to-br from-primary to-primary-light text-white'
         }`}
         onClick={() => setIsOpen(!isOpen)}
         aria-label="Navigation menu"
       >
-        <Menu 
-          className={`absolute transition-all duration-300 ${isOpen ? 'opacity-0 rotate-90 scale-50' : 'opacity-100 rotate-0 scale-100'}`} 
-          size={24} 
+        <Menu
+          className={`absolute transition-all duration-300 ${
+            isOpen ? 'opacity-0 rotate-90 scale-50' : 'opacity-100 rotate-0 scale-100'
+          }`}
+          size={24}
         />
-        <X 
-          className={`absolute transition-all duration-300 text-text-primary ${isOpen ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-50'}`} 
-          size={24} 
+        <X
+          className={`absolute transition-all duration-300 text-text-primary ${
+            isOpen ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-50'
+          }`}
+          size={24}
         />
       </button>
     </>
