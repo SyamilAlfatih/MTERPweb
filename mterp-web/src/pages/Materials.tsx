@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Package,
   Plus,
@@ -33,6 +34,11 @@ import {
   UserCheck,
   Users,
   Lock,
+  Table,
+  LayoutGrid,
+  ArrowUpDown,
+  ChevronRight,
+  Save,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api, {
@@ -46,6 +52,8 @@ import api, {
   deleteMaterialRequest,
   getProcurementAuthorizers,
   assignProcurementAuthorizers,
+  getProcurementConfig,
+  updateProcurementConfig,
 } from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Input, EmptyState, LoadingOverlay, Badge } from '../components/shared';
@@ -57,6 +65,7 @@ import {
   ProjectData,
   ProcurementStatus,
   ProcurementAuthorizersResponse,
+  ProcurementConfigResponse,
 } from '../types';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { formatDate } from '../utils/date';
@@ -99,6 +108,7 @@ const EMPTY_LINE_ITEM: IProcurementItem = {
 export default function Materials() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [requests, setRequests] = useState<MaterialRequest[]>([]);
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,6 +117,11 @@ export default function Materials() {
   const [search, setSearch] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<PipelineTab>('PR');
+
+  // Enterprise Data Table View State
+  const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
+  const [sortField, setSortField] = useState<'date' | 'prNumber' | 'amount' | 'status'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Authorizers Directory & Assignment State
   const [authorizers, setAuthorizers] = useState<ProcurementAuthorizersResponse>({
@@ -121,6 +136,15 @@ export default function Materials() {
   const [assignOpsApproverId, setAssignOpsApproverId] = useState('');
   const [assignFinanceApproverId, setAssignFinanceApproverId] = useState('');
   const [savingAssignment, setSavingAssignment] = useState(false);
+
+  // Global Procurement Config State (Company-Wide Auto Routing)
+  const [procurementConfig, setProcurementConfig] = useState<ProcurementConfigResponse | null>(null);
+  const [globalReviewerId, setGlobalReviewerId] = useState('');
+  const [globalOpsApproverId, setGlobalOpsApproverId] = useState('');
+  const [globalFinanceApproverId, setGlobalFinanceApproverId] = useState('');
+  const [globalAutoAssign, setGlobalAutoAssign] = useState(true);
+  const [savingGlobalConfig, setSavingGlobalConfig] = useState(false);
+  const [showOwnerOverridePrApprovers, setShowOwnerOverridePrApprovers] = useState(false);
 
   // Multi-Item PR Creation Modal State
   const [showAddPrModal, setShowAddPrModal] = useState(false);
@@ -200,17 +224,28 @@ export default function Materials() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [reqRes, projRes, authRes] = await Promise.all([
+      const [reqRes, projRes, authRes, configRes] = await Promise.all([
         api.get('/requests'),
         api.get('/projects'),
         isOwner
           ? getProcurementAuthorizers().catch(() => ({ all: [], reviewers: [], opsApprovers: [], financeApprovers: [] }))
           : Promise.resolve({ all: [], reviewers: [], opsApprovers: [], financeApprovers: [] }),
+        getProcurementConfig().catch(() => null),
       ]);
       setRequests(reqRes.data);
       setProjects(projRes.data);
       if (authRes && isOwner) {
         setAuthorizers(authRes);
+      }
+      if (configRes) {
+        setProcurementConfig(configRes);
+        const revId = typeof configRes.defaultReviewerId === 'object' ? configRes.defaultReviewerId?._id : configRes.defaultReviewerId;
+        const opsId = typeof configRes.defaultOpsApproverId === 'object' ? configRes.defaultOpsApproverId?._id : configRes.defaultOpsApproverId;
+        const finId = typeof configRes.defaultFinanceApproverId === 'object' ? configRes.defaultFinanceApproverId?._id : configRes.defaultFinanceApproverId;
+        setGlobalReviewerId(revId || '');
+        setGlobalOpsApproverId(opsId || '');
+        setGlobalFinanceApproverId(finId || '');
+        setGlobalAutoAssign(configRes.autoAssignEnabled !== false);
       }
     } catch (err) {
       console.error('Failed to fetch procurement data', err);
@@ -219,7 +254,26 @@ export default function Materials() {
     }
   };
 
-  // Open PR modal with default authorizers pre-selected (if owner)
+  const handleSaveGlobalConfig = async () => {
+    setSavingGlobalConfig(true);
+    try {
+      const updated = await updateProcurementConfig({
+        defaultReviewerId: globalReviewerId || undefined,
+        defaultOpsApproverId: globalOpsApproverId || undefined,
+        defaultFinanceApproverId: globalFinanceApproverId || undefined,
+        autoAssignEnabled: globalAutoAssign,
+      });
+      setProcurementConfig(updated);
+      alert('Kebijakan Alur Otorisasi Global berhasil disimpan. Seluruh PR baru otomatis akan dialirkan ke approver yang telah ditentukan.');
+      await fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.msg || 'Gagal menyimpan kebijakan approver global');
+    } finally {
+      setSavingGlobalConfig(false);
+    }
+  };
+
+  // Open PR modal with default authorizers pre-selected from global config
   const handleOpenAddPrModal = () => {
     setPrMode('RAB');
     setPrProjectId('');
@@ -228,21 +282,22 @@ export default function Materials() {
     setPrDateNeeded('');
     setPrUrgency('Normal');
     setPrItems([{ ...EMPTY_LINE_ITEM, isRabBased: true }]);
-    if (isOwner) {
-      if (!prReviewerId && authorizers.reviewers.length > 0) {
-        setPrReviewerId(authorizers.reviewers[0]._id);
-      }
-      if (!prOpsApproverId && authorizers.opsApprovers.length > 0) {
-        setPrOpsApproverId(authorizers.opsApprovers[0]._id);
-      }
-      if (!prFinanceApproverId && authorizers.financeApprovers.length > 0) {
-        setPrFinanceApproverId(authorizers.financeApprovers[0]._id);
-      }
-    } else {
-      setPrReviewerId('');
-      setPrOpsApproverId('');
-      setPrFinanceApproverId('');
-    }
+    setShowOwnerOverridePrApprovers(false);
+
+    // Auto-populate from global company config (or first authorizer fallback)
+    const revId = typeof procurementConfig?.defaultReviewerId === 'object'
+      ? procurementConfig.defaultReviewerId?._id
+      : (procurementConfig?.defaultReviewerId || (authorizers.reviewers[0]?._id || ''));
+    const opsId = typeof procurementConfig?.defaultOpsApproverId === 'object'
+      ? procurementConfig.defaultOpsApproverId?._id
+      : (procurementConfig?.defaultOpsApproverId || (authorizers.opsApprovers[0]?._id || ''));
+    const finId = typeof procurementConfig?.defaultFinanceApproverId === 'object'
+      ? procurementConfig.defaultFinanceApproverId?._id
+      : (procurementConfig?.defaultFinanceApproverId || (authorizers.financeApprovers[0]?._id || ''));
+
+    setPrReviewerId(revId || '');
+    setPrOpsApproverId(opsId || '');
+    setPrFinanceApproverId(finId || '');
     setShowAddPrModal(true);
   };
 
@@ -869,27 +924,155 @@ export default function Materials() {
     switch (status) {
       case 'PR_PENDING':
       case 'Pending':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Menunggu QC Review</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-amber-100 text-amber-950 border border-amber-400">
+            <Clock size={11} className="text-amber-800 shrink-0" />
+            <span>Menunggu QC Review</span>
+          </span>
+        );
       case 'PR_REVIEWED':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">Menunggu Ops Director</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-blue-100 text-blue-950 border border-blue-400">
+            <UserCheck size={11} className="text-blue-800 shrink-0" />
+            <span>Menunggu Ops Director</span>
+          </span>
+        );
       case 'PR_APPROVED':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">PR Disetujui (Siap Sourcing)</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-indigo-100 text-indigo-950 border border-indigo-400">
+            <CheckCircle2 size={11} className="text-indigo-800 shrink-0" />
+            <span>PR Disetujui (Sourcing)</span>
+          </span>
+        );
       case 'PO_PENDING_FINANCE':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">Menunggu Finance Director</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-purple-100 text-purple-950 border border-purple-400">
+            <DollarSign size={11} className="text-purple-800 shrink-0" />
+            <span>Menunggu Approval Finance</span>
+          </span>
+        );
       case 'MUST_PURCHASE':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Siap Beli (Must Purchase)</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-emerald-100 text-emerald-950 border border-emerald-400">
+            <Check size={11} className="text-emerald-800 shrink-0" />
+            <span>Siap Beli (PO Disetujui)</span>
+          </span>
+        );
       case 'ON_THE_WAY':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 flex items-center gap-1"><Truck size={10} /> Dalam Perjalanan</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-sky-100 text-sky-950 border border-sky-400">
+            <Truck size={11} className="text-sky-800 shrink-0" />
+            <span>Dalam Pengiriman</span>
+          </span>
+        );
       case 'DELIVERED':
       case 'Delivered':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 flex items-center gap-1"><CheckCircle2 size={10} /> Selesai (Diterima)</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-teal-100 text-teal-950 border border-teal-400">
+            <CheckCircle2 size={11} className="text-teal-800 shrink-0" />
+            <span>Selesai (Diterima)</span>
+          </span>
+        );
       case 'PR_REJECTED':
       case 'Rejected':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">Ditolak</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-rose-100 text-rose-950 border border-rose-400">
+            <XCircle size={11} className="text-rose-800 shrink-0" />
+            <span>Ditolak</span>
+          </span>
+        );
       default:
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800">{status}</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-slate-200 text-slate-900 border border-slate-300">
+            {status}
+          </span>
+        );
     }
   };
+
+  const getOrderTotalAmount = (order: MaterialRequest) => {
+    if (order.poTotalAmount && Number(order.poTotalAmount) > 0) return Number(order.poTotalAmount);
+    if (order.selectedSupplier?.totalLandedCost && Number(order.selectedSupplier.totalLandedCost) > 0) {
+      return Number(order.selectedSupplier.totalLandedCost);
+    }
+    if (order.items && order.items.length > 0) {
+      return order.items.reduce(
+        (sum, itm) =>
+          sum + (Number(itm.totalBudget) || Number(itm.qty) * Number(itm.budgetUnitRate) || 0),
+        0
+      );
+    }
+    return Number(order.totalEstimatedBudget || order.costEstimate) || 0;
+  };
+
+  const getCurrentApproverName = (order: MaterialRequest) => {
+    switch (order.status) {
+      case 'PR_PENDING':
+      case 'Pending':
+        return typeof order.assignedReviewerId === 'object'
+          ? (order.assignedReviewerId?.fullName || order.assignedReviewerId?.name || 'QC/SPV')
+          : (order.reviewedBy?.user?.fullName || order.reviewedBy?.user?.name || 'Reviewer QC / SPV');
+      case 'PR_REVIEWED':
+        return typeof order.assignedOpsApproverId === 'object'
+          ? (order.assignedOpsApproverId?.fullName || order.assignedOpsApproverId?.name || 'Ops Director')
+          : (order.opsApprovedBy?.user?.fullName || order.opsApprovedBy?.user?.name || 'Direktur Ops');
+      case 'PO_PENDING_FINANCE':
+        return typeof order.assignedFinanceApproverId === 'object'
+          ? (order.assignedFinanceApproverId?.fullName || order.assignedFinanceApproverId?.name || 'Finance Director')
+          : (order.financeApprovedBy?.user?.fullName || order.financeApprovedBy?.user?.name || 'Direktur Keuangan');
+      case 'PR_APPROVED':
+        return 'Tim Pengadaan (Sourcing)';
+      case 'MUST_PURCHASE':
+        return order.selectedSupplier?.supplierName ? `PO: ${order.selectedSupplier.supplierName}` : 'Vendor Pengadaan';
+      case 'ON_THE_WAY':
+        return order.dispatchInfo?.driverName ? `Supir: ${order.dispatchInfo.driverName}` : 'Ekspedisi / Logistik';
+      case 'DELIVERED':
+      case 'Delivered':
+        return typeof order.deliveryProof?.receivedBy === 'object'
+          ? (order.deliveryProof?.receivedBy?.fullName || order.deliveryProof?.receivedBy?.name || 'Penerima Proyek')
+          : 'Diterima di Lapangan';
+      case 'PR_REJECTED':
+      case 'Rejected':
+        return 'Ditolak';
+      default:
+        return '-';
+    }
+  };
+
+  const handleSort = (field: 'date' | 'prNumber' | 'amount' | 'status') => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'amount' || field === 'date' ? 'desc' : 'asc');
+    }
+  };
+
+  const sortedRequests = useMemo(() => {
+    const list = [...filteredRequests];
+    list.sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'date') {
+        const dateA = new Date(a.createdAt || a.dateNeeded || 0).getTime();
+        const dateB = new Date(b.createdAt || b.dateNeeded || 0).getTime();
+        cmp = dateA - dateB;
+      } else if (sortField === 'prNumber') {
+        const prA = a.prNumber || '';
+        const prB = b.prNumber || '';
+        cmp = prA.localeCompare(prB);
+      } else if (sortField === 'amount') {
+        cmp = getOrderTotalAmount(a) - getOrderTotalAmount(b);
+      } else if (sortField === 'status') {
+        cmp = (a.status || '').localeCompare(b.status || '');
+      }
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [filteredRequests, sortField, sortDirection]);
+
+  const totalAccumulatedAmount = useMemo(() => {
+    return filteredRequests.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
+  }, [filteredRequests]);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -915,12 +1098,12 @@ export default function Materials() {
           {isOwner && (
             <button
               type="button"
-              onClick={() => setShowAuthorizerDirectoryModal(true)}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all cursor-pointer shadow-xs shrink-0"
-              title="Direktori alur & pejabat berwenang peninjau dan penyetuju dokumen (Owner Only)"
+              onClick={() => navigate('/approval-config')}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all cursor-pointer shadow-xs shrink-0 border border-slate-800"
+              title="Pusat Kebijakan & Otorisasi Approver Global (Owner Only)"
             >
-              <Users size={15} />
-              <span>Alur & Direktori Approver</span>
+              <ShieldCheck size={15} className="text-amber-400" />
+              <span>Kebijakan Approver</span>
             </button>
           )}
 
@@ -935,23 +1118,23 @@ export default function Materials() {
         </div>
       </div>
 
-      {/* ── Search & Project Filter Controls ── */}
+      {/* ── Search, Project Filter & View Controls ── */}
       <div className="flex flex-col sm:flex-row items-center gap-3">
         <div className="relative flex-1 w-full">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nomor PR, PO, nama material, supplier..."
-            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-border-light bg-bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-full pl-10 pr-4 py-2.5 text-xs rounded-xl border-2 border-slate-300 bg-white text-slate-900 font-medium placeholder:text-slate-500 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-2xs"
           />
         </div>
 
         <select
           value={selectedProjectId}
           onChange={(e) => setSelectedProjectId(e.target.value)}
-          className="w-full sm:w-60 px-3 py-2 text-xs rounded-xl border border-border-light bg-bg-white text-text-primary focus:outline-none"
+          className="w-full sm:w-60 px-3 py-2.5 text-xs rounded-xl border-2 border-slate-300 bg-white text-slate-900 font-bold focus:outline-none focus:border-primary shadow-2xs cursor-pointer"
         >
           <option value="all">Semua Proyek</option>
           {projects.map((p) => (
@@ -960,6 +1143,36 @@ export default function Materials() {
             </option>
           ))}
         </select>
+
+        {/* View Mode Toggle: Tabel ERP vs Kartu */}
+        <div className="flex items-center gap-1 p-1 bg-slate-200 rounded-xl border border-slate-300 shrink-0 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+              viewMode === 'table'
+                ? 'bg-primary text-white shadow-xs border border-primary'
+                : 'text-slate-700 hover:text-slate-950 hover:bg-slate-300/60'
+            }`}
+            title="Tampilan Tabel ERP Enterprise (Terstruktur & Padat Data)"
+          >
+            <Table size={14} strokeWidth={2.5} />
+            <span>Tabel ERP</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('card')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+              viewMode === 'card'
+                ? 'bg-primary text-white shadow-xs border border-primary'
+                : 'text-slate-700 hover:text-slate-950 hover:bg-slate-300/60'
+            }`}
+            title="Tampilan Kartu Tradisional"
+          >
+            <LayoutGrid size={14} strokeWidth={2.5} />
+            <span>Kartu</span>
+          </button>
+        </div>
       </div>
 
       {/* ── Pipeline Navigation Tabs ── */}
@@ -1006,9 +1219,553 @@ export default function Materials() {
           title="Tidak ada data pengadaan"
           description="Belum ada transaksi pengadaan pada tahap ini."
         />
+      ) : viewMode === 'table' ? (
+        /* ══════════════════════════════════════════════════════════════ */
+        /* ── ENTERPRISE DATA TABLE (ERP-TABLES-UX STANDARD) ──           */
+        /* ══════════════════════════════════════════════════════════════ */
+        <div className="bg-white border-2 border-slate-300 rounded-2xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-900 text-white border-b-2 border-slate-950 text-[11px] font-black uppercase tracking-wider select-none">
+                  <th className="py-3.5 px-3 w-12 text-center text-slate-300">#</th>
+                  <th
+                    className="py-3.5 px-3 text-left cursor-pointer hover:bg-slate-800 transition-colors text-white"
+                    onClick={() => handleSort('prNumber')}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>No. Dokumen</span>
+                      <ArrowUpDown size={12} className={sortField === 'prNumber' ? 'text-amber-400 font-bold' : 'text-slate-400 opacity-60'} />
+                    </div>
+                  </th>
+                  <th className="py-3.5 px-3 text-left text-white">Proyek & Tipe</th>
+                  <th className="py-3.5 px-3 text-left text-white">Pemohon</th>
+                  <th className="py-3.5 px-3 text-left text-white">Ringkasan Material</th>
+                  <th
+                    className="py-3.5 px-3 text-right cursor-pointer hover:bg-slate-800 transition-colors text-white"
+                    onClick={() => handleSort('amount')}
+                  >
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span>Total Anggaran / PO</span>
+                      <ArrowUpDown size={12} className={sortField === 'amount' ? 'text-amber-400 font-bold' : 'text-slate-400 opacity-60'} />
+                    </div>
+                  </th>
+                  <th
+                    className="py-3.5 px-3 text-left cursor-pointer hover:bg-slate-800 transition-colors text-white"
+                    onClick={() => handleSort('status')}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Status & Tahap</span>
+                      <ArrowUpDown size={12} className={sortField === 'status' ? 'text-amber-400 font-bold' : 'text-slate-400 opacity-60'} />
+                    </div>
+                  </th>
+                  <th className="py-3.5 px-3 text-left text-white">Penanggung Jawab</th>
+                  <th className="py-3.5 px-3 text-right text-white">Aksi & Dokumen</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {sortedRequests.map((order) => {
+                  const isExpanded = expandedOrders.includes(order._id!);
+                  const itemsList =
+                    order.items && order.items.length > 0
+                      ? order.items
+                      : [
+                          {
+                            item: order.item,
+                            specifications: '',
+                            qty: Number(order.qty) || 1,
+                            unit: order.unit || 'Pcs',
+                            budgetUnitRate: order.costEstimate
+                              ? Number(order.costEstimate) / (Number(order.qty) || 1)
+                              : 0,
+                            totalBudget: Number(order.costEstimate) || 0,
+                          },
+                        ];
+                  const hasRab = (order.items || []).some((i) => i.isRabBased || i.wbsCode);
+                  const totalAmt = getOrderTotalAmount(order);
+
+                  return (
+                    <React.Fragment key={order._id}>
+                      <tr
+                        className={`transition-colors hover:bg-blue-50/80 ${
+                          isExpanded
+                            ? 'bg-blue-50/50 border-l-4 border-l-primary font-medium'
+                            : 'even:bg-slate-50/70 odd:bg-white'
+                        }`}
+                      >
+                        {/* 0. Expand Button */}
+                        <td className="py-3 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandOrder(order._id!)}
+                            className={`w-7 h-7 mx-auto rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+                              isExpanded
+                                ? 'bg-primary text-white border-primary shadow-xs'
+                                : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100 hover:text-primary hover:border-primary/50'
+                            }`}
+                            title={isExpanded ? 'Tutup Rincian' : 'Buka Rincian Material'}
+                          >
+                            {isExpanded ? <ChevronDown size={14} strokeWidth={2.5} /> : <ChevronRight size={14} strokeWidth={2.5} />}
+                          </button>
+                        </td>
+
+                        {/* 1. No. Dokumen (Left-aligned) */}
+                        <td className="py-3 px-3 text-left">
+                          <div className="font-black text-slate-950 text-xs flex items-center gap-1.5">
+                            <span className="font-mono tracking-tight">{order.prNumber || 'DRAFT-PR'}</span>
+                          </div>
+                          {order.poNumber ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black font-mono text-blue-950 bg-blue-100 border border-blue-400 px-2 py-0.5 rounded-md mt-1 shadow-2xs">
+                              PO: {order.poNumber}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 mt-1">
+                              <Clock size={10} className="text-slate-500 shrink-0" />
+                              <span>{fmtDateStr(order.createdAt || order.dateNeeded)}</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 2. Proyek & Tipe (Left-aligned) */}
+                        <td className="py-3 px-3 text-left">
+                          <div
+                            className="font-bold text-slate-950 text-xs truncate max-w-[170px]"
+                            title={typeof order.projectId === 'object' && order.projectId?.nama ? order.projectId.nama : 'Non-Proyek / Umum'}
+                          >
+                            {typeof order.projectId === 'object' && order.projectId?.nama ? order.projectId.nama : 'Non-Proyek / Umum'}
+                          </div>
+                          <div className="mt-1">
+                            {hasRab ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-indigo-950 bg-indigo-100 border border-indigo-400 px-2 py-0.5 rounded-md shadow-2xs">
+                                <Layers size={10} className="text-indigo-800 shrink-0" />
+                                <span>RAB Based</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-amber-950 bg-amber-100 border border-amber-400 px-2 py-0.5 rounded-md shadow-2xs">
+                                <Package size={10} className="text-amber-800 shrink-0" />
+                                <span>Non-RAB</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 3. Pemohon (Left-aligned) */}
+                        <td className="py-3 px-3 text-left">
+                          <div className="font-bold text-slate-950 text-xs truncate max-w-[130px]">
+                            {typeof order.requestedBy === 'object' ? (order.requestedBy?.fullName || order.requestedBy?.name) : 'User'}
+                          </div>
+                          <div className="mt-1">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-slate-200 text-slate-900 border border-slate-300">
+                              {typeof order.requestedBy === 'object' ? (order.requestedBy?.role || 'Staff') : 'Staff'}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 4. Ringkasan Material (Left-aligned) */}
+                        <td className="py-3 px-3 text-left max-w-[210px]">
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-800 text-white font-black text-[10px] shrink-0 font-mono shadow-2xs">
+                              {itemsList.length} Item
+                            </span>
+                            <span className="text-xs font-bold text-slate-950 truncate" title={itemsList[0]?.item}>
+                              {itemsList[0]?.item || '-'}
+                            </span>
+                          </div>
+                          {itemsList.length > 1 && (
+                            <div className="text-[10px] font-semibold text-slate-600 truncate mt-1">
+                              +{itemsList.length - 1} item lainnya ({itemsList.slice(1).map((i) => i.item).join(', ')})
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 5. Est. Anggaran / Nilai PO (Strictly Right-aligned) */}
+                        <td className="py-3 px-3 text-right">
+                          <div className="font-black font-mono tabular-nums text-xs sm:text-[13px] text-slate-950 text-right">
+                            {formatRupiah(totalAmt)}
+                          </div>
+                          <div className="mt-0.5 text-right">
+                            {order.poNumber ? (
+                              <span className="text-[10px] font-black text-blue-900 uppercase tracking-wider">
+                                PO Mengikat
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                                Est. Plafon PR
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 6. Status & Tahapan (Left-aligned badge) */}
+                        <td className="py-3 px-3 text-left whitespace-nowrap">
+                          {getStatusBadge(order.status)}
+                        </td>
+
+                        {/* 7. Penanggung Jawab (Left-aligned) */}
+                        <td className="py-3 px-3 text-left">
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <div className="w-5 h-5 rounded-md bg-blue-100 text-blue-900 flex items-center justify-center shrink-0 border border-blue-300">
+                              <UserCheck size={12} />
+                            </div>
+                            <span className="font-bold text-slate-950 truncate max-w-[130px]" title={getCurrentApproverName(order)}>
+                              {getCurrentApproverName(order)}
+                            </span>
+                          </div>
+                          {isOwner && ['PR_PENDING', 'Pending', 'PR_REVIEWED', 'PR_APPROVED'].includes(order.status) && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAssignModal(order)}
+                              className="inline-flex items-center gap-1 text-[10px] font-black text-primary hover:text-blue-950 hover:underline mt-1 cursor-pointer"
+                            >
+                              <SlidersHorizontal size={10} />
+                              <span>Ubah Approver</span>
+                            </button>
+                          )}
+                        </td>
+
+                        {/* 8. Aksi & Dokumen (Right-aligned) */}
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            {/* Stage actions */}
+                            {['PR_PENDING', 'Pending'].includes(order.status) && canReview && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReviewModalOrder(order);
+                                  setReviewNotes('');
+                                  setReviewPassphrase('');
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-black text-[11px] hover:bg-blue-700 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                              >
+                                Tinjau QC
+                              </button>
+                            )}
+
+                            {order.status === 'PR_REVIEWED' && canOpsApprove && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpsApproveOrder(order);
+                                  setOpsPassphrase('');
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-black text-[11px] hover:bg-indigo-700 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                              >
+                                Setujui Ops
+                              </button>
+                            )}
+
+                            {order.status === 'PR_APPROVED' && canSourcing && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSourcingModal(order)}
+                                className="px-2.5 py-1 rounded-lg bg-purple-600 text-white font-black text-[11px] hover:bg-purple-700 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                              >
+                                Komparasi PO
+                              </button>
+                            )}
+
+                            {order.status === 'PO_PENDING_FINANCE' && canFinanceApprove && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFinanceApproveOrder(order);
+                                  setFinancePassphrase('');
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-black text-[11px] hover:bg-emerald-700 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                              >
+                                Setujui PO
+                              </button>
+                            )}
+
+                            {order.status === 'PO_PENDING_FINANCE' && canSourcing && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSourcingModal(order)}
+                                className="px-2.5 py-1 rounded-lg bg-purple-100 text-purple-950 border border-purple-400 font-black text-[11px] hover:bg-purple-200 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                              >
+                                Edit Sourcing
+                              </button>
+                            )}
+
+                            {order.status === 'MUST_PURCHASE' && canSourcing && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDispatchOrder(order);
+                                  setSuratJalanFile(null);
+                                  setDispatchForm({ driverName: '', driverPhone: '', vehiclePlate: '', eta: '', notes: '' });
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-sky-600 text-white font-black text-[11px] hover:bg-sky-700 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                              >
+                                Kirim
+                              </button>
+                            )}
+
+                            {order.status === 'ON_THE_WAY' && canReceive && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenReceiveModal(order)}
+                                className="px-2.5 py-1 rounded-lg bg-teal-600 text-white font-black text-[11px] hover:bg-teal-700 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                              >
+                                Terima Barang
+                              </button>
+                            )}
+
+                            {/* PDF Downloads */}
+                            <button
+                              type="button"
+                              onClick={() => exportPurchaseRequestPdf(order)}
+                              title="Unduh Dokumen PR PDF"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 text-slate-900 hover:bg-slate-200 border border-slate-300 font-extrabold text-[11px] shadow-2xs cursor-pointer transition-colors"
+                            >
+                              <Download size={12} className="text-slate-700" />
+                              <span>PR</span>
+                            </button>
+                            {order.poNumber && (
+                              <button
+                                type="button"
+                                onClick={() => exportPurchaseOrderPdf(order)}
+                                title="Unduh Dokumen PO PDF"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-100 text-blue-950 hover:bg-blue-200 border border-blue-400 font-extrabold text-[11px] shadow-2xs cursor-pointer transition-colors"
+                              >
+                                <FileText size={12} className="text-blue-800" />
+                                <span>PO</span>
+                              </button>
+                            )}
+                            {['DELIVERED', 'Delivered'].includes(order.status) && (
+                              <button
+                                type="button"
+                                onClick={() => exportGoodsReceiptPdf(order)}
+                                title="Unduh Bukti Terima Barang GRN PDF"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-teal-100 text-teal-950 hover:bg-teal-200 border border-teal-400 font-extrabold text-[11px] shadow-2xs cursor-pointer transition-colors"
+                              >
+                                <FileCheck size={12} className="text-teal-800" />
+                                <span>GRN</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* ── EXPANDABLE SUB-ROW ACCORDION (LINE-ITEMS DETAIL) ── */}
+                      {isExpanded && (
+                        <tr className="bg-slate-100/90 border-b-2 border-slate-300">
+                          <td colSpan={9} className="p-4 sm:p-5">
+                            <div className="space-y-4">
+                              {/* Rejection notice if present */}
+                              {order.rejectionReason && (
+                                <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-100 border-2 border-rose-300 text-xs text-rose-950 font-bold shadow-2xs">
+                                  <AlertCircle size={16} className="shrink-0 text-rose-700" />
+                                  <span>Alasan Penolakan: <b className="text-rose-900">{order.rejectionReason}</b></span>
+                                </div>
+                              )}
+
+                              {/* Material Line Items Sub-Table */}
+                              <div className="rounded-xl border-2 border-slate-300 bg-white overflow-hidden shadow-xs">
+                                <div className="px-4 py-3 bg-slate-900 border-b border-slate-950 flex items-center justify-between">
+                                  <span className="text-xs font-black uppercase text-white tracking-wide flex items-center gap-2">
+                                    <Layers size={14} className="text-amber-400" />
+                                    <span>Rincian Material & Spesifikasi ({itemsList.length} Baris)</span>
+                                  </span>
+                                  {order.purpose && (
+                                    <span className="text-xs text-slate-300 font-medium italic">
+                                      Keperluan: {order.purpose}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <table className="w-full text-left text-xs border-collapse">
+                                  <thead>
+                                    <tr className="bg-slate-200 border-b-2 border-slate-300 text-[10px] font-black text-slate-900 uppercase tracking-wider">
+                                      <th className="py-2.5 px-3 w-10 text-center">No</th>
+                                      <th className="py-2.5 px-3 text-left">Nama Material</th>
+                                      <th className="py-2.5 px-3 text-left">Spesifikasi Teknis</th>
+                                      <th className="py-2.5 px-3 text-left">Mata Anggaran / WBS</th>
+                                      <th className="py-2.5 px-3 text-right">Kuantitas</th>
+                                      <th className="py-2.5 px-3 text-left">Satuan</th>
+                                      <th className="py-2.5 px-3 text-right">Tarif Est.</th>
+                                      <th className="py-2.5 px-3 text-right">Subtotal Plafon</th>
+                                      {order.poNumber && <th className="py-2.5 px-3 text-right text-blue-950">Tarif PO Satuan</th>}
+                                      {order.poNumber && <th className="py-2.5 px-3 text-right text-blue-950">Subtotal PO</th>}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-200">
+                                    {itemsList.map((itm, iIdx) => {
+                                      const q = Number(itm.qty) || 1;
+                                      const budgetRate = Number(itm.budgetUnitRate) || 0;
+                                      const budgetSub = Number(itm.totalBudget) || (q * budgetRate);
+                                      const poRate = Number(itm.poUnitPrice) || 0;
+                                      const poSub = Number(itm.poTotalAmount) || (q * poRate);
+
+                                      return (
+                                        <tr key={iIdx} className="hover:bg-blue-50/60 even:bg-slate-50/50 odd:bg-white">
+                                          <td className="py-2.5 px-3 text-center text-slate-700 font-mono font-bold">{iIdx + 1}</td>
+                                          <td className="py-2.5 px-3 font-bold text-slate-950 text-left">{itm.item}</td>
+                                          <td className="py-2.5 px-3 text-left">
+                                            {itm.specifications ? (
+                                              <span className="text-slate-900 font-semibold bg-slate-100 border border-slate-300 px-2 py-0.5 rounded text-[11px]">
+                                                {itm.specifications}
+                                              </span>
+                                            ) : (
+                                              <span className="italic text-slate-400 text-[11px]">-</span>
+                                            )}
+                                          </td>
+                                          <td className="py-2.5 px-3 text-left">
+                                            {itm.wbsCode ? (
+                                              <span className="font-mono text-indigo-950 bg-indigo-100 border border-indigo-300 px-2 py-0.5 rounded text-[10px] font-black">
+                                                {itm.wbsCode}
+                                              </span>
+                                            ) : (
+                                              <span className="text-amber-950 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded text-[10px] font-black">
+                                                Non-RAB
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="py-2.5 px-3 text-right font-mono tabular-nums font-black text-slate-950">
+                                            {q.toLocaleString('id-ID')}
+                                          </td>
+                                          <td className="py-2.5 px-3 text-left font-bold text-slate-800">{itm.unit || 'Pcs'}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono tabular-nums font-semibold text-slate-700">
+                                            {formatRupiah(budgetRate)}
+                                          </td>
+                                          <td className="py-2.5 px-3 text-right font-mono tabular-nums font-black text-slate-950">
+                                            {formatRupiah(budgetSub)}
+                                          </td>
+                                          {order.poNumber && (
+                                            <td className="py-2.5 px-3 text-right font-mono tabular-nums font-bold text-blue-900">
+                                              {poRate > 0 ? formatRupiah(poRate) : '-'}
+                                            </td>
+                                          )}
+                                          {order.poNumber && (
+                                            <td className="py-2.5 px-3 text-right font-mono tabular-nums font-black text-blue-950 bg-blue-50/70">
+                                              {poSub > 0 ? formatRupiah(poSub) : '-'}
+                                            </td>
+                                          )}
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {/* Additional contextual accordions (Supplier / Dispatch / Goods Receipt) */}
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                                {/* Approver Chain */}
+                                <div className="p-3.5 rounded-xl bg-white border-2 border-slate-300 space-y-2 shadow-2xs">
+                                  <span className="text-[11px] font-black uppercase text-slate-900 block border-b border-slate-200 pb-1">
+                                    Alur & Otorisasi Personel
+                                  </span>
+                                  <div className="space-y-1.5 text-[11px]">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-600 font-bold">1. QC/SPV:</span>
+                                      <span className="font-extrabold text-slate-950">
+                                        {typeof order.assignedReviewerId === 'object' ? order.assignedReviewerId?.fullName : (order.reviewedBy?.user?.fullName || 'Belum ditugaskan')}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-600 font-bold">2. Ops Director:</span>
+                                      <span className="font-extrabold text-slate-950">
+                                        {typeof order.assignedOpsApproverId === 'object' ? order.assignedOpsApproverId?.fullName : (order.opsApprovedBy?.user?.fullName || 'Belum ditugaskan')}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-600 font-bold">3. Finance Director:</span>
+                                      <span className="font-extrabold text-slate-950">
+                                        {typeof order.assignedFinanceApproverId === 'object' ? order.assignedFinanceApproverId?.fullName : (order.financeApprovedBy?.user?.fullName || 'Belum ditugaskan')}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Supplier info */}
+                                {order.selectedSupplier && (
+                                  <div className="p-3.5 rounded-xl bg-purple-50/70 border-2 border-purple-300 space-y-2 shadow-2xs">
+                                    <span className="text-[11px] font-black uppercase text-purple-950 block border-b border-purple-200 pb-1">
+                                      Vendor Terpilih (PO)
+                                    </span>
+                                    <div className="font-black text-purple-950 text-xs">
+                                      {order.selectedSupplier.supplierName}
+                                    </div>
+                                    <div className="text-[11px] font-semibold text-purple-900">
+                                      {order.selectedSupplier.contact ? `Kontak: ${order.selectedSupplier.contact}` : (order.selectedSupplier.location || 'Lokal')}
+                                    </div>
+                                    <div className="text-xs font-black text-purple-950 font-mono tabular-nums bg-purple-200/80 px-2 py-1 rounded border border-purple-300">
+                                      Total PO: {formatRupiah(order.selectedSupplier.totalLandedCost || order.poTotalAmount)}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Dispatch or Delivery info */}
+                                {order.dispatchInfo && (
+                                  <div className="p-3.5 rounded-xl bg-sky-50/70 border-2 border-sky-300 space-y-2 shadow-2xs">
+                                    <span className="text-[11px] font-black uppercase text-sky-950 block border-b border-sky-200 pb-1">
+                                      Status Pengiriman
+                                    </span>
+                                    <div className="font-black text-sky-950 text-xs">
+                                      Supir: {order.dispatchInfo.driverName || '-'} ({order.dispatchInfo.vehiclePlate || 'Kendaraan'})
+                                    </div>
+                                    <div className="text-[11px] font-semibold text-sky-900">
+                                      Telp: {order.dispatchInfo.driverPhone || '-'} • ETA: {fmtDateStr(order.dispatchInfo.eta)}
+                                    </div>
+                                    {order.dispatchInfo.suratJalanPhoto && (
+                                      <a
+                                        href={order.dispatchInfo.suratJalanPhoto}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs font-black text-sky-950 bg-sky-200/80 hover:bg-sky-300 px-2 py-1 rounded border border-sky-400 inline-flex items-center gap-1 transition-colors"
+                                      >
+                                        <ExternalLink size={12} /> <span>Lihat Surat Jalan</span>
+                                      </a>
+                                    )}
+                                  </div>
+                                )}
+
+                                {order.deliveryProof && (
+                                  <div className="p-3.5 rounded-xl bg-teal-50/70 border-2 border-teal-300 space-y-2 shadow-2xs">
+                                    <span className="text-[11px] font-black uppercase text-teal-950 block border-b border-teal-200 pb-1">
+                                      Penerimaan di Lapangan (GRN)
+                                    </span>
+                                    <div className="font-black text-teal-950 text-xs flex items-center gap-1.5">
+                                      <CheckCircle2 size={14} className="text-teal-700" />
+                                      <span>Kondisi: {order.deliveryProof.overallCondition || 'Good'}</span>
+                                    </div>
+                                    <div className="text-[11px] font-semibold text-teal-900">
+                                      Penerima: {typeof order.deliveryProof.receivedBy === 'object' ? order.deliveryProof.receivedBy?.fullName : 'Staff Proyek'}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ── Table Footer Summary Bar ── */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-slate-100 border-t-2 border-slate-300 text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold">
+              <span>Menampilkan <strong className="text-slate-950 font-black px-1.5 py-0.5 rounded bg-white border border-slate-300">{sortedRequests.length}</strong> transaksi pengadaan</span>
+              <span>•</span>
+              <span>
+                <strong className="text-slate-950 font-black px-1.5 py-0.5 rounded bg-white border border-slate-300">{sortedRequests.filter((r) => ['DELIVERED', 'Delivered'].includes(r.status)).length}</strong> Selesai di Proyek
+              </span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Total Akumulasi Nilai:</span>
+              <span className="text-base sm:text-lg font-black font-mono tabular-nums text-emerald-950 bg-emerald-100 px-3 py-1 rounded-lg border-2 border-emerald-400 shadow-2xs">
+                {formatRupiah(totalAccumulatedAmount)}
+              </span>
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="space-y-4">
-          {filteredRequests.map((order) => {
+          {sortedRequests.map((order) => {
             const isExpanded = expandedOrders.includes(order._id!);
             const itemsList = order.items && order.items.length > 0 ? order.items : [{
               item: order.item,
@@ -1507,22 +2264,79 @@ export default function Materials() {
                 />
               </div>
 
-              {/* Penugasan Reviewer & Approver Config (Owner Only) */}
-              {isOwner && (
-                <div className="p-3.5 rounded-xl border border-border-light bg-slate-50/70 space-y-2.5">
-                  <div className="flex items-center gap-1.5 text-xs font-black text-text-primary uppercase tracking-wide">
-                    <UserCheck size={14} className="text-primary" />
-                    <span>Penugasan Alur Otorisasi & Approver (Owner Only)</span>
+              {/* Alur Persetujuan Otomatis (Company-Wide Auto-Routing) */}
+              <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-black text-blue-900 uppercase tracking-wide">
+                    <ShieldCheck size={15} className="text-blue-600" />
+                    <span>Alur Persetujuan Otomatis (Kebijakan Perusahaan)</span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                    Auto-Routing Aktif
+                  </span>
+                </div>
+                <p className="text-[11px] text-text-muted m-0">
+                  PR ini akan langsung didistribusikan secara otomatis ke personil berwenang tanpa perlu penugasan manual satu per satu:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1">
+                  <div className="p-2 rounded-lg bg-white border border-blue-100 flex items-center gap-2">
+                    <UserCheck size={14} className="text-blue-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[9px] font-bold text-text-muted uppercase block">1. Tinjau QC / SPV</span>
+                      <span className="font-bold text-text-primary text-[11px] truncate block">
+                        {authorizers.reviewers.find((u) => u._id === prReviewerId)?.fullName ||
+                          (typeof procurementConfig?.defaultReviewerId === 'object' && procurementConfig.defaultReviewerId?.fullName) ||
+                          'Reviewer QC / SPV'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-white border border-blue-100 flex items-center gap-2">
+                    <ShieldCheck size={14} className="text-indigo-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[9px] font-bold text-text-muted uppercase block">2. Approval Ops</span>
+                      <span className="font-bold text-text-primary text-[11px] truncate block">
+                        {authorizers.opsApprovers.find((u) => u._id === prOpsApproverId)?.fullName ||
+                          (typeof procurementConfig?.defaultOpsApproverId === 'object' && procurementConfig.defaultOpsApproverId?.fullName) ||
+                          'Direktur Operasional'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-white border border-blue-100 flex items-center gap-2">
+                    <DollarSign size={14} className="text-emerald-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[9px] font-bold text-text-muted uppercase block">3. Approval Keuangan</span>
+                      <span className="font-bold text-text-primary text-[11px] truncate block">
+                        {authorizers.financeApprovers.find((u) => u._id === prFinanceApproverId)?.fullName ||
+                          (typeof procurementConfig?.defaultFinanceApproverId === 'object' && procurementConfig.defaultFinanceApproverId?.fullName) ||
+                          'Direktur Keuangan'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {isOwner && (
+                  <div className="pt-1 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowOwnerOverridePrApprovers((prev) => !prev)}
+                      className="text-[11px] font-bold text-primary hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <SlidersHorizontal size={12} />
+                      <span>{showOwnerOverridePrApprovers ? 'Tutup Penyesuaian Manual' : 'Sesuaikan Personil Khusus (Owner Override)'}</span>
+                    </button>
+                  </div>
+                )}
+
+                {isOwner && showOwnerOverridePrApprovers && (
+                  <div className="p-3 mt-2 rounded-lg bg-white border border-border-light grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
-                      <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block">
-                        1. Peninjau QC / SPV
-                      </label>
+                      <label className="text-[9px] font-bold text-text-muted uppercase mb-1 block">Override QC / SPV</label>
                       <select
                         value={prReviewerId}
                         onChange={(e) => setPrReviewerId(e.target.value)}
-                        className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white font-medium"
+                        className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white font-medium"
                       >
                         <option value="">-- Bebas (Semua QC/SPV) --</option>
                         {authorizers.reviewers.map((u) => (
@@ -1534,13 +2348,11 @@ export default function Materials() {
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block">
-                        2. Persetujuan Ops Director
-                      </label>
+                      <label className="text-[9px] font-bold text-text-muted uppercase mb-1 block">Override Ops Director</label>
                       <select
                         value={prOpsApproverId}
                         onChange={(e) => setPrOpsApproverId(e.target.value)}
-                        className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white font-medium"
+                        className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white font-medium"
                       >
                         <option value="">-- Bebas (Semua Direktur Ops) --</option>
                         {authorizers.opsApprovers.map((u) => (
@@ -1552,13 +2364,11 @@ export default function Materials() {
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block">
-                        3. Persetujuan Finance Director
-                      </label>
+                      <label className="text-[9px] font-bold text-text-muted uppercase mb-1 block">Override Finance Director</label>
                       <select
                         value={prFinanceApproverId}
                         onChange={(e) => setPrFinanceApproverId(e.target.value)}
-                        className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white font-medium"
+                        className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white font-medium"
                       >
                         <option value="">-- Bebas (Semua Direktur Keuangan) --</option>
                         {authorizers.financeApprovers.map((u) => (
@@ -1569,8 +2379,8 @@ export default function Materials() {
                       </select>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Dynamic Line-Items Table */}
               <div className="space-y-2">
@@ -2830,6 +3640,107 @@ export default function Materials() {
               >
                 <X size={18} />
               </button>
+            </div>
+
+            {/* Kebijakan Alur Otorisasi Global untuk Seluruh PR */}
+            <div className="mt-5 p-4 sm:p-5 rounded-2xl border border-indigo-200 bg-indigo-50/40 space-y-3 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <SlidersHorizontal size={17} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-indigo-950 m-0">
+                      Kebijakan Alur Approver Global (Untuk Seluruh PR)
+                    </h4>
+                    <p className="text-[11px] text-text-muted m-0">
+                      Konfigurasi personil approver perusahaan. Seluruh PR yang diajukan akan otomatis dialirkan ke sini tanpa perlu dipilih manual.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-text-primary cursor-pointer select-none px-3 py-1.5 rounded-lg bg-white border border-indigo-200">
+                    <input
+                      type="checkbox"
+                      checked={globalAutoAssign}
+                      onChange={(e) => setGlobalAutoAssign(e.target.checked)}
+                      className="rounded text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                    />
+                    <span>Auto-Assign Otomatis Aktif</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <div>
+                  <label className="text-[11px] font-bold text-blue-900 uppercase mb-1 block flex items-center gap-1">
+                    <UserCheck size={13} className="text-blue-600" />
+                    <span>1. Default Reviewer QC / SPV</span>
+                  </label>
+                  <select
+                    value={globalReviewerId}
+                    onChange={(e) => setGlobalReviewerId(e.target.value)}
+                    className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">-- Bebas (Semua Reviewer QC / SPV) --</option>
+                    {authorizers.reviewers.map((u) => (
+                      <option key={u._id} value={u._id}>
+                        {u.fullName} ({u.role}) - {u.email || ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-indigo-900 uppercase mb-1 block flex items-center gap-1">
+                    <ShieldCheck size={13} className="text-indigo-600" />
+                    <span>2. Default Penyetuju Ops (Direktur Ops)</span>
+                  </label>
+                  <select
+                    value={globalOpsApproverId}
+                    onChange={(e) => setGlobalOpsApproverId(e.target.value)}
+                    className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">-- Bebas (Semua Direktur Operasional) --</option>
+                    {authorizers.opsApprovers.map((u) => (
+                      <option key={u._id} value={u._id}>
+                        {u.fullName} ({u.role}) - {u.email || ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-emerald-900 uppercase mb-1 block flex items-center gap-1">
+                    <DollarSign size={13} className="text-emerald-600" />
+                    <span>3. Default Penyetuju Keuangan (Direktur Keuangan)</span>
+                  </label>
+                  <select
+                    value={globalFinanceApproverId}
+                    onChange={(e) => setGlobalFinanceApproverId(e.target.value)}
+                    className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">-- Bebas (Semua Direktur Keuangan) --</option>
+                    {authorizers.financeApprovers.map((u) => (
+                      <option key={u._id} value={u._id}>
+                        {u.fullName} ({u.role}) - {u.email || ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={handleSaveGlobalConfig}
+                  disabled={savingGlobalConfig}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  <Save size={14} />
+                  <span>{savingGlobalConfig ? 'Menyimpan...' : 'Simpan Kebijakan Global untuk Seluruh PR'}</span>
+                </button>
+              </div>
             </div>
 
             {/* Visual Workflow Steps */}

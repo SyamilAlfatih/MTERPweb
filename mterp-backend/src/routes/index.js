@@ -14,6 +14,7 @@ const projectPlanRoutes = require('./projectPlan');
 const rabRoutes = require('./rab');
 const localPurchaseRoutes = require('./localPurchases');
 const spklRoutes = require('./spkl');
+const approvalConfigRoutes = require('./approvalConfig');
 
 module.exports = {
   authRoutes,
@@ -32,6 +33,7 @@ module.exports = {
   rabRoutes,
   localPurchaseRoutes,
   spklRoutes,
+  approvalConfigRoutes,
 };
 
 

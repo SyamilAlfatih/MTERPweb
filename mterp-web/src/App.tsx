@@ -46,6 +46,7 @@ const Notifications    = lazyWithRetry(() => import('./pages/Notifications'), 'N
 const ProjectPlan      = lazyWithRetry(() => import('./pages/ProjectPlan'), 'ProjectPlan');
 const ProjectSwakelola = lazyWithRetry(() => import('./pages/ProjectSwakelola'), 'ProjectSwakelola');
 const OvertimeSPKL     = lazyWithRetry(() => import('./pages/OvertimeSPKL'), 'OvertimeSPKL');
+const ApprovalConfig   = lazyWithRetry(() => import('./pages/ApprovalConfig'), 'ApprovalConfig');
 
 // ─── Page loading fallback ────────────────────────────────────────────────────
 function PageLoader() {
@@ -134,6 +135,7 @@ function App() {
                         <Route path="/project/:id/swakelola" element={<ProjectSwakelola />} />
                         <Route path="/spkl" element={<OvertimeSPKL />} />
                         <Route path="/overtime" element={<OvertimeSPKL />} />
+                        <Route path="/approval-config" element={<ApprovalConfig />} />
                       </Route>
 
                       {/* Fallback */}

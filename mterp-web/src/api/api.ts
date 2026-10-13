@@ -16,6 +16,9 @@ import {
   RABItem,
   LocalPurchase,
   ProcurementAuthorizersResponse,
+  ProcurementConfigResponse,
+  SPKLConfigResponse,
+  MasterApprovalConfigResponse,
 } from '../types';
 
 // API Base URL - use local backend or production
@@ -154,6 +157,47 @@ export const submitSupplierComparisons = async (
 
 export const getProcurementAuthorizers = async (): Promise<ProcurementAuthorizersResponse> => {
   const response = await api.get('/requests/authorizers');
+  return response.data;
+};
+
+export const getProcurementConfig = async (): Promise<ProcurementConfigResponse> => {
+  const response = await api.get('/requests/config');
+  return response.data;
+};
+
+export const updateProcurementConfig = async (data: {
+  defaultReviewerId?: string;
+  defaultOpsApproverId?: string;
+  defaultFinanceApproverId?: string;
+  autoAssignEnabled?: boolean;
+}): Promise<ProcurementConfigResponse> => {
+  const response = await api.put('/requests/config', data);
+  return response.data;
+};
+
+// === DEDICATED APPROVAL CONFIG API (OWNER ONLY) ===
+export const getMasterApprovalConfig = async (): Promise<MasterApprovalConfigResponse> => {
+  const response = await api.get('/approval-config');
+  return response.data;
+};
+
+export const updateMasterProcurementConfig = async (data: {
+  defaultReviewerId?: string;
+  defaultOpsApproverId?: string;
+  defaultFinanceApproverId?: string;
+  autoAssignEnabled?: boolean;
+}): Promise<ProcurementConfigResponse> => {
+  const response = await api.put('/approval-config/procurement', data);
+  return response.data;
+};
+
+export const updateMasterSpklConfig = async (data: {
+  defaultSupervisorId?: string;
+  defaultPmId?: string;
+  defaultFinanceId?: string;
+  autoAssignEnabled?: boolean;
+}): Promise<SPKLConfigResponse> => {
+  const response = await api.put('/approval-config/spkl', data);
   return response.data;
 };
 

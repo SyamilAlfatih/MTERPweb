@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
-const { SPKL, SPKLBatch, User, Project, Attendance, ProjectTask } = require('../models');
+const { SPKL, SPKLBatch, User, Project, Attendance, ProjectTask, SPKLConfig } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const { withTransaction } = require('../utils/transaction');
 const { notify, notifyByRole } = require('../utils/notify');
@@ -440,6 +440,30 @@ router.post(
         progressPercent: Math.min(100, Math.max(0, Number(item.progressPercent || 0))),
       }));
 
+      // Auto-Routing: Inherit company-wide default verifiers from SPKLConfig if not explicitly set
+      let resolvedSupervisorId = assignedSupervisorId || null;
+      let resolvedPmId = assignedPmId || null;
+      let resolvedFinanceId = assignedFinanceId || null;
+
+      if (!resolvedSupervisorId || !resolvedPmId || !resolvedFinanceId) {
+        try {
+          const globalSpklConfig = await SPKLConfig.findOne({ key: 'global' }).lean();
+          if (globalSpklConfig && globalSpklConfig.autoAssignEnabled !== false) {
+            if (!resolvedSupervisorId && globalSpklConfig.defaultSupervisorId) {
+              resolvedSupervisorId = globalSpklConfig.defaultSupervisorId;
+            }
+            if (!resolvedPmId && globalSpklConfig.defaultPmId) {
+              resolvedPmId = globalSpklConfig.defaultPmId;
+            }
+            if (!resolvedFinanceId && globalSpklConfig.defaultFinanceId) {
+              resolvedFinanceId = globalSpklConfig.defaultFinanceId;
+            }
+          }
+        } catch (cfgErr) {
+          console.warn('SPKLConfig auto-routing error in individual:', cfgErr.message);
+        }
+      }
+
       const newSpkl = new SPKL({
         spklNumber,
         workerId: worker._id,
@@ -478,9 +502,9 @@ router.post(
         },
         workItems: formattedWorkItems,
         workflowStatus: draft ? 'draft' : 'submitted',
-        assignedSupervisorId: assignedSupervisorId || null,
-        assignedPmId: assignedPmId || null,
-        assignedFinanceId: assignedFinanceId || null,
+        assignedSupervisorId: resolvedSupervisorId || null,
+        assignedPmId: resolvedPmId || null,
+        assignedFinanceId: resolvedFinanceId || null,
         signatures: {
           worker: {
             signed: true,
@@ -489,17 +513,17 @@ router.post(
           },
           supervisor: {
             signed: false,
-            assignedTo: assignedSupervisorId || null,
+            assignedTo: resolvedSupervisorId || null,
             note: '',
           },
           projectManager: {
             signed: false,
-            assignedTo: assignedPmId || null,
+            assignedTo: resolvedPmId || null,
             note: '',
           },
           financeDirector: {
             signed: false,
-            assignedTo: assignedFinanceId || null,
+            assignedTo: resolvedFinanceId || null,
             note: '',
           },
         },
@@ -594,6 +618,30 @@ router.post(
 
       const resolvedLocation = location || project.lokasi || project.nama;
 
+      // Auto-Routing: Inherit company-wide default verifiers from SPKLConfig if not explicitly set
+      let resolvedSupervisorId = assignedSupervisorId || null;
+      let resolvedPmId = assignedPmId || null;
+      let resolvedFinanceId = assignedFinanceId || null;
+
+      if (!resolvedSupervisorId || !resolvedPmId || !resolvedFinanceId) {
+        try {
+          const globalSpklConfig = await SPKLConfig.findOne({ key: 'global' }).lean();
+          if (globalSpklConfig && globalSpklConfig.autoAssignEnabled !== false) {
+            if (!resolvedSupervisorId && globalSpklConfig.defaultSupervisorId) {
+              resolvedSupervisorId = globalSpklConfig.defaultSupervisorId;
+            }
+            if (!resolvedPmId && globalSpklConfig.defaultPmId) {
+              resolvedPmId = globalSpklConfig.defaultPmId;
+            }
+            if (!resolvedFinanceId && globalSpklConfig.defaultFinanceId) {
+              resolvedFinanceId = globalSpklConfig.defaultFinanceId;
+            }
+          }
+        } catch (cfgErr) {
+          console.warn('SPKLConfig auto-routing error in bulk:', cfgErr.message);
+        }
+      }
+
       const result = await withTransaction(async (session) => {
         const batchNumber = await generateNextBatchNumber(overtimeDate, session);
 
@@ -607,9 +655,9 @@ router.post(
           workerCount: workers.length,
           spklIds: [],
           status: 'in_progress',
-          assignedSupervisorId: assignedSupervisorId || null,
-          assignedPmId: assignedPmId || null,
-          assignedFinanceId: assignedFinanceId || null,
+          assignedSupervisorId: resolvedSupervisorId || null,
+          assignedPmId: resolvedPmId || null,
+          assignedFinanceId: resolvedFinanceId || null,
           sharedSchedule: {
             startTime: sharedScheduleActual?.startTime || '17:00',
             endTime: sharedScheduleActual?.endTime || '21:00',
@@ -716,9 +764,9 @@ router.post(
             },
             workItems: formattedWorkItems,
             workflowStatus: 'submitted',
-            assignedSupervisorId: assignedSupervisorId || null,
-            assignedPmId: assignedPmId || null,
-            assignedFinanceId: assignedFinanceId || null,
+            assignedSupervisorId: resolvedSupervisorId || null,
+            assignedPmId: resolvedPmId || null,
+            assignedFinanceId: resolvedFinanceId || null,
             signatures: {
               worker: {
                 signed: true,
@@ -727,17 +775,17 @@ router.post(
               },
               supervisor: {
                 signed: false,
-                assignedTo: assignedSupervisorId || null,
+                assignedTo: resolvedSupervisorId || null,
                 note: `Penugasan Massal: ${spklBatch.batchNumber}`,
               },
               projectManager: {
                 signed: false,
-                assignedTo: assignedPmId || null,
+                assignedTo: resolvedPmId || null,
                 note: '',
               },
               financeDirector: {
                 signed: false,
-                assignedTo: assignedFinanceId || null,
+                assignedTo: resolvedFinanceId || null,
                 note: '',
               },
             },

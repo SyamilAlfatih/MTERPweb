@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { Request, Project, User, Supply, RABItem, ProjectTask } = require('../models');
+const { Request, Project, User, Supply, RABItem, ProjectTask, ProcurementConfig } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const { notify, notifyByRole, notifyUserWithWA } = require('../utils/notify');
 const { withTransaction } = require('../utils/transaction');
@@ -26,6 +26,63 @@ function populateProcurement(query) {
     .populate('deliveryProof.receivedBy', 'fullName role')
     .populate('items.rabItemId', 'wbsCode description unitRate unitOfMeasure budgetedQuantity committedQuantity realizedQuantity');
 }
+
+// GET /api/requests/config - Get company-wide global approver routing policy
+router.get('/config', auth, async (req, res) => {
+  try {
+    let config = await ProcurementConfig.findOne({ key: 'global' })
+      .populate('defaultReviewerId', 'fullName role email phone')
+      .populate('defaultOpsApproverId', 'fullName role email phone')
+      .populate('defaultFinanceApproverId', 'fullName role email phone')
+      .lean();
+
+    if (!config) {
+      config = {
+        key: 'global',
+        defaultReviewerId: null,
+        defaultOpsApproverId: null,
+        defaultFinanceApproverId: null,
+        autoAssignEnabled: true,
+      };
+    }
+
+    res.json(config);
+  } catch (error) {
+    console.error('Get procurement config error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// PUT /api/requests/config - Update company-wide global approver routing policy (Owner Only)
+router.put('/config', auth, authorize('owner'), async (req, res) => {
+  try {
+    const { defaultReviewerId, defaultOpsApproverId, defaultFinanceApproverId, autoAssignEnabled } = req.body;
+
+    let config = await ProcurementConfig.findOne({ key: 'global' });
+    if (!config) {
+      config = new ProcurementConfig({ key: 'global' });
+    }
+
+    if (defaultReviewerId !== undefined) config.defaultReviewerId = defaultReviewerId || undefined;
+    if (defaultOpsApproverId !== undefined) config.defaultOpsApproverId = defaultOpsApproverId || undefined;
+    if (defaultFinanceApproverId !== undefined) config.defaultFinanceApproverId = defaultFinanceApproverId || undefined;
+    if (autoAssignEnabled !== undefined) config.autoAssignEnabled = Boolean(autoAssignEnabled);
+    config.updatedBy = req.user._id;
+
+    await config.save();
+
+    const populated = await ProcurementConfig.findById(config._id)
+      .populate('defaultReviewerId', 'fullName role email phone')
+      .populate('defaultOpsApproverId', 'fullName role email phone')
+      .populate('defaultFinanceApproverId', 'fullName role email phone')
+      .lean();
+
+    res.json(populated);
+  } catch (error) {
+    console.error('Update procurement config error:', error);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
 
 // GET /api/requests/authorizers - Get candidate users configured for Reviewer, Ops Approver, Finance Approver (Owner Only)
 router.get('/authorizers', auth, authorize('owner'), async (req, res) => {
@@ -139,11 +196,32 @@ router.post('/', auth, async (req, res) => {
       costEstimate: legacyCostEstimate,
     } = req.body;
 
-    // Hardening: Only role 'owner' is permitted to configure or assign PR/PO authorizers
+    // Hardening & Global Auto-Routing:
+    // If owner explicitly provided overrides, use them.
+    // Otherwise, automatically inherit the company-wide global default authorizers from ProcurementConfig!
     const isOwnerUser = req.user.role === 'owner';
-    const assignedReviewerId = isOwnerUser ? reqReviewerId : undefined;
-    const assignedOpsApproverId = isOwnerUser ? reqOpsId : undefined;
-    const assignedFinanceApproverId = isOwnerUser ? reqFinId : undefined;
+    let assignedReviewerId = isOwnerUser ? reqReviewerId : undefined;
+    let assignedOpsApproverId = isOwnerUser ? reqOpsId : undefined;
+    let assignedFinanceApproverId = isOwnerUser ? reqFinId : undefined;
+
+    if (!assignedReviewerId || !assignedOpsApproverId || !assignedFinanceApproverId) {
+      try {
+        const globalConfig = await ProcurementConfig.findOne({ key: 'global' }).lean();
+        if (globalConfig && globalConfig.autoAssignEnabled !== false) {
+          if (!assignedReviewerId && globalConfig.defaultReviewerId) {
+            assignedReviewerId = globalConfig.defaultReviewerId;
+          }
+          if (!assignedOpsApproverId && globalConfig.defaultOpsApproverId) {
+            assignedOpsApproverId = globalConfig.defaultOpsApproverId;
+          }
+          if (!assignedFinanceApproverId && globalConfig.defaultFinanceApproverId) {
+            assignedFinanceApproverId = globalConfig.defaultFinanceApproverId;
+          }
+        }
+      } catch (cfgErr) {
+        console.warn('ProcurementConfig auto-routing error:', cfgErr.message);
+      }
+    }
 
     let parsedItems = [];
 
@@ -695,6 +773,13 @@ router.put('/:id/compare-suppliers', auth, authorize('owner', 'director', 'opera
     // Security Hardening: Only role 'owner' can assign or modify the Finance Approver
     if (req.user.role === 'owner' && assignedFinanceApproverId !== undefined) {
       request.assignedFinanceApproverId = assignedFinanceApproverId || undefined;
+    } else if (!request.assignedFinanceApproverId) {
+      try {
+        const globalConfig = await ProcurementConfig.findOne({ key: 'global' }).lean();
+        if (globalConfig?.defaultFinanceApproverId) {
+          request.assignedFinanceApproverId = globalConfig.defaultFinanceApproverId;
+        }
+      } catch (err) {}
     }
 
     // Normalize and compute line item prices for each supplier comparison

@@ -225,6 +225,54 @@ export interface ProcurementAuthorizersResponse {
   financeApprovers: Array<{ _id: string; fullName: string; role: string; position?: string; department?: string; email?: string; phone?: string }>;
 }
 
+export interface ProcurementConfigResponse {
+  key?: string;
+  defaultReviewerId?: any;
+  defaultOpsApproverId?: any;
+  defaultFinanceApproverId?: any;
+  autoAssignEnabled?: boolean;
+  updatedBy?: any;
+  updatedAt?: string;
+}
+
+export interface SPKLConfigResponse {
+  key?: string;
+  defaultSupervisorId?: any;
+  defaultPmId?: any;
+  defaultFinanceId?: any;
+  autoAssignEnabled?: boolean;
+  updatedBy?: any;
+  updatedAt?: string;
+}
+
+export interface ApprovalConfigCandidateUser {
+  _id: string;
+  fullName: string;
+  role: string;
+  position?: string;
+  department?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface MasterApprovalConfigResponse {
+  procurement: ProcurementConfigResponse;
+  spkl: SPKLConfigResponse;
+  candidates: {
+    procurement: {
+      reviewers: ApprovalConfigCandidateUser[];
+      opsApprovers: ApprovalConfigCandidateUser[];
+      financeApprovers: ApprovalConfigCandidateUser[];
+    };
+    spkl: {
+      supervisors: ApprovalConfigCandidateUser[];
+      projectManagers: ApprovalConfigCandidateUser[];
+      financeVerifiers: ApprovalConfigCandidateUser[];
+    };
+    allUsers: ApprovalConfigCandidateUser[];
+  };
+}
+
 export interface IProcurementItem {
   _id?: string;
   isRabBased?: boolean;

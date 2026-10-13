@@ -21,6 +21,8 @@ const LocalPurchase = require('./LocalPurchase');
 const PushSubscription = require('./PushSubscription');
 const SPKL = require('./SPKL');
 const SPKLBatch = require('./SPKLBatch');
+const ProcurementConfig = require('./ProcurementConfig');
+const SPKLConfig = require('./SPKLConfig');
 
 module.exports = {
   User,
@@ -46,6 +48,8 @@ module.exports = {
   PushSubscription,
   SPKL,
   SPKLBatch,
+  ProcurementConfig,
+  SPKLConfig,
 };
 
 

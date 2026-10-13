@@ -14,6 +14,7 @@ import {
   DollarSign,
   User,
   UserCog,
+  ShieldCheck,
 } from 'lucide-react';
 
 export interface NavItemConfig {
@@ -184,6 +185,13 @@ export const NAV_GROUPS: NavGroupConfig[] = [
         label: 'User Management',
         icon: User,
         route: '/users',
+        roles: ['owner'],
+      },
+      {
+        id: 'approval-config',
+        label: 'Kebijakan Approval',
+        icon: ShieldCheck,
+        route: '/approval-config',
         roles: ['owner'],
       },
       {

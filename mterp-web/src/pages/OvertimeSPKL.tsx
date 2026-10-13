@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   FileText, Plus, Users, CheckCircle2, Clock, Download,
   AlertCircle, Filter, Search, Calendar, ArrowRight,
@@ -116,6 +117,7 @@ const BREAK_PRESETS = [0, 15, 30, 45, 60];
 
 export default function OvertimeSPKL() {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   // Navigation Tabs: 'list' | 'create' | 'approvals'
   const [activeTab, setActiveTab] = useState<'list' | 'create' | 'approvals'>('list');
@@ -1082,6 +1084,18 @@ export default function OvertimeSPKL() {
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse ml-0.5" />
               )}
             </button>
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => navigate('/approval-config')}
+                className="min-h-[44px] px-2.5 sm:px-3 py-2 text-[11px] sm:text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-xs border border-amber-300"
+                title="Pusat Kebijakan & Otorisasi Approver Global (Owner Only)"
+              >
+                <SlidersHorizontal className="w-4 h-4 shrink-0 text-slate-950" />
+                <span className="hidden sm:inline">Kebijakan Approver</span>
+                <span className="sm:hidden">Kebijakan</span>
+              </button>
+            )}
           </div>
         </div>
 
