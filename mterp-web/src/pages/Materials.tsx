@@ -74,6 +74,7 @@ import {
   exportPurchaseOrderPdf,
   exportGoodsReceiptPdf,
 } from '../utils/exportProcurementPdf';
+import { getImageUrl } from '../utils/image';
 
 type PipelineTab = 'PR' | 'PO_SOURCING' | 'MUST_PURCHASE' | 'ON_THE_WAY' | 'DELIVERED' | 'ALL';
 
@@ -1707,16 +1708,28 @@ export default function Materials() {
                                     <div className="text-[11px] font-semibold text-sky-900">
                                       Telp: {order.dispatchInfo.driverPhone || '-'} • ETA: {fmtDateStr(order.dispatchInfo.eta)}
                                     </div>
-                                    {order.dispatchInfo.suratJalanPhoto && (
-                                      <a
-                                        href={order.dispatchInfo.suratJalanPhoto}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-xs font-black text-sky-950 bg-sky-200/80 hover:bg-sky-300 px-2 py-1 rounded border border-sky-400 inline-flex items-center gap-1 transition-colors"
-                                      >
-                                        <ExternalLink size={12} /> <span>Lihat Surat Jalan</span>
-                                      </a>
-                                    )}
+                                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                                      {order.dispatchInfo.suratJalanPhoto && (
+                                        <a
+                                          href={getImageUrl(order.dispatchInfo.suratJalanPhoto)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs font-black text-sky-950 bg-sky-200/80 hover:bg-sky-300 px-2 py-1 rounded border border-sky-400 inline-flex items-center gap-1 transition-colors"
+                                        >
+                                          <ExternalLink size={12} /> <span>Lihat Surat Jalan</span>
+                                        </a>
+                                      )}
+                                      {order.dispatchInfo.supplierNotaPhoto && (
+                                        <a
+                                          href={getImageUrl(order.dispatchInfo.supplierNotaPhoto)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs font-black text-sky-950 bg-sky-200/80 hover:bg-sky-300 px-2 py-1 rounded border border-sky-400 inline-flex items-center gap-1 transition-colors"
+                                        >
+                                          <ExternalLink size={12} /> <span>Lihat Nota Supplier</span>
+                                        </a>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
 
@@ -1732,6 +1745,24 @@ export default function Materials() {
                                     <div className="text-[11px] font-semibold text-teal-900">
                                       Penerima: {typeof order.deliveryProof.receivedBy === 'object' ? order.deliveryProof.receivedBy?.fullName : 'Staff Proyek'}
                                     </div>
+                                    {order.deliveryProof.notes && (
+                                      <div className="text-[11px] text-teal-800 italic">
+                                        Catatan: {order.deliveryProof.notes}
+                                      </div>
+                                    )}
+                                    {order.deliveryProof.sitePhoto && (
+                                      <div className="pt-2 border-t border-teal-200 flex items-center justify-between gap-2">
+                                        <a
+                                          href={getImageUrl(order.deliveryProof.sitePhoto)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs font-black text-teal-950 bg-teal-200/80 hover:bg-teal-300 px-2.5 py-1 rounded border border-teal-400 inline-flex items-center gap-1 transition-colors"
+                                        >
+                                          <ExternalLink size={12} /> <span>Lihat Foto Fisik (Site Photo)</span>
+                                        </a>
+                                        <span className="text-[10px] text-teal-800 font-semibold">Tercantum di Dokumen GRN</span>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>

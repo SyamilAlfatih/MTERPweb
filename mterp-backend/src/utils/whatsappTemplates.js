@@ -108,12 +108,16 @@ function formatPrReviewed(request) {
     '🔍 *PURCHASE REQUEST TELAH DITINJAU TEKNIS (REVIEWED)*',
     'PT MEGA TAMA ENERCO — MTERP RADAR',
     '',
+
+
     `Nomor PR: *${request.prNumber || 'DRAFT-PR'}*`,
     `Proyek: *${projectName}*`,
     `Jumlah Material: *${itemsCount} Baris*`,
     `Ditinjau Oleh: *${reviewer}*`,
     request.reviewedBy?.notes ? `Catatan QC: _"${request.reviewedBy.notes}"_` : null,
     '',
+
+
     'ℹ️ *Tindakan Lanjutan:* Menunggu persetujuan operasional Direktur Operasional dengan passphrase manajemen.',
     `🔗 *Otorisasi PR:* ${APP_URL}/approvals`,
     '',
@@ -135,11 +139,15 @@ function formatPrApproved(request) {
     '✅ *PURCHASE REQUEST DISETUJUI (PR APPROVED)*',
     'PT MEGA TAMA ENERCO — MTERP RADAR',
     '',
+
+
     `Nomor PR: *${request.prNumber || 'DRAFT-PR'}*`,
     `Proyek: *${projectName}*`,
     `Disetujui Oleh: *${approver}*`,
     `Plafon Anggaran PR: *${formatRupiah(totalEst)}*`,
     '',
+
+
     'ℹ️ *Tindakan Lanjutan:* Tim Procurement segera melakukan sourcing dan input perbandingan harga vendor (Supplier Price Comparison).',
     `🔗 *Buka Komparasi Supplier:* ${APP_URL}/materials`,
     '',
@@ -163,6 +171,8 @@ function formatPoSourcingSubmitted(request) {
     '📊 *KOMPARASI HARGA SUPPLIER DIAJUKAN (PO SOURCING)*',
     'PT MEGA TAMA ENERCO — MTERP RADAR',
     '',
+
+
     `Nomor PR: *${request.prNumber || 'DRAFT-PR'}*`,
     `Proyek: *${projectName}*`,
     `Supplier Rekomendasi: *${vendorName}*`,
@@ -170,6 +180,8 @@ function formatPoSourcingSubmitted(request) {
     `Biaya Logistik / Ongkir: ${formatRupiah(shipping)}`,
     `Total Landed Cost: *${formatRupiah(landedCost)}*`,
     '',
+
+
     'ℹ️ *Tindakan Lanjutan:* Menunggu persetujuan Direktur Keuangan & Budget Control untuk penerbitan PO resmi.',
     `🔗 *Tinjau & Otorisasi PO:* ${APP_URL}/materials`,
     '',
@@ -191,6 +203,8 @@ function formatPoApproved(request) {
     '📑 *PURCHASE ORDER TERBIT & DISETUJUI (MUST PURCHASE)*',
     'PT MEGA TAMA ENERCO — MTERP RADAR',
     '',
+
+
     `Nomor PO: *${request.poNumber}*`,
     `Ref. PR: ${request.prNumber || '-'}`,
     `Proyek: *${projectName}*`,
@@ -198,6 +212,8 @@ function formatPoApproved(request) {
     `Total Tagihan PO: *${formatRupiah(poTotal)}*`,
     `Status: *MUST_PURCHASE (Siap Dibeli)*`,
     '',
+
+
     'ℹ️ *Pemberitahuan Procurement:* Surat Perintah Pembelian resmi telah terkunci. Silakan segera eksekusi pesanan ke supplier.',
     `🔗 *Unduh Dokumen PO Resmi:* ${APP_URL}/materials`,
     '',
@@ -221,12 +237,16 @@ function formatPoDispatched(request) {
     '🚚 *MATERIAL DALAM PENGIRIMAN (ON THE WAY)*',
     'PT MEGA TAMA ENERCO — MTERP RADAR',
     '',
+
+
     `Nomor PO: *${request.poNumber || request.prNumber}*`,
     `Proyek Tujuan: *${projectName}*`,
     `Supir / Ekspedisi: *${driver}* ${phone} ${plate}`,
     dispatch.eta ? `Estimasi Tiba (ETA): *${dispatch.eta}*` : null,
     dispatch.notes ? `Catatan Pengiriman: _"${dispatch.notes}"_` : null,
     '',
+
+
     '⚠️ *Instruksi Lapangan:* Tim logistik proyek dimohon bersiap di lokasi untuk memeriksa fisik barang dan mengambil foto bukti penerimaan saat armada tiba.',
     `🔗 *Lacak Status Pengiriman:* ${APP_URL}/materials`,
     '',
@@ -249,6 +269,8 @@ function formatMaterialDelivered(request) {
     '🏁 *MATERIAL SELESAI DITERIMA DI PROYEK (DELIVERED)*',
     'PT MEGA TAMA ENERCO — MTERP RADAR',
     '',
+
+
     `Nomor PO: *${request.poNumber || request.prNumber}*`,
     `Proyek: *${projectName}*`,
     `Total Baris Material: *${itemsCount} Baris*`,
@@ -256,6 +278,8 @@ function formatMaterialDelivered(request) {
     `Kondisi Fisik: *${condition}*`,
     'Bukti Fisik: Foto kedatangan proyek telah terverifikasi.',
     '',
+
+
     '✅ *Update Otomatis:* Seluruh material telah otomatis masuk ke stok inventaris proyek dan realisasi anggaran RAB telah tercatat.',
     `🔗 *Lihat Bukti Terima (GRN):* ${APP_URL}/materials`,
     '',
@@ -281,6 +305,8 @@ function formatMaterialRequestStatus(request, status, reason) {
     header,
     'PT MEGA TAMA ENERCO — MTERP',
     '',
+
+
     `Pemberitahuan pembaruan status permintaan material:`,
     '',
     `• *Nomor PR:* *${request.prNumber || '-'}*`,
@@ -289,6 +315,8 @@ function formatMaterialRequestStatus(request, status, reason) {
     isApproved ? `• *Disetujui Oleh:* ${approver}` : `• *Alasan Penolakan:* ${reason || 'Tidak ada catatan'}`,
     isApproved ? '• *Tindakan Lanjutan:* Tim Procurement segera menyiapkan Purchase Order (PO) / Sourcing.' : null,
     '',
+
+
     `🔗 *Buka Lembar Material:* ${APP_URL}/materials`,
     '',
     `_Notifikasi Otomatis MTERP Web — ${new Date().toLocaleString('id-ID')} WIB_`,
@@ -311,6 +339,8 @@ function formatSpklFinalApproved(spkl) {
     '',
     'Surat Perintah Kerja Lembur (SPKL) telah disetujui tuntas:',
     '',
+
+
     `• *Nomor SPKL:* #${spkl.spklNumber || spkl._id}`,
     `• *Proyek:* ${projectName}`,
     `• *Tanggal Lembur:* ${formatDate(spkl.date)}`,
@@ -318,6 +348,8 @@ function formatSpklFinalApproved(spkl) {
     `• *Total Jam Lembur:* ${totalHours} jam`,
     `• *Pekerjaan / Scope:* ${spkl.description || 'Pekerjaan Lapangan'}`,
     '',
+
+
     'ℹ️ *Pemberitahuan Finance & HR:* Data lembur telah siap direkap ke perhitungan Slip Gaji periode berjalan.',
     '',
     `🔗 *Tinjau SPKL:* ${APP_URL}/spkl`,
@@ -342,11 +374,15 @@ function formatKasbonAlert(kasbon, type = 'submitted') {
     '',
     isSubmission ? 'Pengajuan kasbon operasional baru membutuhkan verifikasi:' : 'Kasbon operasional telah disetujui dan dicairkan:',
     '',
+
+
     `• *Pemohon:* ${requester}`,
     `• *Jumlah:* *${amount}*`,
     `• *Keperluan:* ${kasbon.reason || 'Operasional Lapangan'}`,
     `• *Tanggal:* ${formatDate(kasbon.createdAt)}`,
     '',
+
+
     `🔗 *Tinjau Kasbon:* ${APP_URL}/kasbon`,
   ].join('\n');
 }
@@ -363,6 +399,7 @@ function formatAuthorizerAssigned(request, roleLabel, assignedUser, assignedBy) 
     '📑 *PENUGASAN OTORISASI DOKUMEN PENGADAAN*',
     'PT MEGA TAMA ENERCO — MTERP ENTERPRISE',
     '',
+
     `Halo *${assignedUser?.fullName || 'Bapak/Ibu'}*,`,
     `Anda telah ditugaskan oleh *${assignedBy?.fullName || 'Owner/Direksi'}* sebagai:`,
     `🎯 *${roleLabel}*`,
@@ -373,6 +410,8 @@ function formatAuthorizerAssigned(request, roleLabel, assignedUser, assignedBy) 
     items.length > 0 ? `Jumlah Material: *${items.length} Baris Item*` : null,
     request.purpose ? `Keperluan: _${request.purpose}_` : null,
     '',
+
+
     `Mohon login ke sistem MTERP untuk meninjau dan memproses otorisasi dokumen saat tiba di tahap Anda:`,
     `🔗 *Buka MTERP Materials:* ${APP_URL}/materials`,
     '',

@@ -11,8 +11,13 @@ const BASE_URL = API_URL.replace('/api', '');
 export const getImageUrl = (imagePath?: string | null): string => {
   if (!imagePath) return '';
   
-  // If it's already a full URL or blob, return it
-  if (imagePath.startsWith('http://') || imagePath.startsWith('https://') || imagePath.startsWith('blob:')) {
+  // If it's already a full URL, blob, or base64 data URI, return it
+  if (
+    imagePath.startsWith('http://') ||
+    imagePath.startsWith('https://') ||
+    imagePath.startsWith('blob:') ||
+    imagePath.startsWith('data:')
+  ) {
     return imagePath;
   }
   
@@ -34,4 +39,27 @@ export const getImageUrl = (imagePath?: string | null): string => {
   }
   
   return `${BASE_URL}/${normalizedPath}`;
+};
+
+/**
+ * Resolves an image path:
+ * - Returns data:, blob:, and http(s) URLs as-is
+ * - For backend uploads (containing 'uploads/'), resolves to full backend URL via getImageUrl
+ * - For frontend public assets (e.g. '/Kop Surat Aplikasi.webp'), returns as-is
+ */
+export const resolveImageUrl = (imagePath?: string | null): string => {
+  if (!imagePath) return '';
+  if (
+    imagePath.startsWith('data:') ||
+    imagePath.startsWith('blob:') ||
+    imagePath.startsWith('http://') ||
+    imagePath.startsWith('https://')
+  ) {
+    return imagePath;
+  }
+  const normalized = imagePath.replace(/\\/g, '/');
+  if (normalized.includes('uploads/')) {
+    return getImageUrl(normalized);
+  }
+  return imagePath;
 };

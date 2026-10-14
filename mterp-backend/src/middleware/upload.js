@@ -13,18 +13,21 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     let subDir = 'misc';
     
-    if (file.fieldname === 'groupPhoto') {
+    const fn = (file.fieldname || '').toLowerCase();
+    
+    if (fn === 'groupphoto') {
       subDir = 'attendance-sessions';
-    } else if (file.fieldname.includes('photo') || file.fieldname === 'photo') {
+    } else if (fn.includes('photo')) {
       subDir = 'photos';
     } else if (
-      file.fieldname.includes('Document') || 
-      file.fieldname.includes('Drawing') ||
-      file.fieldname === 'certificate' ||
-      file.fieldname === 'educationProof' ||
-      file.fieldname === 'evidence' ||
-      file.fieldname === 'document' ||
-      file.fieldname === 'file'
+      fn.includes('document') || 
+      fn.includes('drawing') ||
+      fn.includes('certificate') ||
+      fn.includes('educationproof') ||
+      fn.includes('evidence') ||
+      fn.includes('suratjalan') ||
+      fn.includes('nota') ||
+      fn.includes('file')
     ) {
       subDir = 'documents';
     }

@@ -3,10 +3,12 @@ import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
 import { MaterialRequest, IProcurementItem, ISupplierComparison } from '../types';
 import { formatDate } from './date';
+import { resolveImageUrl } from './image';
 
-/** Helper to load an image asset as base64 from a URL */
+/** Helper to load an image asset as base64 from a URL (matching Daily Report implementation) */
 const loadImageAsBase64 = (src: string): Promise<string> => {
   return new Promise((resolve, reject) => {
+    const targetUrl = resolveImageUrl(src);
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
@@ -15,14 +17,37 @@ const loadImageAsBase64 = (src: string): Promise<string> => {
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        reject(new Error('No canvas context'));
+        reject('No context');
         return;
       }
       ctx.drawImage(img, 0, 0);
       resolve(canvas.toDataURL('image/png'));
     };
-    img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
-    img.src = src;
+    img.onerror = () => {
+      // If /photos/ failed, try /misc/ fallback just in case backend saved to misc
+      if (targetUrl.includes('/photos/')) {
+        const fallbackUrl = targetUrl.replace('/photos/', '/misc/');
+        const imgFallback = new Image();
+        imgFallback.crossOrigin = 'anonymous';
+        imgFallback.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = imgFallback.naturalWidth;
+          canvas.height = imgFallback.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject('No context');
+            return;
+          }
+          ctx.drawImage(imgFallback, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        imgFallback.onerror = () => reject('Failed to load image');
+        imgFallback.src = fallbackUrl;
+        return;
+      }
+      reject('Failed to load image');
+    };
+    img.src = targetUrl;
   });
 };
 
@@ -708,33 +733,96 @@ export async function exportGoodsReceiptPdf(order: MaterialRequest) {
   let curY = (doc as any).lastAutoTable?.finalY || y + 40;
   curY += 6;
 
-  // 5. Embedded Site Photo Proof
+  // 5. Embedded Site Photo Proof (Matching Daily Project implementation)
+  const photosToLoad: { title: string; subtitle: string; url: string }[] = [];
+
   if (order.deliveryProof?.sitePhoto) {
-    if (curY + 50 > doc.internal.pageSize.getHeight()) {
+    photosToLoad.push({
+      title: 'Foto Bukti Fisik Material di Proyek (Site Evidence)',
+      subtitle: `Diterima: ${fmtDateStr(order.deliveryProof?.receivedAt || order.updatedAt)} • Kondisi: ${order.deliveryProof?.overallCondition || 'Baik'}`,
+      url: order.deliveryProof.sitePhoto,
+    });
+  }
+
+  if (order.dispatchInfo?.suratJalanPhoto) {
+    photosToLoad.push({
+      title: 'Surat Jalan / Delivery Note Pengiriman',
+      subtitle: `Supir: ${order.dispatchInfo?.driverName || '-'} (${order.dispatchInfo?.vehiclePlate || '-'})`,
+      url: order.dispatchInfo.suratJalanPhoto,
+    });
+  }
+
+  if (order.dispatchInfo?.supplierNotaPhoto) {
+    photosToLoad.push({
+      title: 'Nota / Bon Pembelian Supplier',
+      subtitle: 'Bukti pembayaran / transaksi vendor resmi',
+      url: order.dispatchInfo.supplierNotaPhoto,
+    });
+  }
+
+  const pageH = doc.internal.pageSize.getHeight();
+  const bottomMargin = 18;
+  const sigH = 34;
+
+  if (photosToLoad.length > 0) {
+    const photoH = 55;
+    const isMulti = photosToLoad.length > 1;
+    const photoW = (contentW - 6) / 2;
+
+    if (curY + photoH + 25 + sigH > pageH - bottomMargin) {
       doc.addPage();
       curY = 15;
     }
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
     doc.text('Foto Bukti Fisik Material di Lokasi Proyek (Job Site Evidence):', margin, curY);
-    curY += 3;
+    curY += 4;
 
-    try {
-      const photoData = await loadImageAsBase64(order.deliveryProof.sitePhoto);
-      doc.addImage(photoData, 'JPEG', margin, curY, 65, 45);
-      curY += 48;
-    } catch {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.text(`[Foto terlampir di sistem: ${order.deliveryProof.sitePhoto}]`, margin, curY + 5);
-      curY += 10;
+    for (let i = 0; i < photosToLoad.length; i++) {
+      const col = isMulti ? i % 2 : 0;
+      const px = margin + (isMulti ? col * (photoW + 6) : 0);
+
+      try {
+        const imgData = await loadImageAsBase64(photosToLoad[i].url);
+
+        // Photo border & image (Direct WEBP drawing matching Daily Report)
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.rect(px, curY, photoW, photoH, 'S');
+        doc.addImage(imgData, 'WEBP', px + 0.5, curY + 0.5, photoW - 1, photoH - 1);
+
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(5, 150, 105); // Emerald 600
+        doc.text(photosToLoad[i].title, px + 2, curY + photoH + 4);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(photosToLoad[i].subtitle, px + 2, curY + photoH + 8);
+      } catch (err) {
+        console.warn('Failed to load image for GRN:', photosToLoad[i].url, err);
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.rect(px, curY, photoW, photoH, 'S');
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text('[Foto terlampir di sistem]', px + photoW / 2, curY + photoH / 2, { align: 'center' });
+      }
+
+      if (!isMulti || col === 1 || i === photosToLoad.length - 1) {
+        curY += photoH + 12;
+      }
     }
   }
 
   // 6. Signatures (Driver vs Site Receiver)
-  if (curY + 30 > doc.internal.pageSize.getHeight()) {
+  if (curY + sigH > pageH - bottomMargin) {
     doc.addPage();
-    curY = 15;
+    curY = 20;
   }
 
   const sigW = contentW / 2;
@@ -749,8 +837,35 @@ export async function exportGoodsReceiptPdf(order: MaterialRequest) {
   doc.line(margin + sigW + 2, curY + 20, margin + contentW - 2, curY + 20);
 
   doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
   doc.text(order.dispatchInfo?.driverName || 'Supir Pengantar', margin + 2, curY + 24);
   doc.text(recName, margin + sigW + 2, curY + 24);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Ekspedisi / Logistik Supplier', margin + 2, curY + 27.5);
+  doc.text('Gudang & Logistik Proyek', margin + sigW + 2, curY + 27.5);
 
-  doc.save(`${order.poNumber || 'GRN'}_TandaTerima.pdf`);
+  // 7. Official Running Footer on each page
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `Dokumen Resmi Goods Receipt Note (GRN) • PT Mega Tama Enerco`,
+      margin,
+      pageH - 7
+    );
+    doc.text(
+      `Halaman ${i} dari ${totalPages}`,
+      pageW - margin,
+      pageH - 7,
+      { align: 'right' }
+    );
+  }
+
+  const filename = `${order.poNumber || order.prNumber || 'GRN'}_TandaTerima_GRN.pdf`;
+  doc.save(filename);
 }

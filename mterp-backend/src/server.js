@@ -40,6 +40,8 @@ const server = http.createServer(app);
 app.set('trust proxy', 1);
 
 // Universal CORS and static file serving for uploaded files
+const uploadsBaseDir = path.join(__dirname, '../uploads');
+
 app.use('/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
@@ -51,7 +53,7 @@ app.use('/uploads', (req, res, next) => {
     return res.sendStatus(204);
   }
   next();
-}, express.static(path.join(__dirname, '../uploads'), {
+}, express.static(uploadsBaseDir, {
   setHeaders: (res, filePath) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
@@ -61,7 +63,21 @@ app.use('/uploads', (req, res, next) => {
       res.setHeader('Content-Disposition', 'inline');
     }
   }
-}));
+}), (req, res, next) => {
+  // Resilient fallback: If file was saved under a different subfolder (e.g. misc/ vs photos/ vs documents/)
+  const requestedFile = path.basename(req.path);
+  if (!requestedFile || requestedFile === '.' || requestedFile === '/') {
+    return next();
+  }
+  const subDirs = ['misc', 'photos', 'documents', 'attendance-sessions'];
+  for (const dir of subDirs) {
+    const candidate = path.join(uploadsBaseDir, dir, requestedFile);
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return res.sendFile(candidate);
+    }
+  }
+  next();
+});
 
 // API Middleware
 const allowedOrigins = process.env.CORS_ORIGIN
