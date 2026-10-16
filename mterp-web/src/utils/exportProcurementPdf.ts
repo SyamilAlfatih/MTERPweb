@@ -149,52 +149,62 @@ export async function exportPurchaseRequestPdf(order: MaterialRequest) {
   doc.text('SURAT PERMINTAAN PEMBELIAN / PURCHASE REQUEST (PR)', margin + contentW / 2, y + 4.8, { align: 'center' });
   y += 11;
 
-  // 3. Document Metadata Box
-  doc.setDrawColor(203, 213, 225); // Slate 300
-  doc.setFillColor(248, 250, 252); // Slate 50
-  doc.roundedRect(margin, y, contentW, 20, 2, 2, 'FD');
-
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-
-  const col1 = margin + 4;
-  const col2 = margin + 35;
-  const col3 = margin + 100;
-  const col4 = margin + 135;
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Nomor PR', col1, y + 5);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${order.prNumber || '-'}`, col2, y + 5);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Tanggal Dibutuhkan', col3, y + 5);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${fmtDateStr(order.dateNeeded)}`, col4, y + 5);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Proyek', col1, y + 10);
-  doc.setFont('helvetica', 'normal');
+  // 3. Document Metadata Box (Auto-expanding cells to prevent text overlap)
   const projName = typeof order.projectId === 'object' ? order.projectId?.nama : 'Umum / Workshop';
-  doc.text(`: ${projName || 'General'}`, col2, y + 10);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Tingkat Urgensi', col3, y + 10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${order.urgency || 'Normal'}`, col4, y + 10);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Keperluan / WBS', col1, y + 15);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${order.purpose || order.items?.[0]?.wbsCode || '-'}`, col2, y + 15);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Diajukan Oleh', col3, y + 15);
-  doc.setFont('helvetica', 'normal');
   const reqName = typeof order.requestedBy === 'object' ? order.requestedBy?.fullName : 'Staff';
-  doc.text(`: ${reqName || '-'}`, col4, y + 15);
 
-  y += 24;
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    tableWidth: contentW,
+    theme: 'grid',
+    styles: {
+      fontSize: 8.5,
+      textColor: [15, 23, 42],
+      fillColor: [248, 250, 252],
+      lineColor: [226, 232, 240],
+      lineWidth: 0.2,
+      cellPadding: { top: 1.8, bottom: 1.8, left: 2.5, right: 2.5 },
+      overflow: 'linebreak',
+    },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: 32, fillColor: [241, 245, 249] },
+      1: { cellWidth: 58 },
+      2: { fontStyle: 'bold', cellWidth: 36, fillColor: [241, 245, 249] },
+      3: { cellWidth: 'auto' },
+    },
+    body: [
+      [
+        { content: 'Nomor PR' },
+        { content: `: ${order.prNumber || '-'}`, styles: { fontStyle: 'bold' } },
+        { content: 'Tanggal Dibutuhkan' },
+        { content: `: ${fmtDateStr(order.dateNeeded)}`, styles: { fontStyle: 'bold' } },
+      ],
+      [
+        { content: 'Nama Proyek' },
+        {
+          content: `: ${projName || 'General'}`,
+          colSpan: 3,
+          styles: { fontStyle: 'bold', textColor: [15, 23, 42] },
+        },
+      ],
+      [
+        { content: 'Tingkat Urgensi' },
+        { content: `: ${order.urgency || 'Normal'}` },
+        { content: 'Diajukan Oleh' },
+        { content: `: ${reqName || '-'}` },
+      ],
+      [
+        { content: 'Keperluan / WBS' },
+        {
+          content: `: ${order.purpose || order.items?.[0]?.wbsCode || '-'}`,
+          colSpan: 3,
+        },
+      ],
+    ],
+  });
+
+  y = ((doc as any).lastAutoTable?.finalY || (y + 24)) + 5;
 
   // 4. Line Items Table (Name and Spec in Separate Columns)
   const items = order.items && order.items.length > 0 ? order.items : [{
@@ -385,64 +395,68 @@ export async function exportPurchaseOrderPdf(order: MaterialRequest) {
   doc.text('SURAT PESANAN PEMBELIAN / PURCHASE ORDER (PO)', margin + contentW / 2, y + 4.8, { align: 'center' });
   y += 11;
 
-  // 3. Document & Vendor Metadata Double Box
-  doc.setDrawColor(203, 213, 225);
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(margin, y, contentW, 26, 2, 2, 'FD');
-
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-
-  const col1 = margin + 4;
-  const col2 = margin + 35;
-  const col3 = margin + 98;
-  const col4 = margin + 130;
-
-  // Left col: Order info
-  doc.setFont('helvetica', 'bold');
-  doc.text('Nomor PO', col1, y + 5);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${order.poNumber || 'DRAFT-PO'}`, col2, y + 5);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Ref. Nomor PR', col1, y + 10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${order.prNumber || '-'}`, col2, y + 10);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Proyek Tujuan', col1, y + 15);
-  doc.setFont('helvetica', 'normal');
+  // 3. Document & Vendor Metadata Box (Auto-expanding cells to prevent text overlap)
   const projName = typeof order.projectId === 'object' ? order.projectId?.nama : 'Proyek';
-  doc.text(`: ${projName || 'General'}`, col2, y + 15);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Tanggal Terbit', col1, y + 20);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${fmtDateStr(order.financeApprovedBy?.approvedAt || order.updatedAt)}`, col2, y + 20);
-
-  // Right col: Vendor info
   const vendor = order.selectedSupplier || order.comparisons?.find((c) => c.isRecommended);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Pemasok / Vendor', col3, y + 5);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${vendor?.supplierName || 'Pemasok Terpilih'}`, col4, y + 5);
 
-  doc.setFont('helvetica', 'bold');
-  doc.text('Alamat Vendor', col3, y + 10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${vendor?.location || '-'}`, col4, y + 10);
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    tableWidth: contentW,
+    theme: 'grid',
+    styles: {
+      fontSize: 8.5,
+      textColor: [15, 23, 42],
+      fillColor: [248, 250, 252],
+      lineColor: [226, 232, 240],
+      lineWidth: 0.2,
+      cellPadding: { top: 1.8, bottom: 1.8, left: 2.5, right: 2.5 },
+      overflow: 'linebreak',
+    },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: 32, fillColor: [241, 245, 249] },
+      1: { cellWidth: 58 },
+      2: { fontStyle: 'bold', cellWidth: 36, fillColor: [241, 245, 249] },
+      3: { cellWidth: 'auto' },
+    },
+    body: [
+      [
+        { content: 'Nomor PO' },
+        { content: `: ${order.poNumber || 'DRAFT-PO'}`, styles: { fontStyle: 'bold' } },
+        { content: 'Pemasok / Vendor' },
+        { content: `: ${vendor?.supplierName || 'Pemasok Terpilih'}`, styles: { fontStyle: 'bold' } },
+      ],
+      [
+        { content: 'Tanggal Terbit' },
+        { content: `: ${fmtDateStr(order.financeApprovedBy?.approvedAt || order.updatedAt)}`, styles: { fontStyle: 'bold' } },
+        { content: 'Kontak / Telp' },
+        { content: `: ${vendor?.contact || '-'}` },
+      ],
+      [
+        { content: 'Ref. Nomor PR' },
+        { content: `: ${order.prNumber || '-'}` },
+        { content: 'Termin Bayar' },
+        { content: `: ${vendor?.paymentTerms || 'Tempo 14 Hari'}` },
+      ],
+      [
+        { content: 'Proyek Tujuan' },
+        {
+          content: `: ${projName || 'General'}`,
+          colSpan: 3,
+          styles: { fontStyle: 'bold', textColor: [15, 23, 42] },
+        },
+      ],
+      [
+        { content: 'Alamat Vendor' },
+        {
+          content: `: ${vendor?.location || '-'}`,
+          colSpan: 3,
+        },
+      ],
+    ],
+  });
 
-  doc.setFont('helvetica', 'bold');
-  doc.text('Kontak / Telp', col3, y + 15);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${vendor?.contact || '-'}`, col4, y + 15);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Termin Pembayaran', col3, y + 20);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${vendor?.paymentTerms || 'Tempo 14 Hari'}`, col4, y + 20);
-
-  y += 30;
+  y = ((doc as any).lastAutoTable?.finalY || (y + 30)) + 5;
 
   // 4. Multi-Item Table (Name and Spec in Separate Columns!)
   const fallbackSinglePrice = order.poTotalAmount
@@ -629,46 +643,61 @@ export async function exportGoodsReceiptPdf(order: MaterialRequest) {
   doc.text('BUKTI PENERIMAAN BARANG DI PROYEK / GOODS RECEIPT NOTE (GRN)', margin + contentW / 2, y + 4.8, { align: 'center' });
   y += 11;
 
-  // 3. Receipt Info Box
-  doc.setDrawColor(203, 213, 225);
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(margin, y, contentW, 20, 2, 2, 'FD');
-
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-
-  const col1 = margin + 4;
-  const col2 = margin + 35;
-  const col3 = margin + 98;
-  const col4 = margin + 130;
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Nomor PO', col1, y + 5);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${order.poNumber || '-'}`, col2, y + 5);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Tgl. Diterima', col3, y + 5);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${fmtDateStr(order.deliveryProof?.receivedAt || order.updatedAt)}`, col4, y + 5);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Pengantar / Supir', col1, y + 10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${order.dispatchInfo?.driverName || '-'} (${order.dispatchInfo?.vehiclePlate || '-'})`, col2, y + 10);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Kondisi Fisik', col3, y + 10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`: ${order.deliveryProof?.overallCondition || 'Baik / Sesuai PO'}`, col4, y + 10);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Penerima Proyek', col1, y + 15);
-  doc.setFont('helvetica', 'normal');
+  // 3. Receipt Info Box (Auto-expanding cells)
+  const projName = typeof order.projectId === 'object' ? order.projectId?.nama : 'Proyek';
   const recName = order.deliveryProof?.receivedBy?.fullName || order.deliveryProof?.receivedBy || 'Staff Lapangan';
-  doc.text(`: ${recName}`, col2, y + 15);
 
-  y += 24;
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    tableWidth: contentW,
+    theme: 'grid',
+    styles: {
+      fontSize: 8.5,
+      textColor: [15, 23, 42],
+      fillColor: [248, 250, 252],
+      lineColor: [226, 232, 240],
+      lineWidth: 0.2,
+      cellPadding: { top: 1.8, bottom: 1.8, left: 2.5, right: 2.5 },
+      overflow: 'linebreak',
+    },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: 32, fillColor: [241, 245, 249] },
+      1: { cellWidth: 58 },
+      2: { fontStyle: 'bold', cellWidth: 36, fillColor: [241, 245, 249] },
+      3: { cellWidth: 'auto' },
+    },
+    body: [
+      [
+        { content: 'Nomor PO' },
+        { content: `: ${order.poNumber || '-'}`, styles: { fontStyle: 'bold' } },
+        { content: 'Tgl. Diterima' },
+        { content: `: ${fmtDateStr(order.deliveryProof?.receivedAt || order.updatedAt)}`, styles: { fontStyle: 'bold' } },
+      ],
+      [
+        { content: 'Nama Proyek' },
+        {
+          content: `: ${projName || 'General'}`,
+          colSpan: 3,
+          styles: { fontStyle: 'bold', textColor: [15, 23, 42] },
+        },
+      ],
+      [
+        { content: 'Pengantar / Supir' },
+        { content: `: ${order.dispatchInfo?.driverName || '-'} (${order.dispatchInfo?.vehiclePlate || '-'})` },
+        { content: 'Kondisi Fisik' },
+        { content: `: ${order.deliveryProof?.overallCondition || 'Baik / Sesuai PO'}` },
+      ],
+      [
+        { content: 'Penerima Proyek' },
+        { content: `: ${recName}` },
+        { content: 'Catatan' },
+        { content: `: ${order.deliveryProof?.notes || '-'}` },
+      ],
+    ],
+  });
+
+  y = ((doc as any).lastAutoTable?.finalY || (y + 24)) + 5;
 
   // 4. Received Items Table (Name and Spec in Separate Columns!)
   const items: IProcurementItem[] = order.items && order.items.length > 0 ? order.items : [{
@@ -832,6 +861,36 @@ export async function exportGoodsReceiptPdf(order: MaterialRequest) {
 
   doc.text('Diserahkan oleh (Driver / Supplier):', margin + 2, curY);
   doc.text('Diterima & Diverifikasi oleh (Gudang / Site):', margin + sigW + 2, curY);
+
+  // Handwritten Digital Signatures (Driver & Receiver)
+  const getSignatureDataUrl = async (sig?: string): Promise<string | null> => {
+    if (!sig) return null;
+    if (sig.startsWith('data:image/')) return sig;
+    try {
+      return await loadImageAsBase64(sig);
+    } catch {
+      return null;
+    }
+  };
+
+  const driverSigData = await getSignatureDataUrl(order.deliveryProof?.driverSignature);
+  const receiverSigData = await getSignatureDataUrl(order.deliveryProof?.receiverSignature);
+
+  if (driverSigData) {
+    try {
+      doc.addImage(driverSigData, 'PNG', margin + 4, curY + 2, 42, 17);
+    } catch (e) {
+      console.warn('Failed to embed driver signature in GRN PDF:', e);
+    }
+  }
+
+  if (receiverSigData) {
+    try {
+      doc.addImage(receiverSigData, 'PNG', margin + sigW + 4, curY + 2, 42, 17);
+    } catch (e) {
+      console.warn('Failed to embed receiver signature in GRN PDF:', e);
+    }
+  }
 
   doc.line(margin + 2, curY + 20, margin + sigW - 10, curY + 20);
   doc.line(margin + sigW + 2, curY + 20, margin + contentW - 2, curY + 20);

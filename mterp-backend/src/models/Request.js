@@ -237,6 +237,8 @@ const requestSchema = new mongoose.Schema({
     receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     receivedAt: Date,
     notes: String,
+    receiverSignature: String,
+    driverSignature: String,
   },
 
   createdAt: {

@@ -16,3 +16,4 @@ export { default as IconButton } from './IconButton';
 export { default as CostInput } from './CostInput';
 export { default as AriaLiveRegion } from './AriaLiveRegion';
 export { default as ErrorBoundary } from './ErrorBoundary';
+export { default as SignaturePad } from './SignaturePad';

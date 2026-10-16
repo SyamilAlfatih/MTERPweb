@@ -56,7 +56,7 @@ import api, {
   updateProcurementConfig,
 } from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, Button, Input, EmptyState, LoadingOverlay, Badge } from '../components/shared';
+import { Card, Button, Input, EmptyState, LoadingOverlay, Badge, SignaturePad } from '../components/shared';
 import {
   MaterialRequest,
   IProcurementItem,
@@ -204,6 +204,8 @@ export default function Materials() {
   const [receivingItemsState, setReceivingItemsState] = useState<any[]>([]);
   const [overallCondition, setOverallCondition] = useState<'Good' | 'Damaged' | 'Partial'>('Good');
   const [receiverNotes, setReceiverNotes] = useState('');
+  const [receiverSignature, setReceiverSignature] = useState<string | null>(null);
+  const [driverSignature, setDriverSignature] = useState<string | null>(null);
   const [submittingReceive, setSubmittingReceive] = useState(false);
 
   // Expanded items in list view
@@ -831,6 +833,8 @@ export default function Materials() {
     setReceivingItemsState(initialItems);
     setSitePhotoFile(null);
     setSitePhotoPreview(null);
+    setReceiverSignature(null);
+    setDriverSignature(null);
   };
 
   // Submit Goods Receipt at Job Site
@@ -841,6 +845,10 @@ export default function Materials() {
       alert('Foto bukti fisik material di lokasi proyek wajib diunggah');
       return;
     }
+    if (!receiverSignature) {
+      alert('Tanda tangan digital penerima proyek wajib dibuat sebelum menyelesaikan penerimaan barang');
+      return;
+    }
 
     setSubmittingReceive(true);
     try {
@@ -849,11 +857,17 @@ export default function Materials() {
       formData.append('overallCondition', overallCondition);
       formData.append('notes', receiverNotes);
       formData.append('receivedItems', JSON.stringify(receivingItemsState));
+      formData.append('receiverSignature', receiverSignature);
+      if (driverSignature) {
+        formData.append('driverSignature', driverSignature);
+      }
 
       await receiveMaterialOrder(receiveOrder._id!, formData);
       setReceiveOrder(null);
       setSitePhotoFile(null);
       setSitePhotoPreview(null);
+      setReceiverSignature(null);
+      setDriverSignature(null);
       await fetchData();
     } catch (err: any) {
       alert(err.response?.data?.msg || 'Gagal mengonfirmasi penerimaan barang');
@@ -1239,7 +1253,7 @@ export default function Materials() {
                       <ArrowUpDown size={12} className={sortField === 'prNumber' ? 'text-amber-400 font-bold' : 'text-slate-400 opacity-60'} />
                     </div>
                   </th>
-                  <th className="py-3.5 px-3 text-left text-white">Proyek & Tipe</th>
+                  <th className="py-3.5 px-3 text-left text-white min-w-[200px]">Proyek & Tipe</th>
                   <th className="py-3.5 px-3 text-left text-white">Pemohon</th>
                   <th className="py-3.5 px-3 text-left text-white">Ringkasan Material</th>
                   <th
@@ -1311,26 +1325,27 @@ export default function Materials() {
                         </td>
 
                         {/* 1. No. Dokumen (Left-aligned) */}
-                        <td className="py-3 px-3 text-left">
+                        <td className="py-3 px-3 text-left whitespace-nowrap min-w-[130px]">
                           <div className="font-black text-slate-950 text-xs flex items-center gap-1.5">
                             <span className="font-mono tracking-tight">{order.prNumber || 'DRAFT-PR'}</span>
                           </div>
-                          {order.poNumber ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-black font-mono text-blue-950 bg-blue-100 border border-blue-400 px-2 py-0.5 rounded-md mt-1 shadow-2xs">
-                              PO: {order.poNumber}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 mt-1">
-                              <Clock size={10} className="text-slate-500 shrink-0" />
-                              <span>{fmtDateStr(order.createdAt || order.dateNeeded)}</span>
-                            </span>
+                          {order.poNumber && (
+                            <div className="mt-0.5">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black font-mono text-blue-950 bg-blue-100 border border-blue-400 px-2 py-0.5 rounded-md shadow-2xs">
+                                PO: {order.poNumber}
+                              </span>
+                            </div>
                           )}
+                          <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 mt-0.5">
+                            <Clock size={10} className="text-slate-500 shrink-0" />
+                            <span>{fmtDateStr(order.createdAt || order.dateNeeded)}</span>
+                          </div>
                         </td>
 
                         {/* 2. Proyek & Tipe (Left-aligned) */}
-                        <td className="py-3 px-3 text-left">
+                        <td className="py-3 px-3 text-left min-w-[200px] max-w-[320px]">
                           <div
-                            className="font-bold text-slate-950 text-xs truncate max-w-[170px]"
+                            className="font-bold text-slate-950 text-xs break-words line-clamp-2 leading-snug"
                             title={typeof order.projectId === 'object' && order.projectId?.nama ? order.projectId.nama : 'Non-Proyek / Umum'}
                           >
                             {typeof order.projectId === 'object' && order.projectId?.nama ? order.projectId.nama : 'Non-Proyek / Umum'}
@@ -1748,6 +1763,12 @@ export default function Materials() {
                                     {order.deliveryProof.notes && (
                                       <div className="text-[11px] text-teal-800 italic">
                                         Catatan: {order.deliveryProof.notes}
+                                      </div>
+                                    )}
+                                    {order.deliveryProof.receiverSignature && (
+                                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-teal-800">
+                                        <CheckCircle2 size={13} className="text-teal-600" />
+                                        <span>Tanda Tangan Digital Tersimpan</span>
                                       </div>
                                     )}
                                     {order.deliveryProof.sitePhoto && (
@@ -3514,6 +3535,36 @@ export default function Materials() {
                   placeholder="Material telah dibongkar dan diletakkan di gudang zona 1..."
                   className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white"
                 />
+              </div>
+
+              {/* Digital Handwritten Signatures */}
+              <div className="pt-2 border-t border-border-light space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-text-primary tracking-wide block">
+                    Tanda Tangan Digital Verifikasi Lapangan (GRN)
+                  </span>
+                  <span className="text-[11px] text-text-muted">Gunakan sentuhan layar (HP/Tablet) atau kursor</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <SignaturePad
+                      label="Tanda Tangan Penerima Lapangan"
+                      required
+                      height={140}
+                      onSave={(dataUrl) => setReceiverSignature(dataUrl)}
+                      onClear={() => setReceiverSignature(null)}
+                    />
+                  </div>
+                  <div>
+                    <SignaturePad
+                      label="Tanda Tangan Pengantar / Supir (Opsional)"
+                      required={false}
+                      height={140}
+                      onSave={(dataUrl) => setDriverSignature(dataUrl)}
+                      onClear={() => setDriverSignature(null)}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-border-light">

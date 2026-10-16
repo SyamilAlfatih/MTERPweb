@@ -1080,7 +1080,7 @@ router.put(
   upload.single('sitePhoto'),
   async (req, res) => {
     try {
-      const { overallCondition, notes, receivedItems } = req.body;
+      const { overallCondition, notes, receivedItems, receiverSignature, driverSignature } = req.body;
       const request = await Request.findById(req.params.id);
 
       if (!request) {
@@ -1131,6 +1131,8 @@ router.put(
           receivedBy: req.user._id,
           receivedAt: new Date(),
           notes: notes || '',
+          receiverSignature: receiverSignature || reqDoc.deliveryProof?.receiverSignature || '',
+          driverSignature: driverSignature || reqDoc.deliveryProof?.driverSignature || '',
         };
         reqDoc.status = 'DELIVERED';
 

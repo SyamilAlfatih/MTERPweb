@@ -330,6 +330,8 @@ export interface IDeliveryProof {
   receivedBy?: any;
   receivedAt?: string;
   notes?: string;
+  receiverSignature?: string;
+  driverSignature?: string;
 }
 
 export interface MaterialRequest {
