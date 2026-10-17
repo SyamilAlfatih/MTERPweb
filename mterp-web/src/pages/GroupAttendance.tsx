@@ -3353,18 +3353,18 @@ export default function GroupAttendance() {
                             key={w._id}
                             id={`worker-row-${w._id}`}
                             onClick={() => toggleWorker(w._id)}
-                            className={`flex items-center gap-3 p-3 text-left transition-all rounded-xl border cursor-pointer ${
+                            className={`flex items-center gap-3 p-3.5 min-h-[48px] text-left transition-all rounded-xl border cursor-pointer active:scale-[0.99] ${
                               isSelected
-                                ? 'bg-emerald-50 border-emerald-300 shadow-sm'
-                                : 'bg-bg-white border-border-light hover:bg-bg-secondary'
+                                ? 'bg-emerald-50 border-emerald-400 shadow-xs ring-1 ring-emerald-300'
+                                : 'bg-bg-white border-border-light hover:bg-bg-secondary hover:border-slate-300'
                             }`}
                           >
-                            <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-all ${
+                            <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-all ${
                               isSelected
-                                ? 'bg-emerald-500 text-white'
-                                : 'border border-border bg-bg-white'
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'border-2 border-slate-300 bg-bg-white'
                             }`}>
-                              {isSelected && <Check size={12} />}
+                              {isSelected && <Check size={14} strokeWidth={2.5} />}
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-bold text-text-primary m-0 truncate">{w.fullName}</p>

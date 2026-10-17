@@ -586,17 +586,21 @@ export default function Projects() {
       ) : viewMode === 'table' ? (
         /* TABLE ERP MATRIX VIEW (Desktop Power-User Experience) */
         <div className="bg-bg-white border border-border-light rounded-xl overflow-hidden shadow-xs">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[70vh]">
             <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-bg-secondary/60 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold">
-                  <th className="py-3.5 px-4 text-left">Nama Proyek</th>
+              <thead className="sticky top-0 z-20 shadow-2xs">
+                <tr className="bg-slate-50 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold">
+                  <th className="py-3.5 px-4 text-left sticky left-0 z-30 bg-slate-50 min-w-[220px] border-r border-border-light/60 shadow-[4px_0_8px_-3px_rgba(0,0,0,0.04)]">
+                    Nama Proyek
+                  </th>
                   <th className="py-3.5 px-4 text-left">Lokasi</th>
                   <th className="py-3.5 px-4 text-center">Status</th>
                   <th className="py-3.5 px-4 text-left min-w-[180px]">Progres Fisik</th>
                   <th className="py-3.5 px-4 text-right">Pagu Anggaran</th>
                   <th className="py-3.5 px-4 text-center">Target Selesai</th>
-                  <th className="py-3.5 px-4 text-center min-w-[160px]">Aksi Cepat</th>
+                  <th className="py-3.5 px-4 text-center min-w-[170px] sticky right-0 z-30 bg-slate-50 border-l border-border-light/60 shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.04)]">
+                    Aksi Cepat
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-light/60">
@@ -609,10 +613,10 @@ export default function Projects() {
                     <tr
                       key={project._id}
                       onClick={() => navigate(`/project/${project._id}`)}
-                      className="hover:bg-bg-secondary/40 transition-colors cursor-pointer group"
+                      className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
                     >
-                      {/* Name & Creator */}
-                      <td className="py-3.5 px-4">
+                      {/* Name & Creator - Sticky Left Freeze Column */}
+                      <td className="py-3.5 px-4 sticky left-0 z-10 bg-bg-white group-hover:bg-slate-50 border-r border-border-light/60 shadow-[4px_0_8px_-3px_rgba(0,0,0,0.04)] transition-colors">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                             <Building2 size={18} />
@@ -669,8 +673,8 @@ export default function Projects() {
                         {targetDate}
                       </td>
 
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                      {/* Actions - Sticky Right Freeze Column */}
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap sticky right-0 z-10 bg-bg-white group-hover:bg-slate-50 border-l border-border-light/60 shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.04)] transition-colors">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={(e) => {

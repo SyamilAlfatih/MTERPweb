@@ -730,14 +730,14 @@ export default function Home() {
                 )}
                 <div>
                   <span className="block text-[10px] uppercase font-bold tracking-wider leading-none text-slate-900/80">
-                    {isWorkerRole ? 'Daily Attendance' : 'Attendance Hub'}
+                    {t('home.attendance.label', isWorkerRole ? 'Presensi Mandiri' : 'Pusat Presensi')}
                   </span>
                   <span className="block font-black text-slate-950 text-xs sm:text-sm leading-tight">
                     {todayAttendance?.checkOut?.time
-                      ? 'Shift Completed'
+                      ? t('home.attendance.status.completed', 'Shift Selesai')
                       : todayAttendance?.checkIn?.time
-                      ? 'Checked In'
-                      : 'Clock In / Out'}
+                      ? t('home.attendance.status.checkedIn', 'Sudah Check-In')
+                      : t('home.attendance.status.ready', 'Buka Presensi')}
                   </span>
                 </div>
               </div>
@@ -1170,7 +1170,7 @@ export default function Home() {
                   className="w-full py-2.5 px-3 rounded-xl bg-primary hover:bg-primary-light text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
                 >
                   <Clock size={14} />
-                  <span>{isWorkerRole ? 'Clock In Now' : 'Open Attendance'}</span>
+                  <span>{t('home.attendance.action', isWorkerRole ? 'Catat Presensi Sekarang' : 'Buka Menu Presensi')}</span>
                 </button>
               </div>
             )}

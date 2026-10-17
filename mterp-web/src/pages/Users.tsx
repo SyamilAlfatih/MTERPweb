@@ -1033,63 +1033,63 @@ export default function Users() {
   return (
     <div className="p-6 max-w-[1400px] mx-auto max-lg:p-4 max-sm:p-3 animate-fade-in space-y-6">
       {/* Header & Primary Actions */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-bg-white p-6 rounded-2xl border-2 border-border-light shadow-sm">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-bg-white p-5 rounded-xl border border-border-light shadow-xs">
         <div className="flex items-center gap-3.5">
-          <div className="w-13 h-13 rounded-2xl bg-primary-bg flex items-center justify-center shadow-inner shrink-0 border border-primary/20">
-            <UsersIcon size={28} className="text-primary" />
+          <div className="w-12 h-12 rounded-xl bg-primary-bg flex items-center justify-center shrink-0 border border-primary/20">
+            <UsersIcon size={24} className="text-primary" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-black text-text-primary m-0 tracking-tight uppercase">
-                Database Pekerja & Users
+              <h1 className="text-xl font-bold text-text-primary m-0 tracking-tight">
+                Database Pekerja & Pengguna
               </h1>
-              <span className="bg-primary text-white text-[11px] font-black px-2.5 py-0.5 rounded-full">
+              <span className="bg-primary/10 text-primary border border-primary/20 text-[11px] font-bold px-2 py-0.5 rounded-full font-mono tabular-nums">
                 {users.length} Total
               </span>
             </div>
-            <span className="text-xs font-bold text-text-muted uppercase tracking-wider block mt-0.5">
-              Kelola data tenaga kerja, kontak darurat, impor/ekspor data & akses API eksternal
+            <span className="text-xs text-text-muted block mt-0.5">
+              Kelola data tenaga kerja, kontak darurat, kualifikasi, impor/ekspor data & akses API
             </span>
           </div>
         </div>
 
         {/* Action Button Toolbar */}
-        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
           {/* Quick Add (Bulk) */}
           <button 
-            className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all shadow-md shadow-emerald-700/20 hover:-translate-y-0.5 active:scale-95 flex-1 sm:flex-initial"
+            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-3.5 rounded-lg text-xs font-bold cursor-pointer transition-all shadow-xs hover:-translate-y-0.5 active:scale-95 flex-1 sm:flex-initial"
             onClick={() => {
               setBulkResult(null);
               setIsQuickAddModalOpen(true);
             }}
             title="Tambah Banyak Pekerja Sekaligus"
           >
-            <Layers size={16} strokeWidth={2.5} />
+            <Layers size={15} strokeWidth={2.2} />
             <span>Quick Add (Bulk)</span>
           </button>
 
           {/* Add User (Single) */}
           <button 
-            className="flex items-center justify-center gap-2 bg-primary text-white py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all shadow-md shadow-primary/20 hover:-translate-y-0.5 active:scale-95 flex-1 sm:flex-initial"
+            className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white py-2 px-3.5 rounded-lg text-xs font-bold cursor-pointer transition-all shadow-xs hover:-translate-y-0.5 active:scale-95 flex-1 sm:flex-initial"
             onClick={() => setIsAddModalOpen(true)}
           >
-            <UserPlus size={16} strokeWidth={2.5} />
+            <UserPlus size={15} strokeWidth={2.2} />
             <span>+ Pekerja Baru</span>
           </button>
 
           {/* Export Button */}
           <button 
-            className="flex items-center justify-center gap-2 bg-bg-secondary hover:bg-border-light text-text-primary border-2 border-border-light py-2.5 px-3.5 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all active:scale-95"
+            className="flex items-center justify-center gap-1.5 bg-bg-secondary hover:bg-border-light text-text-primary border border-border-light py-2 px-3 rounded-lg text-xs font-semibold cursor-pointer transition-all active:scale-95"
             onClick={() => setIsExportModalOpen(true)}
             title="Ekspor ke Excel atau CSV"
           >
-            <Download size={16} strokeWidth={2.5} />
+            <Download size={14} strokeWidth={2} />
             <span>Ekspor</span>
           </button>
 
           {/* Import Button */}
           <button 
-            className="flex items-center justify-center gap-2 bg-bg-secondary hover:bg-border-light text-text-primary border-2 border-border-light py-2.5 px-3.5 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all active:scale-95"
+            className="flex items-center justify-center gap-1.5 bg-bg-secondary hover:bg-border-light text-text-primary border border-border-light py-2 px-3 rounded-lg text-xs font-semibold cursor-pointer transition-all active:scale-95"
             onClick={() => {
               setImportResult(null);
               setImportFile(null);
@@ -1097,23 +1097,23 @@ export default function Users() {
             }}
             title="Impor dari file Excel atau CSV"
           >
-            <Upload size={16} strokeWidth={2.5} />
+            <Upload size={14} strokeWidth={2} />
             <span>Impor</span>
           </button>
 
           {/* External API Access Shortcut */}
           <button 
-            className={`flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border-2 ${
+            className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold cursor-pointer transition-all border ${
               isApiKeysOpen 
-                ? 'bg-primary text-white border-primary shadow-sm' 
+                ? 'bg-primary text-white border-primary shadow-xs' 
                 : 'bg-bg-secondary hover:bg-border-light text-text-primary border-border-light'
             }`}
             onClick={() => setIsApiKeysOpen(!isApiKeysOpen)}
             title="Buka panel API Key untuk integrasi aplikasi pihak ketiga"
           >
-            <Key size={16} strokeWidth={2.5} />
+            <Key size={14} strokeWidth={2} />
             <span>API Keys</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/20 text-current font-bold">
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/15 text-current font-bold font-mono">
               {apiKeys.length}
             </span>
           </button>
@@ -1121,68 +1121,68 @@ export default function Users() {
       </div>
 
       {/* Modern KPI Summary Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="!p-4 border-2 border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-primary/30 transition-all">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <Card className="!p-4 border border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-primary/40 transition-all rounded-xl">
           <div>
-            <div className="text-[10px] font-black uppercase tracking-wider text-text-muted">Total Tenaga Kerja</div>
-            <div className="text-2xl font-black text-text-primary mt-1 tracking-tight">{stats.total}</div>
-            <div className="text-[11px] font-bold text-text-secondary mt-0.5 flex items-center gap-1.5 flex-wrap">
-              <span className="text-emerald-600">{users.filter(u => (u.employmentType || 'tetap') === 'tetap').length} Tetap</span>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Total Tenaga Kerja</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-text-primary mt-0.5 tracking-tight">{stats.total}</div>
+            <div className="text-[11px] font-medium text-text-secondary mt-0.5 flex items-center gap-1.5 flex-wrap">
+              <span className="text-emerald-700 font-semibold">{users.filter(u => (u.employmentType || 'tetap') === 'tetap').length} Tetap</span>
               <span>•</span>
-              <span className="text-blue-600">{users.filter(u => u.employmentType === 'kontrak').length} Kontrak</span>
+              <span className="text-blue-700 font-semibold">{users.filter(u => u.employmentType === 'kontrak').length} Kontrak</span>
               <span>•</span>
-              <span className="text-teal-600">{stats.withBpjs} BPJS</span>
+              <span className="text-teal-700 font-semibold">{stats.withBpjs} BPJS</span>
             </div>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center border border-blue-500/20 shrink-0">
-            <UsersIcon size={24} />
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200/60 shrink-0">
+            <UsersIcon size={20} />
           </div>
         </Card>
 
-        <Card className="!p-4 border-2 border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-success/30 transition-all">
+        <Card className="!p-4 border border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-emerald-300 transition-all rounded-xl">
           <div>
-            <div className="text-[10px] font-black uppercase tracking-wider text-text-muted">Status Terverifikasi</div>
-            <div className="text-2xl font-black text-emerald-600 mt-1 tracking-tight">{stats.verified}</div>
-            <div className="text-[11px] font-bold text-text-muted mt-0.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Status Terverifikasi</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-emerald-600 mt-0.5 tracking-tight">{stats.verified}</div>
+            <div className="text-[11px] text-text-muted mt-0.5">
               {stats.total > 0 ? Math.round((stats.verified / stats.total) * 100) : 0}% Akun Terverifikasi
             </div>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center border border-emerald-500/20 shrink-0">
-            <CheckCircle size={24} />
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200/60 shrink-0">
+            <CheckCircle size={20} />
           </div>
         </Card>
 
-        <Card className="!p-4 border-2 border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-primary/30 transition-all">
+        <Card className="!p-4 border border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-primary/40 transition-all rounded-xl">
           <div>
-            <div className="text-[10px] font-black uppercase tracking-wider text-text-muted">Tersertifikasi (Kompetensi)</div>
-            <div className="text-2xl font-black text-primary mt-1 tracking-tight">{stats.certified}</div>
-            <div className="text-[11px] font-bold text-primary mt-0.5 flex items-center gap-1">
-              <Award size={13} />
+            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Tersertifikasi (Kompetensi)</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-primary mt-0.5 tracking-tight">{stats.certified}</div>
+            <div className="text-[11px] text-primary/80 mt-0.5 flex items-center gap-1 font-medium">
+              <Award size={12} />
               <span>{stats.total > 0 ? Math.round((stats.certified / stats.total) * 100) : 0}% Memiliki Lisensi</span>
             </div>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
-            <Award size={24} />
+          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
+            <Award size={20} />
           </div>
         </Card>
 
-        <Card className="!p-4 border-2 border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-indigo-500/30 transition-all">
+        <Card className="!p-4 border border-border-light flex items-center justify-between shadow-xs bg-bg-white hover:border-indigo-300 transition-all rounded-xl">
           <div>
-            <div className="text-[10px] font-black uppercase tracking-wider text-text-muted">Bukti Ijazah Terunggah</div>
-            <div className="text-2xl font-black text-indigo-600 mt-1 tracking-tight">{stats.withProof}</div>
-            <div className="text-[11px] font-bold text-text-muted mt-0.5 flex items-center gap-1">
-              <GraduationCap size={13} className="text-indigo-600" />
+            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Bukti Ijazah Terunggah</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-indigo-600 mt-0.5 tracking-tight">{stats.withProof}</div>
+            <div className="text-[11px] text-text-muted mt-0.5 flex items-center gap-1">
+              <GraduationCap size={12} className="text-indigo-600" />
               <span>{stats.total > 0 ? Math.round((stats.withProof / stats.total) * 100) : 0}% Dokumen Lengkap</span>
             </div>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center border border-indigo-500/20 shrink-0">
-            <GraduationCap size={24} />
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-200/60 shrink-0">
+            <GraduationCap size={20} />
           </div>
         </Card>
       </div>
 
       {/* Filters, Search & View Controls */}
-      <Card className="!p-5 border-2 border-border-light space-y-4">
+      <Card className="!p-4 border border-border-light rounded-xl bg-bg-white shadow-xs space-y-4">
         {/* Top Search Bar */}
         <div>
           <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5">
@@ -1195,7 +1195,7 @@ export default function Users() {
               placeholder="Ketik nama, telepon, jurusan pendidikan, atau nama sertifikat..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full py-3 pr-4 pl-11 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-sm font-bold transition-all outline-none focus:border-primary shadow-xs"
+              className="w-full py-2.5 pr-4 pl-11 border border-border-light rounded-xl bg-bg-white text-text-primary text-sm font-medium transition-all outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-xs"
             />
             {searchQuery && (
               <button 
@@ -1218,7 +1218,7 @@ export default function Users() {
               <select 
                 value={employmentFilter} 
                 onChange={(e) => setEmploymentFilter(e.target.value)}
-                className="w-full py-2.5 pr-8 pl-9 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-xs"
+                className="w-full py-2 pr-8 pl-9 border border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-semibold cursor-pointer appearance-none transition-all outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-xs"
               >
                 <option value="">Semua Status</option>
                 {EMPLOYMENT_TYPE_OPTIONS.map(opt => (
@@ -1237,7 +1237,7 @@ export default function Users() {
               <select 
                 value={roleFilter} 
                 onChange={(e) => setRoleFilter(e.target.value)}
-                className="w-full py-2.5 pr-8 pl-9 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-xs"
+                className="w-full py-2 pr-8 pl-9 border border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-semibold cursor-pointer appearance-none transition-all outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-xs"
               >
                 <option value="">Semua Role</option>
                 {ROLE_OPTIONS.map(opt => (
@@ -1256,7 +1256,7 @@ export default function Users() {
               <select 
                 value={educationFilter} 
                 onChange={(e) => setEducationFilter(e.target.value)}
-                className="w-full py-2.5 pr-8 pl-9 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-xs"
+                className="w-full py-2 pr-8 pl-9 border border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-semibold cursor-pointer appearance-none transition-all outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-xs"
               >
                 <option value="">Semua Pendidikan</option>
                 {EDUCATION_LEVEL_OPTIONS.map(opt => (
@@ -1275,7 +1275,7 @@ export default function Users() {
               <select 
                 value={competencyFilter} 
                 onChange={(e) => setCompetencyFilter(e.target.value)}
-                className="w-full py-2.5 pr-8 pl-9 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-xs"
+                className="w-full py-2 pr-8 pl-9 border border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-semibold cursor-pointer appearance-none transition-all outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-xs"
               >
                 <option value="">Semua Status Sertifikasi</option>
                 <option value="has_cert">Memiliki Sertifikat</option>
@@ -1300,7 +1300,7 @@ export default function Users() {
               <select 
                 value={sortBy} 
                 onChange={(e) => setSortBy(e.target.value as 'name-asc' | 'name-desc' | 'newest' | 'oldest')}
-                className="w-full py-2.5 pr-8 pl-9 border-2 border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-black cursor-pointer appearance-none transition-all outline-none focus:border-primary shadow-xs"
+                className="w-full py-2 pr-8 pl-9 border border-border-light rounded-xl bg-bg-white text-text-primary text-xs font-semibold cursor-pointer appearance-none transition-all outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-xs"
               >
                 <option value="name-asc">Nama (A - Z)</option>
                 <option value="name-desc">Nama (Z - A)</option>

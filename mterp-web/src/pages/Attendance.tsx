@@ -529,7 +529,7 @@ export default function Attendance() {
       )}
 
       {/* Header with live clock */}
-      <div className="flex flex-col mb-8 p-6 rounded-2xl bg-bg-white border-2 border-border-light shadow-sm">
+      <div className="flex flex-col mb-8 p-6 rounded-2xl bg-bg-white border border-border-light shadow-xs">
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs font-bold text-text-muted uppercase tracking-widest">
             {formatWIBDate(liveTime, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
@@ -642,8 +642,12 @@ export default function Attendance() {
       {!hasCheckedIn && !isPermit && (
         <Card className="mb-4 p-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-[42px] h-[42px] rounded-md flex items-center justify-center text-white shrink-0 bg-gradient-to-br from-emerald-600 to-emerald-400">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 bg-gradient-to-br from-emerald-600 to-emerald-500 shadow-xs">
               <MapPin size={20} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-text-primary m-0">Presensi Masuk (Check-In)</h3>
+              <p className="text-xs text-text-muted m-0">Pilih lokasi proyek dan konfirmasi kehadiran Anda</p>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 mb-6">
@@ -659,9 +663,9 @@ export default function Attendance() {
                   <button
                     key={p._id}
                     onClick={() => setSelectedProjectId(p._id)}
-                    className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${
+                    className={`flex items-center gap-4 p-3.5 rounded-xl border transition-all text-left cursor-pointer active:scale-[0.99] ${
                       selectedProjectId === p._id
-                        ? 'border-primary bg-primary-bg'
+                        ? 'border-primary bg-primary-bg shadow-xs ring-1 ring-primary/30'
                         : 'border-border-light bg-bg-white hover:border-primary/50'
                     }`}
                   >
@@ -747,13 +751,18 @@ export default function Attendance() {
                 </button>
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center gap-2 w-[180px] h-[180px] border-2 border-dashed border-border rounded-lg cursor-pointer transition-colors duration-150 mx-auto max-sm:w-[150px] max-sm:h-[150px] hover:border-primary hover:bg-primary-bg">
-                <Upload size={28} color="var(--text-muted)" />
-                <span className="text-xs text-text-muted font-medium">{t('attendance.actions.tapToUpload')}</span>
+              <label className="flex flex-col items-center justify-center gap-2.5 w-full max-w-[260px] h-[190px] border-2 border-dashed border-border-light hover:border-primary rounded-xl cursor-pointer transition-all duration-150 mx-auto bg-slate-50 hover:bg-primary-bg group">
+                <div className="w-12 h-12 rounded-full bg-white shadow-xs border border-border-light flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
+                  <Camera size={24} />
+                </div>
+                <div className="text-center px-3">
+                  <span className="text-xs text-text-primary font-bold block">{t('attendance.actions.tapToUpload')}</span>
+                  <span className="text-[11px] text-text-muted mt-0.5 block">Kamera selfie otomatis terbuka</span>
+                </div>
                 <input
                   type="file"
                   accept="image/*"
-                  capture="environment"
+                  capture="user"
                   onChange={handleFileChange}
                   style={{ display: 'none' }}
                 />

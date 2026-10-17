@@ -1036,21 +1036,21 @@ export default function ProjectSwakelola() {
 
           {/* Purchases Table (SAP Fiori Density) */}
           <div className="bg-bg-white border border-border-light rounded-xl overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[640px]">
               <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-bg-secondary/60 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold">
-                    <th className="py-3 px-3.5 text-left">No. Voucher</th>
-                    <th className="py-3 px-3.5 text-left">Mata Anggaran (WBS)</th>
-                    <th className="py-3 px-3.5 text-left">Toko / Supplier</th>
-                    <th className="py-3 px-3.5 text-left">Uraian Spesifikasi</th>
-                    <th className="py-3 px-3.5 text-right">Volume</th>
-                    <th className="py-3 px-3.5 text-right">Harga Satuan</th>
-                    <th className="py-3 px-3.5 text-right">Total Riil</th>
-                    <th className="py-3 px-3.5 text-center">GPS</th>
-                    <th className="py-3 px-3.5 text-center">Nota</th>
-                    <th className="py-3 px-3.5 text-center">Status</th>
-                    {canVerify && <th className="py-3 px-3.5 text-center">Aksi Verifikasi</th>}
+                <thead className="sticky top-0 z-20 bg-slate-50 border-b border-border-light shadow-2xs">
+                  <tr className="text-text-muted uppercase tracking-wider font-semibold">
+                    <th className="py-3 px-3.5 text-left sticky left-0 z-30 bg-slate-50 border-r border-border-light shadow-2xs">No. Voucher</th>
+                    <th className="py-3 px-3.5 text-left min-w-[140px]">Mata Anggaran (WBS)</th>
+                    <th className="py-3 px-3.5 text-left min-w-[150px]">Toko / Supplier</th>
+                    <th className="py-3 px-3.5 text-left min-w-[180px]">Uraian Spesifikasi</th>
+                    <th className="py-3 px-3.5 text-right min-w-[100px]">Volume</th>
+                    <th className="py-3 px-3.5 text-right min-w-[110px]">Harga Satuan</th>
+                    <th className="py-3 px-3.5 text-right min-w-[120px]">Total Riil</th>
+                    <th className="py-3 px-3.5 text-center min-w-[80px]">GPS</th>
+                    <th className="py-3 px-3.5 text-center min-w-[80px]">Nota</th>
+                    <th className="py-3 px-3.5 text-center min-w-[130px]">Status</th>
+                    {canVerify && <th className="py-3 px-3.5 text-center min-w-[100px]">Aksi Verifikasi</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-light/60">
@@ -1067,8 +1067,8 @@ export default function ProjectSwakelola() {
                     filteredPurchases.map((purchase) => {
                       const rabObj = typeof purchase.rabItemId === 'object' ? purchase.rabItemId : null;
                       return (
-                        <tr key={purchase._id} className="hover:bg-bg-secondary/30 transition-colors">
-                          <td className="py-3 px-3.5 font-mono font-bold text-text-primary whitespace-nowrap">
+                        <tr key={purchase._id} className="hover:bg-bg-secondary/30 transition-colors group">
+                          <td className="py-3 px-3.5 font-mono font-bold text-text-primary whitespace-nowrap sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-2xs">
                             {purchase.voucherNumber}
                           </td>
                           <td className="py-3 px-3.5">

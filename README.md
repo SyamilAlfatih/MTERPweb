@@ -35,6 +35,11 @@
 8. [Production Deployment & PM2 Cluster Execution](#-production-deployment--pm2-cluster-execution)
 9. [API Route Reference](#-api-route-reference)
 10. [Stability & Performance Architecture](#-stability--performance-architecture)
+11. [AI Engineering Skills & Design System Standards](#-ai-engineering-skills--design-system-standards)
+   - [11.1 Coding Agent & Architectural Guidance](#111-coding-agent--architectural-guidance)
+   - [11.2 Anti-Slop & Human Copywriting Hygiene](#112-anti-slop--human-copywriting-hygiene)
+   - [11.3 Enterprise UI/UX, Data Density & Field Ergonomics](#113-enterprise-uiux-data-density--field-ergonomics)
+   - [11.4 Active Skills Registry & Lockfile](#114-active-skills-registry--lockfile)
 
 ---
 
@@ -577,6 +582,56 @@ The production bundle will be output to `mterp-web/dist/`, configured with autom
 * **Parallel Promise Concurrency:** Aggregation pipelines and dashboard statistics utilize `Promise.all()`, avoiding sequential request waterfalls.
 * **ACID Transaction Rollback:** Critical multi-document financial entries (such as `LocalPurchase` and `RABItem`) are protected by explicit replica-set sessions. Any mid-flight error triggers an immediate database abort, preserving zero-drift accounting integrity.
 * **Automated Media Optimization:** Built-in Sharp WebP conversion limits long-term disk consumption while accelerating site photo viewing on mobile networks.
+
+---
+
+## 🧠 AI Engineering Skills & Design System Standards
+
+This repository integrates curated, high-performance agentic engineering skills (declared and locked in [skills-lock.json](file:///c:/Users/CorSec/Documents/personal/MTERPweb/skills-lock.json) under `.agents/skills/`) to enforce strict enterprise quality, zero-slop copy, surgical code edits, and high-density ERP data presentation.
+
+### 11.1 Coding Agent & Architectural Guidance
+* **`andrej-karpathy-skill`** (`duolahypercho/andrej-karpathy-skills`): Enforces surgical edits, explicit assumption surface verification, avoiding premature abstractions/overengineering, and defining deterministic test/build success criteria.
+* **`graphify`** (`graphify-labs/graphify`): AST and graph-based repository intelligence. Builds and updates navigable subgraphs in `graphify-out/` to track dependencies, god nodes, and circular imports without LLM API token overhead.
+* **`mongodb`** (`hoodini/ai-agents-skills`): Best practices for MongoDB schemas, indexing strategies, aggregation pipelines, and atomic transaction session rollbacks.
+* **`full-output-enforcement`**: Eliminates LLM truncations or placeholder shortcuts (`// TODO`, `/* rest of code unchanged */`), ensuring complete code generation.
+
+### 11.2 Anti-Slop & Human Copywriting Hygiene
+* **`antislop` & `antislop-ui`** (`miqdadbadjuber/anti-slop`): Replaces generic AI aesthetics (e.g. loud purple gradients, floating pastel bubbles) with purposeful enterprise tokens, curated HSL color schemes, and subtle elevation.
+* **`antislop-code`**: Code comment hygiene that strips verbose AI explanations while preserving critical business logic, domain constraints, and mathematical formulations.
+* **`antislop-human` & `antislop-layoutmobile`**: Enforces WCAG AA contrast, keyboard focus traps (`useFocusTrap`), screen reader announcements (`AriaLiveRegion`), and $\ge 44\text{px}$ touch targets for outdoor, gloved field operation.
+* **`humanizer`** (`blader/humanizer`), **`stop-slop`** (`hardikpandya/stop-slop`), & **`no-ai-slop`** (`petergyang/no-ai-slop`): Audits prose and UI copy to eliminate robotic AI writing patterns, corporate buzzwords, and fake enthusiasm (e.g. replacing *"You're all caught up! 🎉"* with clean localized status indicators).
+* **`avoid-ai-writing`** (`conorbronsdon/avoid-ai-writing`): Detects and refactors structural AI tropes across technical documentation and user guides.
+
+### 11.3 Enterprise UI/UX, Data Density & Field Ergonomics
+* **`design-taste-frontend`** (`Leonxlnx/taste-skill`): Art direction inspired by curated award-winning interfaces, enforcing intentional grid rhythms, typography scales (Outfit / Inter), and calibrated dark/light surfaces.
+* **`ui-ux-pro-max`** (`nextlevelbuilder/ui-ux-pro-max-skill`): Extensive UI intelligence spanning 50+ styles, 161 color palettes, and 99 UX rules across dashboards, forms, tables, and micro-interactions.
+* **`ERP-tables-UX/UI` (Enterprise Data Table UX Guide)**:
+  - Freeze-pane sticky columns (`sticky left-0` for identifiers, `sticky right-0` for actions) with directional elevation shadows.
+  - Sticky table headers (`thead sticky top-0 z-20`).
+  - Strict right-alignment for quantitative figures (financial amounts, hours, percentages) with `font-mono tabular-nums`.
+  - Density toggles (`compact`, `normal`, `comfortable`) and column visibility managers.
+* **`high-end-visual-design` & `minimalist-ui`**: High-end agency card styling with subtle borders (`border-border-light shadow-xs`), balanced micro-animations, and flat bento layouts.
+* **`industrial-brutalist-ui`**: Utilitarian Swiss/terminal aesthetics adapted for data-dense engineering monitors, Gantt charts, and logistics manifests.
+* **`image-to-code`, `imagegen-frontend-web`, `imagegen-frontend-mobile`, & `brandkit`**: Multimodal visual generation and recreation standards for mobile apps and web shells.
+
+### 11.4 Active Skills Registry & Lockfile
+All skills are declared and version-locked in [skills-lock.json](file:///c:/Users/CorSec/Documents/personal/MTERPweb/skills-lock.json):
+```json
+{
+  "version": 1,
+  "skills": {
+    "andrej-karpathy-skill": { "source": "duolahypercho/andrej-karpathy-skills" },
+    "antislop": { "source": "miqdadbadjuber/anti-slop" },
+    "avoid-ai-writing": { "source": "conorbronsdon/avoid-ai-writing" },
+    "design-taste-frontend": { "source": "Leonxlnx/taste-skill" },
+    "graphify": { "source": "graphify-labs/graphify" },
+    "humanizer": { "source": "blader/humanizer" },
+    "no-ai-slop": { "source": "petergyang/no-ai-slop" },
+    "stop-slop": { "source": "hardikpandya/stop-slop" },
+    "ui-ux-pro-max": { "source": "nextlevelbuilder/ui-ux-pro-max-skill" }
+  }
+}
+```
 
 ---
 

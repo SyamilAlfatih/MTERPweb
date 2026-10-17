@@ -193,35 +193,37 @@ export default function AppLayout() {
               {showDropdown && (
                 <div className="absolute right-0 top-[calc(100%+8px)] w-[340px] sm:w-[380px] max-h-[420px] bg-bg-white rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.05)] border border-border-light overflow-hidden z-50 animate-dropdown-enter">
                   {/* Dropdown Header */}
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-border-light bg-bg-secondary/50">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border-light bg-bg-secondary/40">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-text-primary">Notifications</span>
+                      <span className="text-sm font-black text-text-primary tracking-tight">
+                        {t('common.notifications', 'Notifikasi')}
+                      </span>
                       {unreadCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full bg-primary text-white text-[10px] font-black">
-                          {unreadCount}
+                        <span className="px-2 py-0.5 rounded-full bg-primary text-white text-[10px] font-black">
+                          {unreadCount} baru
                         </span>
                       )}
                     </div>
                     {unreadCount > 0 && (
                       <button
                         onClick={() => { markAllRead(); }}
-                        className="flex items-center gap-1 text-[11px] font-bold text-primary hover:text-primary-light transition-colors cursor-pointer bg-transparent border-none p-0"
+                        className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary-light transition-colors cursor-pointer bg-transparent border-none p-0"
                       >
-                        <CheckCheck size={12} />
-                        Mark all read
+                        <CheckCheck size={14} />
+                        {t('common.markAllRead', 'Tandai dibaca')}
                       </button>
                     )}
                   </div>
 
                   {/* Notification Items */}
-                  <div className="overflow-y-auto max-h-[300px]">
+                  <div className="overflow-y-auto max-h-[300px] divide-y divide-border-light/40">
                     {latestNotifications.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                        <div className="w-12 h-12 rounded-xl bg-bg-secondary flex items-center justify-center mb-2">
-                          <Bell size={20} className="text-text-muted" />
+                        <div className="w-12 h-12 rounded-2xl bg-bg-secondary flex items-center justify-center mb-2.5 text-text-muted">
+                          <Bell size={20} />
                         </div>
-                        <p className="text-sm font-semibold text-text-muted m-0">No notifications</p>
-                        <p className="text-xs text-text-muted m-0 mt-1">You're all caught up! 🎉</p>
+                        <p className="text-sm font-bold text-text-primary m-0">Tidak ada notifikasi baru</p>
+                        <p className="text-xs text-text-muted m-0 mt-1 max-w-[220px]">Semua tugas, persetujuan, dan status pengajuan Anda telah mutakhir.</p>
                       </div>
                     ) : (
                       <div className="py-1">
@@ -234,12 +236,12 @@ export default function AppLayout() {
                               className={`w-full flex gap-3 px-4 py-3 text-left transition-colors duration-150 cursor-pointer border-none ${
                                 n.isRead
                                   ? 'bg-transparent hover:bg-bg-secondary/60 opacity-70'
-                                  : 'bg-primary/[0.03] hover:bg-primary/[0.06]'
+                                  : 'bg-primary/[0.04] hover:bg-primary/[0.08]'
                               }`}
                               onClick={() => handleNotificationClick(n)}
                             >
                               <div
-                                className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-2xs"
                                 style={{ backgroundColor: config.bg }}
                               >
                                 <Icon size={16} style={{ color: config.color }} />
@@ -251,10 +253,10 @@ export default function AppLayout() {
                                       {n.title}
                                     </span>
                                     {!n.isRead && (
-                                      <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                                      <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
                                     )}
                                   </div>
-                                  <span className="text-[10px] text-text-muted shrink-0">{timeAgo(n.createdAt)}</span>
+                                  <span className="text-[10px] font-medium text-text-muted shrink-0">{timeAgo(n.createdAt)}</span>
                                 </div>
                                 <p className="text-[13px] font-medium text-text-primary m-0 mt-0.5 leading-snug line-clamp-2">
                                   {n.message}
@@ -268,21 +270,21 @@ export default function AppLayout() {
                   </div>
 
                   {/* Dropdown Footer */}
-                  <div className="border-t border-border-light px-4 py-2.5 bg-bg-secondary/30">
+                  <div className="border-t border-border-light px-4 py-2.5 bg-bg-secondary/20">
                     <button
                       onClick={() => { setShowDropdown(false); navigate('/notifications'); }}
-                      className="flex items-center justify-center gap-1 w-full text-xs font-bold text-primary hover:text-primary-light transition-colors cursor-pointer bg-transparent border-none p-0"
+                      className="flex items-center justify-center gap-1.5 w-full text-xs font-bold text-primary hover:text-primary-light transition-colors cursor-pointer bg-transparent border-none p-1"
                     >
-                      View all notifications
-                      <ArrowUpRight size={12} />
+                      <span>{t('common.viewAllNotifications', 'Buka Pusat Notifikasi')}</span>
+                      <ArrowUpRight size={13} />
                     </button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Role badge — subtle pill */}
-            <span className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-bg-secondary border border-border-light">
+            {/* Role badge — polished pill */}
+            <span className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-bg-secondary/80 border border-border-light shadow-2xs">
               <span className="w-6 h-6 rounded-full bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white text-[10px] font-black shrink-0">
                 {user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
               </span>

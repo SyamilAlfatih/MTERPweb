@@ -289,73 +289,95 @@ export default function Dashboard() {
 
             {/* KPI Cards - BIG NUMBER STYLE */}
             <div className="grid grid-cols-4 gap-4 mb-6 max-lg:grid-cols-2 max-sm:grid-cols-1">
-                <Card className="relative !p-6 flex flex-col gap-2 overflow-hidden border-2 border-border-light hover:border-primary transition-all">
-                    <span className="text-xs font-bold text-text-muted uppercase tracking-wider">{t('dashboard.activeProjects')}</span>
-                    <div className="flex items-baseline gap-2">
-                        <span className="text-4xl font-extrabold text-text-primary leading-none tracking-tight">{data.totalProjects}</span>
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                        {data.statusCounts['In Progress'] > 0 && (
-                            <span className="text-[10px] font-bold px-2 py-1 rounded bg-blue-100 text-blue-700">{data.statusCounts['In Progress']} Active</span>
-                        )}
-                        {data.statusCounts['Completed'] > 0 && (
-                            <span className="text-[10px] font-bold px-2 py-1 rounded bg-green-100 text-green-700">{data.statusCounts['Completed']} Done</span>
-                        )}
-                    </div>
-                    <div className="absolute right-[-10px] bottom-[-10px] opacity-10">
-                        <BarChart3 size={80} />
-                    </div>
-                </Card>
-
-                <Card className="relative !p-6 flex flex-col gap-2 overflow-hidden border-2 border-border-light hover:border-primary transition-all">
-                    <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Budget Spent</span>
-                    <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-extrabold text-text-primary leading-none tracking-tight">{formatCurrency(data.actualSpend)}</span>
-                    </div>
-                    <div className="mt-3">
-                        <div className="w-full h-2.5 bg-bg-secondary rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-primary rounded-full transition-all duration-700 ease-out"
-                                style={{ width: `${budgetPercent}%` }}
-                            />
+                <Card className="relative !p-5 flex flex-col justify-between overflow-hidden border border-border-light hover:border-primary/40 hover:shadow-md transition-all duration-200">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-text-muted uppercase tracking-wider">{t('dashboard.activeProjects', 'Total Proyek')}</span>
+                        <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
+                            <BarChart3 size={18} />
                         </div>
-                        <div className="flex justify-between mt-1.5">
-                            <span className="text-[10px] font-bold text-primary">{budgetPercent}% used</span>
-                            <span className="text-[10px] font-bold text-text-muted">Total: {formatCurrency(data.totalBudget)}</span>
+                    </div>
+                    <div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-3xl sm:text-4xl font-black text-text-primary leading-none tracking-tight">{data.totalProjects}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+                            {data.statusCounts['In Progress'] > 0 && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60">
+                                    {data.statusCounts['In Progress']} Berjalan
+                                </span>
+                            )}
+                            {data.statusCounts['Completed'] > 0 && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                                    {data.statusCounts['Completed']} Selesai
+                                </span>
+                            )}
                         </div>
                     </div>
                 </Card>
 
-                <Card className="relative !p-6 flex flex-col gap-2 overflow-hidden border-2 border-border-light hover:border-primary transition-all">
-                    <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Overall Progress</span>
-                    <div className="flex items-center gap-4">
-                        <span className="text-4xl font-extrabold text-text-primary leading-none tracking-tight">{data.avgProgress}%</span>
-                    </div>
-                    <div className="mt-auto pt-2">
-                         <div className="flex items-center gap-1.5 text-success font-bold text-[10px]">
-                            <TrendingUp size={12} />
-                            <span>On Track</span>
+                <Card className="relative !p-5 flex flex-col justify-between overflow-hidden border border-border-light hover:border-primary/40 hover:shadow-md transition-all duration-200">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-text-muted uppercase tracking-wider">{t('dashboard.budgetSpent', 'Realisasi Biaya')}</span>
+                        <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                            <DollarSign size={18} />
                         </div>
                     </div>
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-20">
-                         <div className="w-16 h-16 rounded-full border-[6px] border-primary-bg flex items-center justify-center relative">
-                            <div className="absolute inset-0 rounded-full border-[6px] border-primary border-t-transparent border-r-transparent rotate-45" style={{ opacity: data.avgProgress / 100 }}></div>
-                            <HardHat size={20} className="text-primary" />
-                         </div>
+                    <div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-2xl sm:text-3xl font-black text-text-primary leading-none tracking-tight">{formatCurrency(data.actualSpend)}</span>
+                        </div>
+                        <div className="mt-3">
+                            <div className="w-full h-2 bg-bg-secondary rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-amber-500 to-amber-600 rounded-full transition-all duration-700 ease-out"
+                                    style={{ width: `${Math.min(budgetPercent, 100)}%` }}
+                                />
+                            </div>
+                            <div className="flex justify-between items-center mt-1.5 text-[11px] font-semibold">
+                                <span className="text-amber-700">{budgetPercent}% terpakai</span>
+                                <span className="text-text-muted">Pagu: {formatCurrency(data.totalBudget)}</span>
+                            </div>
+                        </div>
                     </div>
                 </Card>
 
-                <Card className="relative !p-6 flex flex-col gap-2 overflow-hidden border-2 border-border-light hover:border-primary transition-all">
-                    <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Active Tasks</span>
-                    <div className="flex items-baseline gap-2">
-                        <span className="text-4xl font-extrabold text-text-primary leading-none tracking-tight">{data.totalTasks}</span>
+                <Card className="relative !p-5 flex flex-col justify-between overflow-hidden border border-border-light hover:border-primary/40 hover:shadow-md transition-all duration-200">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-text-muted uppercase tracking-wider">{t('dashboard.overallProgress', 'Rata-Rata Progres')}</span>
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                            <TrendingUp size={18} />
+                        </div>
                     </div>
-                    <div className="flex gap-2 mt-2">
-                        <span className="text-[10px] font-bold px-2 py-1 rounded bg-amber-100 text-amber-700">{data.taskStatusCounts.in_progress || 0} In Progress</span>
-                        <span className="text-[10px] font-bold px-2 py-1 rounded bg-slate-100 text-slate-700">{data.taskStatusCounts.pending || 0} Pending</span>
+                    <div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-3xl sm:text-4xl font-black text-text-primary leading-none tracking-tight">{data.avgProgress}%</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-3 text-emerald-700 font-bold text-xs">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>Target Lapangan Terpantau</span>
+                        </div>
                     </div>
-                    <div className="absolute right-[-10px] bottom-[-10px] opacity-10">
-                        <ClipboardList size={80} />
+                </Card>
+
+                <Card className="relative !p-5 flex flex-col justify-between overflow-hidden border border-border-light hover:border-primary/40 hover:shadow-md transition-all duration-200">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-text-muted uppercase tracking-wider">{t('dashboard.activeTasks', 'Pekerjaan Berjalan')}</span>
+                        <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
+                            <ClipboardList size={18} />
+                        </div>
+                    </div>
+                    <div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-3xl sm:text-4xl font-black text-text-primary leading-none tracking-tight">{data.totalTasks}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60">
+                                {data.taskStatusCounts.in_progress || 0} Dikerjakan
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60">
+                                {data.taskStatusCounts.pending || 0} Menunggu
+                            </span>
+                        </div>
                     </div>
                 </Card>
             </div>
@@ -505,22 +527,22 @@ export default function Dashboard() {
                         <Clock size={16} color="#3B82F6" />
                         <span>Status Breakdown</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-[6px]">
-                        <div className="flex items-center gap-[6px] py-1.5 px-2.5 rounded-md text-xs bg-[#D1FAE5] text-[#059669]">
-                            <span className="font-extrabold text-base leading-none">{data.attendanceCounts.Present || 0}</span>
-                            <span className="font-medium opacity-80">{t('dashboard.newProject')}</span>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="flex items-center justify-between py-2 px-3 rounded-xl text-xs bg-emerald-50 border border-emerald-200/60 text-emerald-800">
+                            <span className="font-medium text-emerald-900/80">{t('attendance.status.present', 'Hadir')}</span>
+                            <span className="font-black text-sm leading-none">{data.attendanceCounts.Present || 0}</span>
                         </div>
-                        <div className="flex items-center gap-[6px] py-1.5 px-2.5 rounded-md text-xs bg-[#FEF3C7] text-[#D97706]">
-                            <span className="font-extrabold text-base leading-none">{data.attendanceCounts.Late || 0}</span>
-                            <span className="font-medium opacity-80">{t('dashboard.reqMaterial')}</span>
+                        <div className="flex items-center justify-between py-2 px-3 rounded-xl text-xs bg-amber-50 border border-amber-200/60 text-amber-800">
+                            <span className="font-medium text-amber-900/80">{t('attendance.status.late', 'Terlambat')}</span>
+                            <span className="font-black text-sm leading-none">{data.attendanceCounts.Late || 0}</span>
                         </div>
-                        <div className="flex items-center gap-[6px] py-1.5 px-2.5 rounded-md text-xs bg-[#FEE2E2] text-[#DC2626]">
-                            <span className="font-extrabold text-base leading-none">{data.attendanceCounts.Absent || 0}</span>
-                            <span className="font-medium opacity-80">Absent</span>
+                        <div className="flex items-center justify-between py-2 px-3 rounded-xl text-xs bg-rose-50 border border-rose-200/60 text-rose-800">
+                            <span className="font-medium text-rose-900/80">{t('attendance.status.absent', 'Alpa')}</span>
+                            <span className="font-black text-sm leading-none">{data.attendanceCounts.Absent || 0}</span>
                         </div>
-                        <div className="flex items-center gap-[6px] py-1.5 px-2.5 rounded-md text-xs bg-[#EDE9FE] text-[#7C3AED]">
-                            <span className="font-extrabold text-base leading-none">{data.attendanceCounts.Permit || 0}</span>
-                            <span className="font-medium opacity-80">Permit</span>
+                        <div className="flex items-center justify-between py-2 px-3 rounded-xl text-xs bg-purple-50 border border-purple-200/60 text-purple-800">
+                            <span className="font-medium text-purple-900/80">{t('attendance.status.permit', 'Izin')}</span>
+                            <span className="font-black text-sm leading-none">{data.attendanceCounts.Permit || 0}</span>
                         </div>
                     </div>
                 </Card>
@@ -632,44 +654,45 @@ export default function Dashboard() {
 
             {/* Quick Stats Row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <Card className="flex items-center gap-3 !py-4 !px-5 transition-transform hover:-translate-y-[1px]">
-                    <div className="w-10 h-10 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: '#D1FAE5' }}>
-                        <Users size={18} color="#10B981" />
+                <Card className="flex items-center gap-3 !py-4 !px-5 border border-border-light hover:border-primary/40 hover:shadow-xs transition-all duration-200">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-emerald-50 text-emerald-600 border border-emerald-200/60 shadow-2xs">
+                        <Users size={18} />
                     </div>
                     <div className="flex flex-col min-w-0">
-                        <span className="text-lg font-extrabold text-text-primary leading-[1.2]">{data.totalAttendanceToday}</span>
-                        <span className="text-xs text-text-muted font-medium">Attendance Today</span>
+                        <span className="text-xl font-black text-text-primary leading-tight">{data.totalAttendanceToday}</span>
+                        <span className="text-xs text-text-muted font-medium">{t('attendance.todayTotal', 'Presensi Hari Ini')}</span>
                     </div>
-                    <div className="flex gap-1 flex-wrap ml-auto">
+                    <div className="flex gap-1.5 flex-wrap ml-auto">
                         {data.attendanceCounts.Present > 0 && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-[#D1FAE5] text-[#059669]">{data.attendanceCounts.Present} Present</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                                {data.attendanceCounts.Present} Hadir
+                            </span>
                         )}
                         {data.attendanceCounts.Late > 0 && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-[#FEF3C7] text-[#D97706]">{data.attendanceCounts.Late} Late</span>
-                        )}
-                        {data.attendanceCounts.Absent > 0 && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-[#FEE2E2] text-[#DC2626]">{data.attendanceCounts.Absent} Absent</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap bg-amber-50 text-amber-700 border border-amber-200/60">
+                                {data.attendanceCounts.Late} Terlambat
+                            </span>
                         )}
                     </div>
                 </Card>
 
-                <Card className="flex items-center gap-3 !py-4 !px-5 transition-transform hover:-translate-y-[1px]">
-                    <div className="w-10 h-10 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: '#FEF3C7' }}>
-                        <AlertCircle size={18} color="#F59E0B" />
+                <Card className="flex items-center gap-3 !py-4 !px-5 border border-border-light hover:border-primary/40 hover:shadow-xs transition-all duration-200">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-amber-50 text-amber-600 border border-amber-200/60 shadow-2xs">
+                        <AlertCircle size={18} />
                     </div>
                     <div className="flex flex-col min-w-0">
-                        <span className="text-lg font-extrabold text-text-primary leading-[1.2]">{data.pendingRequests}</span>
-                        <span className="text-xs text-text-muted font-medium uppercase tracking-[0.5px] mt-0.5">{t('dashboard.pendingApprovals')}</span>
+                        <span className="text-xl font-black text-text-primary leading-tight">{data.pendingRequests}</span>
+                        <span className="text-xs text-text-muted font-medium">{t('dashboard.pendingApprovals', 'Menunggu Persetujuan')}</span>
                     </div>
                 </Card>
 
-                <Card className="flex items-center gap-3 !py-4 !px-5 transition-transform hover:-translate-y-[1px]">
-                    <div className="w-10 h-10 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: '#FEE2E2' }}>
-                        <Package size={18} color="#EF4444" />
+                <Card className="flex items-center gap-3 !py-4 !px-5 border border-border-light hover:border-primary/40 hover:shadow-xs transition-all duration-200">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-rose-50 text-rose-600 border border-rose-200/60 shadow-2xs">
+                        <Package size={18} />
                     </div>
                     <div className="flex flex-col min-w-0">
-                        <span className="text-lg font-extrabold text-text-primary leading-[1.2]">{formatCurrency(data.totalUnpaid)}</span>
-                        <span className="text-xs text-text-muted font-medium">Unpaid Wages</span>
+                        <span className="text-xl font-black text-text-primary leading-tight">{formatCurrency(data.totalUnpaid)}</span>
+                        <span className="text-xs text-text-muted font-medium">{t('dashboard.unpaidWages', 'Upah Belum Terbayar')}</span>
                     </div>
                 </Card>
             </div>

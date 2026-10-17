@@ -868,6 +868,23 @@ export default function SlipGaji() {
         return msg;
     }, [filteredSlips.length, selectedSlipIds.length]);
 
+    const payrollSummaryMetrics = useMemo(() => {
+        const totalNetPay = filteredSlips.reduce((sum, s) => sum + (s.earnings?.netPay || 0), 0);
+        const issuedSlips = filteredSlips.filter(s => s.status === 'issued');
+        const totalPaid = issuedSlips.reduce((sum, s) => sum + (s.earnings?.netPay || 0), 0);
+        const draftCount = filteredSlips.filter(s => s.status === 'draft').length;
+        const authorizedCount = filteredSlips.filter(s => s.status === 'authorized').length;
+        const totalOvertimeHours = filteredSlips.reduce((sum, s) => sum + (s.attendanceSummary?.totalOvertimeHours || 0), 0);
+        return {
+            totalNetPay,
+            totalPaid,
+            paidCount: issuedSlips.length,
+            draftCount,
+            authorizedCount,
+            totalOvertimeHours,
+        };
+    }, [filteredSlips]);
+
     return (
         <div className="p-6 max-w-7xl mx-auto max-sm:p-3">
             <Alert
@@ -890,6 +907,69 @@ export default function SlipGaji() {
                     <h1 className="text-xl font-bold text-text-primary m-0">{t('slipGaji.title')}</h1>
                     <p className="text-xs text-text-muted m-0">{t('slipGaji.subtitle')}</p>
                 </div>
+            </div>
+
+            {/* Executive Payroll Summary Metrics Strip */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
+                <Card className="!p-4 border border-border-light bg-bg-white shadow-xs rounded-xl flex items-center justify-between hover:border-primary/40 transition-colors">
+                    <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Total Beban Gaji</span>
+                        <div className="text-xl font-bold font-mono tabular-nums text-text-primary mt-0.5">
+                            {formatRp(payrollSummaryMetrics.totalNetPay)}
+                        </div>
+                        <span className="text-[11px] text-text-secondary mt-0.5 block">
+                            {filteredSlips.length} slip pada periode ini
+                        </span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 border border-teal-200/60 flex items-center justify-center shrink-0">
+                        <DollarSign size={20} />
+                    </div>
+                </Card>
+
+                <Card className="!p-4 border border-border-light bg-bg-white shadow-xs rounded-xl flex items-center justify-between hover:border-emerald-300 transition-colors">
+                    <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Sudah Diterbitkan (Issued)</span>
+                        <div className="text-xl font-bold font-mono tabular-nums text-emerald-600 mt-0.5">
+                            {formatRp(payrollSummaryMetrics.totalPaid)}
+                        </div>
+                        <span className="text-[11px] text-emerald-700/80 mt-0.5 block">
+                            {payrollSummaryMetrics.paidCount} slip siap transfer
+                        </span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200/60 flex items-center justify-center shrink-0">
+                        <CheckCircle2 size={20} />
+                    </div>
+                </Card>
+
+                <Card className="!p-4 border border-border-light bg-bg-white shadow-xs rounded-xl flex items-center justify-between hover:border-amber-300 transition-colors">
+                    <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Menunggu Otorisasi</span>
+                        <div className="text-xl font-bold font-mono tabular-nums text-amber-600 mt-0.5">
+                            {payrollSummaryMetrics.draftCount} <span className="text-xs font-semibold text-text-muted">Draft</span>
+                        </div>
+                        <span className="text-[11px] text-text-secondary mt-0.5 block">
+                            {payrollSummaryMetrics.authorizedCount} slip terotorisasi
+                        </span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200/60 flex items-center justify-center shrink-0">
+                        <Shield size={20} />
+                    </div>
+                </Card>
+
+                <Card className="!p-4 border border-border-light bg-bg-white shadow-xs rounded-xl flex items-center justify-between hover:border-indigo-300 transition-colors">
+                    <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Total Jam Lembur</span>
+                        <div className="text-xl font-bold font-mono tabular-nums text-indigo-600 mt-0.5">
+                            {payrollSummaryMetrics.totalOvertimeHours.toFixed(1)} <span className="text-xs font-semibold text-text-muted">Jam</span>
+                        </div>
+                        <span className="text-[11px] text-text-secondary mt-0.5 block">
+                            Akumulasi lembur kerja
+                        </span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200/60 flex items-center justify-center shrink-0">
+                        <Clock size={20} />
+                    </div>
+                </Card>
             </div>
 
             {/* Action Bar — Date Range Filter & Project Filter & Category Tabs */}
