@@ -53,23 +53,20 @@ import {
   verifyUserManually, 
   resetUserPassword,
   deleteUser,
-  exportUsersExcel,
-  exportUsersCsv,
-  downloadImportTemplate,
-  importUsers,
-  bulkCreateUsers,
-  getApiKeys,
-  createApiKey,
-  updateApiKey,
-  deleteApiKey
+  bulkCreateUsers
 } from '../api/api';
 import { User, ApiKey, EmploymentType } from '../types';
 import { Card, AriaLiveRegion } from '../components/shared';
 import { useDataGridKeyboard } from '../hooks/useDataGridKeyboard';
 import { PhotoView } from 'react-photo-view';
 import { getImageUrl } from '../utils/image';
-import { LiveDocumentViewer, ViewerDocument } from '../components/users/LiveDocumentViewer';
-import { UserPortfolioModal } from '../components/users/UserPortfolioModal';
+import { 
+  LiveDocumentViewer, 
+  ViewerDocument, 
+  UserPortfolioModal, 
+  ApiKeyManagementModal, 
+  UserImportExportBar 
+} from '../components/users';
 
 const ROLE_OPTIONS = [
   { value: 'worker', label: 'Worker' },
@@ -106,31 +103,6 @@ const EMPLOYMENT_TYPE_OPTIONS: { value: EmploymentType; label: string; bg: strin
   { value: 'magang', label: 'Magang (Internship)', bg: 'bg-purple-500/10', text: 'text-purple-700', border: 'border-purple-500/30' },
 ];
 
-const EXPORTABLE_COLUMNS = [
-  { key: 'no', label: 'Nomor (No)' },
-  { key: 'fullName', label: 'Nama Lengkap (Full Name)' },
-  { key: 'username', label: 'Username' },
-  { key: 'email', label: 'Email' },
-  { key: 'role', label: 'Role / Peran' },
-  { key: 'position', label: 'Jabatan (Position)' },
-  { key: 'employmentType', label: 'Status Kerja (Employment Type)' },
-  { key: 'bpjsTk', label: 'BPJS Ketenagakerjaan (TK)' },
-  { key: 'bpjsKesehatan', label: 'BPJS Kesehatan' },
-  { key: 'latestEducation', label: 'Pendidikan Terakhir (Education)' },
-  { key: 'competencies', label: 'Sertifikasi / Kompetensi (Certificates)' },
-  { key: 'contractStartDate', label: 'Mulai Kontrak (Contract Start)' },
-  { key: 'contractEndDate', label: 'Akhir Kontrak (Contract End)' },
-  { key: 'phone', label: 'Nomor Telepon (Phone)' },
-  { key: 'address', label: 'Alamat (Address)' },
-  { key: 'emergencyContactName', label: 'Kontak Darurat - Nama' },
-  { key: 'emergencyContactPhone', label: 'Kontak Darurat - No HP' },
-  { key: 'emergencyContactRelationship', label: 'Kontak Darurat - Hubungan' },
-  { key: 'bankAccount', label: 'Rekening Bank (Bank Account)' },
-  { key: 'bankPlatform', label: 'Nama Bank (Bank Platform)' },
-  { key: 'accountName', label: 'Nama Pemilik Rekening' },
-  { key: 'isVerified', label: 'Status Verifikasi (Verified)' },
-  { key: 'createdAt', label: 'Tanggal Dibuat (Created At)' },
-];
 
 type TableDensity = 'compact' | 'normal' | 'comfortable';
 
@@ -211,20 +183,13 @@ export default function Users() {
   const [viewerUserName, setViewerUserName] = useState('');
 
   // API Keys state
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [isApiKeysOpen, setIsApiKeysOpen] = useState(false);
-  const [isApiKeysLoading, setIsApiKeysLoading] = useState(false);
-  const [newKeyName, setNewKeyName] = useState('');
-  const [isCreateKeyModalOpen, setIsCreateKeyModalOpen] = useState(false);
-  const [createdKeyData, setCreatedKeyData] = useState<ApiKey | null>(null);
-  const [hasCopiedKey, setHasCopiedKey] = useState(false);
+  const [apiKeyCount, setApiKeyCount] = useState<number | null>(null);
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isEditRoleModalOpen, setIsEditRoleModalOpen] = useState(false);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
@@ -297,20 +262,6 @@ export default function Users() {
   // Edit Role State
   const [editRole, setEditRole] = useState('');
 
-  // Export State
-  const [selectedColumns, setSelectedColumns] = useState<string[]>(EXPORTABLE_COLUMNS.map(c => c.key));
-  const [includeHeaders, setIncludeHeaders] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
-
-  // Import State
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{
-    msg?: string;
-    createdCount?: number;
-    failedCount?: number;
-    errors?: Array<{ row?: number; error?: string }>;
-  } | null>(null);
 
   // Quick Add (Bulk) State
   const [bulkRows, setBulkRows] = useState<Array<{
@@ -364,21 +315,8 @@ export default function Users() {
     }
   };
 
-  const fetchApiKeys = async () => {
-    try {
-      setIsApiKeysLoading(true);
-      const data = await getApiKeys();
-      setApiKeys(data);
-    } catch (error) {
-      console.error('Failed to load API keys', error);
-    } finally {
-      setIsApiKeysLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchUsers();
-    fetchApiKeys();
   }, []);
 
   // KPI Summary Statistics
@@ -827,57 +765,6 @@ export default function Users() {
   };
 
   // Export handlers
-  const handleExport = async (format: 'excel' | 'csv') => {
-    try {
-      setIsExporting(true);
-      if (format === 'excel') {
-        await exportUsersExcel(selectedColumns, includeHeaders);
-      } else {
-        await exportUsersCsv(selectedColumns, includeHeaders);
-      }
-      setIsExportModalOpen(false);
-    } catch (error) {
-      console.error('Export error:', error);
-      alert('Failed to export data');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const toggleColumnSelection = (key: string) => {
-    if (selectedColumns.includes(key)) {
-      if (selectedColumns.length > 1) {
-        setSelectedColumns(selectedColumns.filter(k => k !== key));
-      }
-    } else {
-      setSelectedColumns([...selectedColumns, key]);
-    }
-  };
-
-  // Import handler
-  const handleImportSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!importFile) return;
-    try {
-      setIsImporting(true);
-      setImportResult(null);
-      const res = await importUsers(importFile);
-      setImportResult(res);
-      fetchUsers();
-    } catch (error: unknown) {
-      if (error instanceof AxiosError) {
-        setImportResult({
-          msg: error.response?.data?.msg || 'Gagal mengimpor file',
-          errors: error.response?.data?.errors || [],
-          failedCount: error.response?.data?.errors?.length || 1,
-        });
-      } else {
-        alert('Unexpected import error');
-      }
-    } finally {
-      setIsImporting(false);
-    }
-  };
 
   // Quick Add (Bulk) functions
   const addBulkRow = () => {
@@ -975,52 +862,6 @@ export default function Users() {
     }
   };
 
-  // API Key handlers
-  const handleCreateApiKey = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newKeyName.trim()) return;
-    try {
-      const res = await createApiKey(newKeyName.trim());
-      setCreatedKeyData(res);
-      setNewKeyName('');
-      setIsCreateKeyModalOpen(false);
-      fetchApiKeys();
-    } catch (error: unknown) {
-      if (error instanceof AxiosError) {
-        alert(error.response?.data?.msg || 'Failed to create API key');
-      } else {
-        alert('An unexpected error occurred');
-      }
-    }
-  };
-
-  const handleToggleKeyActive = async (key: ApiKey) => {
-    try {
-      await updateApiKey(key._id, { isActive: !key.isActive });
-      fetchApiKeys();
-    } catch (error) {
-      console.error('Toggle key error:', error);
-      alert('Failed to update API key');
-    }
-  };
-
-  const handleDeleteApiKey = async (id: string) => {
-    if (window.confirm('Delete this API Key? External applications using it will lose access immediately.')) {
-      try {
-        await deleteApiKey(id);
-        fetchApiKeys();
-      } catch (error) {
-        console.error('Delete key error:', error);
-        alert('Failed to delete API key');
-      }
-    }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setHasCopiedKey(true);
-    setTimeout(() => setHasCopiedKey(false), 2500);
-  };
 
   if (isLoading) {
     return (
@@ -1077,29 +918,8 @@ export default function Users() {
             <span>+ Pekerja Baru</span>
           </button>
 
-          {/* Export Button */}
-          <button 
-            className="flex items-center justify-center gap-1.5 bg-bg-secondary hover:bg-border-light text-text-primary border border-border-light py-2 px-3 rounded-lg text-xs font-semibold cursor-pointer transition-all active:scale-95"
-            onClick={() => setIsExportModalOpen(true)}
-            title="Ekspor ke Excel atau CSV"
-          >
-            <Download size={14} strokeWidth={2} />
-            <span>Ekspor</span>
-          </button>
-
-          {/* Import Button */}
-          <button 
-            className="flex items-center justify-center gap-1.5 bg-bg-secondary hover:bg-border-light text-text-primary border border-border-light py-2 px-3 rounded-lg text-xs font-semibold cursor-pointer transition-all active:scale-95"
-            onClick={() => {
-              setImportResult(null);
-              setImportFile(null);
-              setIsImportModalOpen(true);
-            }}
-            title="Impor dari file Excel atau CSV"
-          >
-            <Upload size={14} strokeWidth={2} />
-            <span>Impor</span>
-          </button>
+          {/* Export & Import Tools */}
+          <UserImportExportBar onImportSuccess={fetchUsers} />
 
           {/* External API Access Shortcut */}
           <button 
@@ -1113,9 +933,11 @@ export default function Users() {
           >
             <Key size={14} strokeWidth={2} />
             <span>API Keys</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/15 text-current font-bold font-mono">
-              {apiKeys.length}
-            </span>
+            {apiKeyCount !== null && (
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/15 text-current font-bold font-mono">
+                {apiKeyCount}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -2361,144 +2183,13 @@ export default function Users() {
       )}
 
       {/* ========================================== */}
-      {/* API KEY MANAGEMENT SECTION (COLLAPSIBLE)  */}
+      {/* API KEY MANAGEMENT MODAL                   */}
       {/* ========================================== */}
-      <Card className="border-2 border-border-light overflow-hidden">
-        <div 
-          className="p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex justify-between items-center cursor-pointer select-none"
-          onClick={() => setIsApiKeysOpen(!isApiKeysOpen)}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-amber-400 shrink-0">
-              <Key size={20} strokeWidth={2.5} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-black uppercase tracking-tight m-0">
-                  Manajemen API Key (Akses Aplikasi Eksternal)
-                </h3>
-                <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-full uppercase">
-                  External Access
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 font-medium m-0 mt-0.5">
-                Kunci otorisasi untuk membaca database pekerja dari sistem luar (endpoint: <code className="text-amber-300">/api/pekerja</code>)
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsCreateKeyModalOpen(true);
-              }}
-              className="flex items-center gap-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95"
-            >
-              <Plus size={15} strokeWidth={3} />
-              <span>Buat API Key</span>
-            </button>
-            {isApiKeysOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-          </div>
-        </div>
-
-        {isApiKeysOpen && (
-          <div className="p-6 bg-bg-white space-y-6">
-            {/* Documentation banner */}
-            <div className="bg-slate-50 border-2 border-slate-200 p-4 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <span className="text-xs font-black text-slate-900 uppercase flex items-center gap-1.5">
-                  <Code size={16} className="text-primary" />
-                  Format Pemanggilan API Eksternal
-                </span>
-                <p className="text-xs text-text-secondary mt-1 font-mono bg-white p-2 rounded border border-slate-200 inline-block">
-                  GET /api/pekerja &nbsp;|&nbsp; Header: <span className="font-bold text-primary">X-API-Key: mterp_xxxxxxxx...</span>
-                </p>
-              </div>
-              <div className="text-xs text-text-muted font-bold">
-                Mendukung query parameter: <code className="text-primary">page, limit, search, role, employmentType</code>
-              </div>
-            </div>
-
-            {/* API Keys List */}
-            {isApiKeysLoading ? (
-              <div className="text-center py-8">
-                <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin mx-auto"></div>
-              </div>
-            ) : apiKeys.length === 0 ? (
-              <div className="text-center py-10 bg-bg-secondary/30 rounded-xl border border-border-light">
-                <Key size={32} className="mx-auto text-text-muted mb-2 opacity-50" />
-                <h4 className="text-sm font-black text-text-primary mb-1">Belum Ada API Key</h4>
-                <p className="text-xs text-text-muted max-w-md mx-auto mb-4">
-                  Buat API key baru untuk menghubungkan software payroll, absensi lapangan, atau sistem pihak ketiga lainnya.
-                </p>
-                <button
-                  onClick={() => setIsCreateKeyModalOpen(true)}
-                  className="bg-primary text-white text-xs font-black px-4 py-2 rounded-xl uppercase tracking-wider"
-                >
-                  Buat Key Sekarang
-                </button>
-              </div>
-            ) : (
-              <div className="divide-y divide-border-light border-2 border-border-light rounded-xl overflow-hidden">
-                {apiKeys.map((key) => (
-                  <div key={key._id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:bg-slate-50 transition-colors">
-                    <div className="flex items-start gap-3">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                        key.isActive ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-slate-100 text-slate-400'
-                      }`}>
-                        <Key size={18} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-sm text-text-primary">{key.name}</span>
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.2 rounded-full border ${
-                            key.isActive 
-                              ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' 
-                              : 'bg-red-500/10 text-red-700 border-red-500/30'
-                          }`}>
-                            {key.isActive ? 'Aktif' : 'Non-aktif'}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-text-muted font-bold mt-0.5">
-                          <span>Prefix: <code className="font-mono text-slate-800 font-black">{key.keyPrefix}••••••••</code></span>
-                          <span>•</span>
-                          <span>Dibuat: {new Date(key.createdAt).toLocaleDateString('id-ID')}</span>
-                          {key.lastUsedAt && (
-                            <>
-                              <span>•</span>
-                              <span>Terakhir digunakan: {new Date(key.lastUsedAt).toLocaleString('id-ID')}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end sm:self-center">
-                      <button
-                        onClick={() => handleToggleKeyActive(key)}
-                        className={`text-xs font-black px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
-                          key.isActive 
-                            ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100' 
-                            : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                        }`}
-                      >
-                        {key.isActive ? 'Nonaktifkan' : 'Aktifkan'}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteApiKey(key._id)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center bg-white border border-red-200 text-red-600 hover:bg-red-50 cursor-pointer transition-all"
-                        title="Hapus Key"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </Card>
+      <ApiKeyManagementModal
+        isOpen={isApiKeysOpen}
+        onClose={() => setIsApiKeysOpen(false)}
+        onKeyCountChange={setApiKeyCount}
+      />
 
       {/* ========================================== */}
       {/* MODAL: SINGLE NEW USER                     */}
@@ -2941,241 +2632,7 @@ export default function Users() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================== */}
-      {/* MODAL: EXPORT CONFIGURATION                */}
-      {/* ========================================== */}
-      {isExportModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[1000] p-4 sm:p-0 animate-in fade-in duration-200" onClick={() => setIsExportModalOpen(false)}>
-          <div className="bg-bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-[560px] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b-2 border-border-light bg-bg-secondary flex justify-between items-center sticky top-0 z-10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                  <Download size={20} strokeWidth={2.5} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-text-primary m-0 tracking-tight uppercase">Ekspor Data Pekerja</h3>
-                  <span className="text-xs font-bold text-text-muted">Pilih kolom & opsi format judul tabel</span>
-                </div>
-              </div>
-              <button className="w-8 h-8 rounded-full bg-border border-none flex items-center justify-center text-text-muted hover:text-text-primary cursor-pointer" onClick={() => setIsExportModalOpen(false)}>
-                <X size={18} />
-              </button>
             </div>
-
-            <div className="p-6 space-y-5 overflow-y-auto">
-              {/* Header toggle */}
-              <div className="p-4 bg-slate-50 border-2 border-slate-200 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-black text-text-primary uppercase block">Sertakan Judul Kolom (Headers)</span>
-                  <span className="text-[11px] text-text-muted block">
-                    {includeHeaders 
-                      ? 'Baris pertama berisikan nama kolom' 
-                      : 'Baris judul disembunyikan (langsung baris data)'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIncludeHeaders(!includeHeaders)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                    includeHeaders ? 'bg-primary' : 'bg-slate-300'
-                  }`}
-                >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    includeHeaders ? 'translate-x-5' : 'translate-x-0'
-                  }`} />
-                </button>
-              </div>
-
-              {/* Column selection tools */}
-              <div>
-                <div className="flex justify-between items-center mb-2.5">
-                  <label className="text-[10px] font-black text-text-muted uppercase tracking-wider">
-                    Pilih Kolom ({selectedColumns.length} dipilih)
-                  </label>
-                  <div className="flex gap-2">
-                    <button 
-                      type="button" 
-                      onClick={() => setSelectedColumns(EXPORTABLE_COLUMNS.map(c => c.key))}
-                      className="text-[10px] font-black text-primary hover:underline uppercase"
-                    >
-                      Pilih Semua
-                    </button>
-                    <span className="text-slate-300">|</span>
-                    <button 
-                      type="button" 
-                      onClick={() => setSelectedColumns(['no', 'fullName', 'phone', 'role', 'emergencyContactName', 'emergencyContactPhone'])}
-                      className="text-[10px] font-black text-primary hover:underline uppercase"
-                    >
-                      Ringkas & Kontak
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto p-2 border border-border-light rounded-xl bg-slate-50/50">
-                  {EXPORTABLE_COLUMNS.map(col => {
-                    const isChecked = selectedColumns.includes(col.key);
-                    return (
-                      <label 
-                        key={col.key} 
-                        className={`flex items-center gap-2 p-2 rounded-lg text-xs font-bold cursor-pointer transition-all ${
-                          isChecked ? 'bg-white text-text-primary shadow-xs border border-primary/30' : 'text-text-muted hover:bg-white/60'
-                        }`}
-                      >
-                        <input 
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleColumnSelection(col.key)}
-                          className="w-4 h-4 rounded text-primary focus:ring-primary cursor-pointer"
-                        />
-                        <span className="truncate">{col.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <button
-                  type="button"
-                  disabled={isExporting}
-                  onClick={() => handleExport('excel')}
-                  className="flex items-center justify-center gap-2 py-3.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-emerald-800/20 active:scale-95 cursor-pointer disabled:opacity-50"
-                >
-                  <FileSpreadsheet size={16} />
-                  <span>Ekspor Excel (.xlsx)</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={isExporting}
-                  onClick={() => handleExport('csv')}
-                  className="flex items-center justify-center gap-2 py-3.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-slate-900/20 active:scale-95 cursor-pointer disabled:opacity-50"
-                >
-                  <FileText size={16} />
-                  <span>Ekspor CSV (.csv)</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================== */}
-      {/* MODAL: IMPORT SPREADSHEET (XLSX / CSV)     */}
-      {/* ========================================== */}
-      {isImportModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[1000] p-4 sm:p-0 animate-in fade-in duration-200" onClick={() => setIsImportModalOpen(false)}>
-          <div className="bg-bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-[580px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b-2 border-border-light bg-bg-secondary flex justify-between items-center sticky top-0 z-10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                  <Upload size={20} strokeWidth={2.5} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-text-primary m-0 tracking-tight uppercase">Impor Data Pekerja</h3>
-                  <span className="text-xs font-bold text-text-muted">Mendukung format .xlsx dan .csv</span>
-                </div>
-              </div>
-              <button className="w-8 h-8 rounded-full bg-border border-none flex items-center justify-center text-text-muted hover:text-text-primary cursor-pointer" onClick={() => setIsImportModalOpen(false)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleImportSubmit} className="p-6 space-y-5 overflow-y-auto">
-              {/* Step 1: Download Template */}
-              <div className="p-4 bg-sky-50 border-2 border-sky-200 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-black text-sky-900 uppercase block">1. Unduh Template Resmi</span>
-                  <span className="text-[11px] text-sky-700 block mt-0.5">
-                    Gunakan template standar agar nama kolom dan format kontak darurat cocok otomatis.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => downloadImportTemplate()}
-                  className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider shrink-0"
-                >
-                  <Download size={14} />
-                  <span>Unduh Template</span>
-                </button>
-              </div>
-
-              {/* Step 2: File Picker */}
-              <div>
-                <label className="block text-[10px] font-black text-text-muted uppercase tracking-wider mb-2">
-                  2. Pilih File Excel / CSV
-                </label>
-                <div className="border-2 border-dashed border-border-light hover:border-primary rounded-2xl p-6 text-center bg-slate-50/50 transition-colors">
-                  <input 
-                    type="file" 
-                    accept=".xlsx,.xls,.csv"
-                    required
-                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                    className="hidden" 
-                    id="worker-import-file"
-                  />
-                  <label htmlFor="worker-import-file" className="cursor-pointer flex flex-col items-center">
-                    <FileSpreadsheet size={36} className="text-primary mb-2" />
-                    <span className="text-sm font-black text-text-primary">
-                      {importFile ? importFile.name : 'Klik untuk memilih file spreadsheet'}
-                    </span>
-                    <span className="text-xs text-text-muted mt-1 font-medium">
-                      {importFile ? `${(importFile.size / 1024).toFixed(1)} KB` : 'Format .xlsx atau .csv (Maks 10MB)'}
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Import Results Feedback */}
-              {importResult && (
-                <div className={`p-4 rounded-xl border-2 ${
-                  (importResult.failedCount || 0) > 0 ? 'bg-amber-50 border-amber-300' : 'bg-emerald-50 border-emerald-300'
-                }`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    {(importResult.failedCount || 0) > 0 ? (
-                      <AlertCircle size={18} className="text-amber-700 shrink-0" />
-                    ) : (
-                      <CheckCircle size={18} className="text-emerald-700 shrink-0" />
-                    )}
-                    <span className="text-xs font-black uppercase tracking-wider text-text-primary">
-                      {importResult.msg}
-                    </span>
-                  </div>
-
-                  {importResult.errors && importResult.errors.length > 0 && (
-                    <div className="mt-2 text-xs text-red-700 font-medium space-y-1 max-h-32 overflow-y-auto bg-white/60 p-2 rounded">
-                      {importResult.errors.map((err, i) => (
-                        <div key={i}>
-                          {err.row ? `Baris ${err.row}: ` : ''}{err.error}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-2">
-                <button 
-                  type="button" 
-                  className="flex-1 py-3.5 bg-bg-white border-2 border-border-light rounded-xl text-xs font-black text-text-secondary cursor-pointer hover:bg-bg-secondary uppercase tracking-wider" 
-                  onClick={() => setIsImportModalOpen(false)}
-                >
-                  Tutup
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={isImporting || !importFile}
-                  className="flex-[2] py-3.5 bg-primary text-white border-none rounded-xl text-xs font-black cursor-pointer hover:bg-primary/90 uppercase tracking-wider shadow-lg shadow-primary/20 disabled:opacity-50"
-                >
-                  {isImporting ? 'Memproses Impor...' : 'Mulai Impor Data'}
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
 
@@ -3729,118 +3186,7 @@ export default function Users() {
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* MODAL: CREATE API KEY                      */}
-      {/* ========================================== */}
-      {isCreateKeyModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[1000] p-4 sm:p-0 animate-in fade-in duration-200" onClick={() => setIsCreateKeyModalOpen(false)}>
-          <div className="bg-bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-[460px] shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b-2 border-border-light bg-slate-900 text-white flex justify-between items-center sticky top-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 font-black">
-                  <Key size={20} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black uppercase tracking-tight m-0">Buat API Key Baru</h3>
-                  <span className="text-xs text-slate-300">Akses eksternal endpoint /api/pekerja</span>
-                </div>
-              </div>
-              <button className="w-8 h-8 rounded-full bg-white/10 border-none flex items-center justify-center text-white cursor-pointer" onClick={() => setIsCreateKeyModalOpen(false)}>
-                <X size={18} />
-              </button>
-            </div>
 
-            <form onSubmit={handleCreateApiKey} className="p-6 space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-text-muted uppercase mb-1.5">
-                  Nama Identitas Kunci (Label) *
-                </label>
-                <input 
-                  type="text" 
-                  required
-                  placeholder="e.g. Software Payroll Pusat, App Mobile Mandor"
-                  value={newKeyName}
-                  onChange={(e) => setNewKeyName(e.target.value)}
-                  className="w-full px-3.5 py-3 border-2 border-border-light rounded-xl font-bold text-text-primary bg-bg-white focus:border-primary outline-none text-sm"
-                />
-              </div>
-
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 font-medium">
-                Kunci mentah hanya akan ditampilkan <strong>sekali</strong> setelah dibuat. Simpan di tempat yang aman.
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button 
-                  type="button" 
-                  className="flex-1 py-3.5 bg-bg-white border-2 border-border-light rounded-xl text-xs font-black text-text-secondary cursor-pointer hover:bg-bg-secondary uppercase tracking-wider" 
-                  onClick={() => setIsCreateKeyModalOpen(false)}
-                >
-                  Batal
-                </button>
-                <button 
-                  type="submit" 
-                  className="flex-[2] py-3.5 bg-primary text-white border-none rounded-xl text-xs font-black cursor-pointer hover:bg-primary/90 uppercase tracking-wider shadow-lg shadow-primary/20"
-                >
-                  Generate Kunci
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================== */}
-      {/* MODAL: SHOW CREATED API KEY (ONCE)         */}
-      {/* ========================================== */}
-      {createdKeyData && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[1100] p-4 animate-in fade-in duration-200">
-          <div className="bg-bg-white rounded-3xl w-full max-w-[500px] shadow-2xl overflow-hidden flex flex-col p-6 space-y-4 border-2 border-amber-400">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                <Key size={24} />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-text-primary m-0 uppercase">API Key Berhasil Dibuat</h3>
-                <span className="text-xs font-bold text-text-muted">{createdKeyData.name}</span>
-              </div>
-            </div>
-
-            <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl text-xs text-red-800 font-bold">
-              PENTING: Salin kunci ini sekarang! Kunci ini tidak dapat ditampilkan kembali setelah Anda menutup jendela ini.
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-black text-text-muted uppercase mb-1.5">
-                Kunci API (Header: X-API-Key)
-              </label>
-              <div className="flex items-center gap-2">
-                <input 
-                  type="text" 
-                  readOnly 
-                  value={createdKeyData.rawKey || ''}
-                  className="flex-1 p-3 bg-slate-100 border-2 border-slate-300 rounded-xl font-mono text-xs font-black select-all outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(createdKeyData.rawKey || '')}
-                  className="flex items-center gap-1.5 bg-primary text-white px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-primary/90 active:scale-95 cursor-pointer shrink-0"
-                >
-                  {hasCopiedKey ? <Check size={16} /> : <Copy size={16} />}
-                  <span>{hasCopiedKey ? 'Tersalin' : 'Salin'}</span>
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setCreatedKeyData(null)}
-              className="w-full py-3.5 bg-slate-900 text-white font-black text-xs uppercase tracking-wider rounded-xl hover:bg-slate-800 transition-all cursor-pointer mt-2"
-            >
-              Saya Sudah Menyimpan Kunci Ini
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ========================================== */}
       {/* MODAL: USER PORTFOLIO & QUALIFICATIONS     */}
