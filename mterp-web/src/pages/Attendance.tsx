@@ -12,31 +12,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { PhotoView } from 'react-photo-view';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
 import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttendanceBanner';
-import {
-  queueOfflineAttendance,
-  fileToBase64,
-  cacheAttendanceProjects,
-  getCachedAttendanceProjects,
-  cacheTodayAttendance,
-  getCachedTodayAttendance,
-} from '../services/attendanceSyncEngine';
-
-interface AttendanceRecord {
-  _id: string;
-  date: string;
-  checkIn?: { time: string; photo?: string };
-  checkOut?: { time: string; photo?: string };
-  wageType: string;
-  status: string;
-  projectId?: { _id: string; nama: string };
-  dailyRate?: number;
-  paymentStatus?: string;
-  isOffline?: boolean;
-}
+import { useAttendanceOfflineSync } from '../hooks/useAttendanceOfflineSync';
+import { AttendanceRecord } from '../types';
 
 export default function Attendance() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const {
+    loadProjectsWithFallback,
+    loadTodayWithFallback,
+    queueAttendance: queueOfflineAttendance,
+    cacheToday: cacheTodayAttendance,
+    fileToBase64,
+  } = useAttendanceOfflineSync();
   const navigate = useNavigate();
 
   // Core state
@@ -86,17 +74,11 @@ export default function Attendance() {
 
   const fetchProjects = async () => {
     try {
-      const response = await api.get('/attendance/projects');
-      setProjects(response.data);
-      cacheAttendanceProjects(response.data);
+      const data = await loadProjectsWithFallback(() => api.get('/attendance/projects').then(r => r.data));
+      setProjects(data || []);
     } catch (err) {
-      console.warn('Failed to fetch projects, checking offline cache', err);
-      const cached = await getCachedAttendanceProjects();
-      if (cached.length > 0) {
-        setProjects(cached);
-      } else {
-        setProjects([]);
-      }
+      console.warn('Failed to fetch projects', err);
+      setProjects([]);
     } finally {
       setLoadingProjects(false);
     }
@@ -104,19 +86,10 @@ export default function Attendance() {
 
   const fetchTodayAttendance = async () => {
     try {
-      const response = await api.get('/attendance/today');
-      setTodayRecord(response.data);
-      if (user?._id) {
-        cacheTodayAttendance(user._id, response.data);
-      }
+      const data = await loadTodayWithFallback(user?._id || '', () => api.get('/attendance/today').then(r => r.data));
+      setTodayRecord(data);
     } catch (err) {
-      console.warn('Failed to fetch today attendance, checking offline cache', err);
-      if (user?._id) {
-        const cached = await getCachedTodayAttendance(user._id);
-        if (cached) {
-          setTodayRecord(cached);
-        }
-      }
+      console.warn('Failed to fetch today attendance', err);
     } finally {
       setFetchingToday(false);
     }

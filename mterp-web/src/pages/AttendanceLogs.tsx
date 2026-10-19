@@ -27,68 +27,8 @@ import {
   setStoredManagementCutoffDay,
   DEFAULT_MANAGEMENT_CUTOFF_DAY,
 } from '../utils/date';
-
-// ─── Interfaces ─────────────────────────────────────────────────────────────
-
-interface UserOption {
-  _id: string;
-  fullName: string;
-  role: string;
-  position?: string;
-  dailyRate?: number;
-}
-
-interface ProjectOption {
-  _id: string;
-  nama: string;
-  lokasi?: string;
-  payrollConfig?: {
-    cutoffStartDay?: number;
-    cutoffEndDay?: number;
-  };
-}
-
-interface AttendanceRecord {
-  _id: string;
-  userId: { _id: string; fullName: string; role: string; profileImage?: string; dailyRate?: number };
-  date: string;
-  checkIn?: {
-    time: string;
-    photo?: string;
-    isGroupPhoto?: boolean;
-    location?: { lat: number; lng: number };
-    distanceToOffice?: number;
-    geofenceStatus?: 'in_radius' | 'out_of_range' | 'exempt_wfh' | 'exempt_dinas' | string;
-  };
-  checkOut?: {
-    time: string;
-    photo?: string;
-    location?: { lat: number; lng: number };
-    distanceToOffice?: number;
-    geofenceStatus?: 'in_radius' | 'out_of_range' | 'exempt_wfh' | 'exempt_dinas' | string;
-  };
-  wageType: string;
-  wageMultiplier: number;
-  dailyRate: number;
-  hourlyRate: number;
-  overtimePay: number;
-  paymentStatus: 'Unpaid' | 'Paid';
-  paidAt?: string;
-  projectId?: { _id: string; nama: string; lokasi?: string };
-  overtimeProjectId?: { _id: string; nama: string; lokasi?: string } | string;
-  sessionId?: { _id: string; photoUrl?: string; notes?: string; createdAt?: string };
-  workType?: string;
-  officeLocation?: string;
-  workSummary?: string;
-  category?: string;
-  status: string;
-  notes?: string;
-  overtimeHours?: number;
-  permit?: { reason: string; evidence: string; status: string };
-  invalidatedBy?: { fullName: string };
-  invalidatedAt?: string;
-  invalidatedReason?: string;
-}
+import { getImageUrl } from '../utils/image';
+import { AttendanceRecord, ProjectOption, UserOption } from '../types';
 
 interface PhotoEvidenceItem {
   type: 'checkIn' | 'checkOut' | 'session' | 'permit';
@@ -107,20 +47,6 @@ interface RecapSummary {
   wageMultiplierTotal: number;
   totalPayment: number;
 }
-
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
-
-const getImageUrl = (path: string | undefined): string => {
-  if (!path) return '';
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  const normalizedPath = path.replace(/\\/g, '/');
-  const uploadsIndex = normalizedPath.indexOf('uploads/');
-  if (uploadsIndex !== -1) {
-    return `${API_BASE}/${normalizedPath.substring(uploadsIndex)}`;
-  }
-  const clean = normalizedPath.startsWith('/') ? normalizedPath.slice(1) : normalizedPath;
-  return `${API_BASE}/${clean}`;
-};
 
 const getOtProjId = (rec?: AttendanceRecord | null): string => {
   if (!rec || !rec.overtimeProjectId) return '';
@@ -623,7 +549,7 @@ export default function AttendanceLogs() {
       ? record.overtimeHours
       : ((record.overtimePay && hourly) ? record.overtimePay / hourly : 0);
     setNewOvertimeHours(hours);
-    setNewWageType(record.wageType.startsWith('overtime') ? 'overtime' : 'daily');
+    setNewWageType(record.wageType?.startsWith('overtime') ? 'overtime' : 'daily');
     setNewDailyRate(record.dailyRate || 0);
     setNewOvertimePay(record.overtimePay || 0);
     setNewProjectId(record.projectId?._id || '');
@@ -1690,9 +1616,9 @@ export default function AttendanceLogs() {
                               }`}>
                                 {record.paymentStatus === 'Paid' ? 'PAID' : 'UNPAID'}
                               </span>
-                              {record.overtimePay > 0 && (
+                              {(record.overtimePay ?? 0) > 0 && (
                                 <span className="text-[10px] text-orange-600 font-bold">
-                                  +{formatRp(record.overtimePay)}
+                                  +{formatRp(record.overtimePay!)}
                                 </span>
                               )}
                             </div>

@@ -15,20 +15,10 @@ import { Card, Button, Alert, Input, CostInput } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import { useImageCompression } from '../utils/useImageCompression';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
+import { getImageUrl } from '../utils/image';
+import { AttendanceRecord } from '../types';
 import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttendanceBanner';
-import {
-  queueOfflineAttendance,
-  fileToBase64,
-  cacheAttendanceProjects,
-  getCachedAttendanceProjects,
-  cacheProjectWorkers,
-  getCachedProjectWorkers,
-  cacheTodayAttendance,
-  getCachedTodayAttendance,
-  cacheTodaySessions,
-  getCachedTodaySessions,
-  addOfflineWorker,
-} from '../services/attendanceSyncEngine';
+import { useAttendanceOfflineSync } from '../hooks/useAttendanceOfflineSync';
 import { attendanceOfflineDb } from '../services/attendanceOfflineDb';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -69,31 +59,6 @@ interface ActiveSession {
   isOffline?: boolean;
 }
 
-interface AttendanceRecord {
-  _id: string;
-  date: string;
-  checkIn?: { time: string; photo?: string };
-  checkOut?: { time: string; photo?: string };
-  wageType?: string;
-  status?: string;
-  projectId?: { _id: string; nama: string } | string;
-  dailyRate?: number;
-  paymentStatus?: string;
-  isOffline?: boolean;
-}
-
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
-
-const getImageUrl = (path: string | undefined): string => {
-  if (!path) return '';
-  const normalizedPath = path.replace(/\\/g, '/');
-  const uploadsIndex = normalizedPath.indexOf('uploads/');
-  if (uploadsIndex !== -1) {
-    return `${API_BASE}/${normalizedPath.substring(uploadsIndex)}`;
-  }
-  return `${API_BASE}/${normalizedPath}`;
-};
-
 const STATUS_STYLES: Record<string, { color: string; bg: string; label: string }> = {
   Present: { color: '#059669', bg: '#D1FAE5', label: 'Hadir' },
   Late: { color: '#D97706', bg: '#FEF3C7', label: 'Terlambat' },
@@ -108,6 +73,23 @@ export default function GroupAttendance() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { compress } = useImageCompression();
+  const {
+    loadProjectsWithFallback,
+    loadTodayWithFallback,
+    loadWorkersWithFallback,
+    loadSessionsWithFallback,
+    queueAttendance: queueOfflineAttendance,
+    cacheToday: cacheTodayAttendance,
+    cacheProjects: cacheAttendanceProjects,
+    cacheWorkers: cacheProjectWorkers,
+    cacheSessions: cacheTodaySessions,
+    addWorker: addOfflineWorker,
+    getCachedWorkers: getCachedProjectWorkers,
+    getCachedProjects: getCachedAttendanceProjects,
+    getCachedSessions: getCachedTodaySessions,
+    getCachedToday: getCachedTodayAttendance,
+    fileToBase64,
+  } = useAttendanceOfflineSync();
 
   // Guard: redirect non-supervisors
   const isSupervisor = user?.role && [

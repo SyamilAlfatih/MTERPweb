@@ -45,33 +45,11 @@ import { Card, Button, Input, Badge, Alert } from '../components/shared';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
 import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttendanceBanner';
 import { useImageCompression } from '../utils/useImageCompression';
-import {
-  queueOfflineAttendance,
-  fileToBase64,
-  cacheTodayAttendance,
-  getCachedTodayAttendance,
-  cacheAttendanceProjects,
-  getCachedAttendanceProjects,
-} from '../services/attendanceSyncEngine';
+import { AttendanceRecord } from '../types';
+import { useAttendanceOfflineSync } from '../hooks/useAttendanceOfflineSync';
 
 type WorkType = 'WFO' | 'WFH' | 'Dinas';
 type ActiveTab = 'presence' | 'team';
-
-interface AttendanceRecord {
-  _id: string;
-  date: string;
-  checkIn?: { time: string; photo?: string; location?: { lat: number; lng: number }; distanceToOffice?: number; geofenceStatus?: string };
-  checkOut?: { time: string; photo?: string; location?: { lat: number; lng: number }; distanceToOffice?: number; geofenceStatus?: string };
-  workType?: WorkType | string;
-  officeLocation?: string;
-  workSummary?: string;
-  notes?: string;
-  status: string;
-  category?: string;
-  projectId?: { _id: string; nama: string; lokasi?: string };
-  permit?: { reason: string; evidence?: string; permitType?: string; status: string };
-  isOffline?: boolean;
-}
 
 interface OfficeStaffMember {
   user: {
@@ -193,6 +171,13 @@ export default function OfficeAttendance() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { compress } = useImageCompression();
+  const {
+    loadProjectsWithFallback,
+    loadTodayWithFallback,
+    queueAttendance: queueOfflineAttendance,
+    cacheToday: cacheTodayAttendance,
+    fileToBase64,
+  } = useAttendanceOfflineSync();
 
   // Navigation tab
   const [activeTab, setActiveTab] = useState<ActiveTab>('presence');
@@ -438,25 +423,21 @@ export default function OfficeAttendance() {
   const loadTodayAttendance = async () => {
     setFetchingToday(true);
     try {
-      const res = await api.get('/attendance/today');
-      if (res.data && res.data.officeLocation) {
-        res.data.officeLocation = cleanOfficeLocation(res.data.officeLocation);
-      }
-      setTodayRecord(res.data);
-      if (user?._id && res.data) {
-        cacheTodayAttendance(user._id, res.data);
+      const data = await loadTodayWithFallback(user?._id || '', async () => {
+        const res = await api.get('/attendance/today');
+        if (res.data && res.data.officeLocation) {
+          res.data.officeLocation = cleanOfficeLocation(res.data.officeLocation);
+        }
+        return res.data;
+      });
+      if (data) {
+        if (data.officeLocation) {
+          data.officeLocation = cleanOfficeLocation(data.officeLocation);
+        }
+        setTodayRecord(data);
       }
     } catch (err) {
-      console.warn('Fetch today attendance failed, fallback to cache', err);
-      if (user?._id) {
-        const cached = await getCachedTodayAttendance(user._id);
-        if (cached) {
-          if (cached.officeLocation) {
-            cached.officeLocation = cleanOfficeLocation(cached.officeLocation);
-          }
-          setTodayRecord(cached);
-        }
-      }
+      console.warn('Fetch today attendance failed', err);
     } finally {
       setFetchingToday(false);
     }
@@ -464,12 +445,10 @@ export default function OfficeAttendance() {
 
   const loadProjects = async () => {
     try {
-      const res = await api.get('/attendance/projects');
-      setProjects(res.data || []);
-      cacheAttendanceProjects(res.data);
+      const data = await loadProjectsWithFallback(() => api.get('/attendance/projects').then(r => r.data));
+      setProjects(data || []);
     } catch {
-      const cached = await getCachedAttendanceProjects();
-      setProjects(cached || []);
+      setProjects([]);
     }
   };
 
