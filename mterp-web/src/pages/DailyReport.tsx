@@ -10,22 +10,8 @@ import api from '../api/api';
 import { Card, Button, Input, Alert, Badge, CostInput } from '../components/shared';
 import { PhotoView } from 'react-photo-view';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
-
-interface ProjectOption {
-  _id: string;
-  nama: string;
-  lokasi: string;
-  progress: number;
-  startDate?: string;
-  endDate?: string;
-  workItems?: unknown[];
-  supplies?: unknown[];
-}
-
-interface ProjectData extends ProjectOption {
-  workItems?: WorkItem[];
-  supplies?: { cost?: number; actualCost?: number; startDate?: string; endDate?: string; deadline?: string }[];
-}
+import { monthRange, dayRange, costInMonth, costInDay } from '../utils/projectCostEngine';
+import { ProjectData, ProjectOption } from '../types';
 
 interface WorkItem {
   _id: string;
@@ -77,53 +63,6 @@ interface SupplyUpdate {
 const STATUS_PROGRESS: Record<string, number> = { 'Pending': 0, 'Ordered': 50, 'Delivered': 100 };
 
 /* ─── S-Curve helpers (mirrored from ProjectDetail) ─── */
-
-function monthRange(start: Date, end: Date): Date[] {
-  const months: Date[] = [];
-  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
-  const last = new Date(end.getFullYear(), end.getMonth(), 1);
-  while (cur <= last) {
-    months.push(new Date(cur));
-    cur.setMonth(cur.getMonth() + 1);
-  }
-  return months;
-}
-
-function dayRange(start: Date, end: Date): Date[] {
-  const days: Date[] = [];
-  const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-  while (cur <= last) {
-    days.push(new Date(cur));
-    cur.setDate(cur.getDate() + 1);
-  }
-  return days;
-}
-
-function costInMonth(
-  itemStart: Date, itemEnd: Date, totalCost: number, month: Date
-): number {
-  const iStart = new Date(itemStart.getFullYear(), itemStart.getMonth(), 1);
-  const iEnd = new Date(itemEnd.getFullYear(), itemEnd.getMonth(), 1);
-  const mStart = new Date(month.getFullYear(), month.getMonth(), 1);
-  if (mStart < iStart || mStart > iEnd) return 0;
-  let totalMonths = 0;
-  const tmp = new Date(iStart);
-  while (tmp <= iEnd) { totalMonths++; tmp.setMonth(tmp.getMonth() + 1); }
-  if (totalMonths === 0) totalMonths = 1;
-  return totalCost / totalMonths;
-}
-
-function costInDay(
-  itemStart: Date, itemEnd: Date, totalCost: number, day: Date
-): number {
-  const iStart = new Date(itemStart.getFullYear(), itemStart.getMonth(), itemStart.getDate());
-  const iEnd = new Date(itemEnd.getFullYear(), itemEnd.getMonth(), itemEnd.getDate());
-  const dDay = new Date(day.getFullYear(), day.getMonth(), day.getDate());
-  if (dDay < iStart || dDay > iEnd) return 0;
-  const totalDays = Math.max(1, Math.round((iEnd.getTime() - iStart.getTime()) / 86400000) + 1);
-  return totalCost / totalDays;
-}
 
 const fmtShort = (d: Date | string) => formatWIBDate(d, { month: 'short', year: '2-digit' });
 const fmtDay = (d: Date | string) => formatWIBDate(d, { month: 'short', day: 'numeric' });

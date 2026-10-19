@@ -9,21 +9,9 @@ import { addProjectSupply, updateProjectSupply, deleteProjectSupply } from '../a
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Input, EmptyState, LoadingOverlay } from '../components/shared';
-import { ProjectData } from '../types';
+import { ProjectData, ProjectSupply as Supply } from '../types';
 import { formatDate as formatWIBDate } from '../utils/date';
-
-interface Supply {
-  _id: string;
-  item: string;
-  qty: number;
-  unit: string;
-  cost: number;
-  actualCost: number;
-  status: 'Pending' | 'Ordered' | 'Delivered';
-  startDate?: string;
-  endDate?: string;
-  deliveryDate?: string;
-}
+import { formatRupiah } from '../utils/currency';
 
 const EMPTY_FORM = {
   item: '',
@@ -88,7 +76,7 @@ export default function ProjectMaterials() {
       cost: supply.cost?.toString() || '',
       startDate: supply.startDate ? new Date(supply.startDate).toISOString().split('T')[0] : '',
       endDate: supply.endDate ? new Date(supply.endDate).toISOString().split('T')[0] : '',
-      status: supply.status || 'Pending',
+      status: (supply.status as 'Pending' | 'Ordered' | 'Delivered') || 'Pending',
     });
     setShowModal(true);
   };
@@ -147,13 +135,6 @@ export default function ProjectMaterials() {
     }
   };
 
-  const formatRupiah = (num: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-    }).format(num);
-  };
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return null;
@@ -170,13 +151,13 @@ export default function ProjectMaterials() {
     s.item.toLowerCase().includes(search.toLowerCase())
   );
 
-  const StatusIcon = {
+  const StatusIcon: Record<string, any> = {
     'Pending': Clock,
     'Ordered': Truck,
     'Delivered': CheckCircle2
   };
 
-  const StatusColor = {
+  const StatusColor: Record<string, { color: string; bg: string }> = {
     'Pending': { color: '#D97706', bg: '#FEF3C7' },
     'Ordered': { color: '#2563EB', bg: '#DBEAFE' },
     'Delivered': { color: '#059669', bg: '#D1FAE5' }

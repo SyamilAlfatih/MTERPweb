@@ -1,0 +1,9 @@
+# Ignore documentation, AI skills, and one-off CLI migration scripts during architectural AST audits
+.agents/
+*.md
+mterp-backend/scratch/
+mterp-backend/src/scripts/
+mterp-backend/src/seed-slipgaji-clear.js
+dist/
+build/
+node_modules/

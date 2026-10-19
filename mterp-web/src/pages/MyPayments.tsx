@@ -11,18 +11,8 @@ import { Alert } from '../components/shared';
 import { useTranslation } from 'react-i18next';
 import { exportSlipToPdf } from '../utils/exportSlipPdf';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
-
-interface KasbonRecord {
-  _id: string;
-  amount: number;
-  reason: string;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'Paid';
-  approvedBy?: { fullName: string };
-  approvedAt?: string;
-  paidAt?: string;
-  rejectionReason?: string;
-  createdAt: string;
-}
+import { formatRupiah as formatRp } from '../utils/currency';
+import { KasbonRecord } from '../types';
 
 interface WageRecord {
   _id: string;
@@ -83,7 +73,6 @@ interface MySlip {
   createdAt: string;
 }
 
-const formatRp = (v: number) => `Rp ${new Intl.NumberFormat('id-ID').format(v || 0)}`;
 const fmtDate = (iso: string) => formatWIBDate(iso, { day: 'numeric', month: 'short' });
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 const fmtPeriod = (p: { startDate?: string; endDate?: string; month?: number; year?: number }) => {

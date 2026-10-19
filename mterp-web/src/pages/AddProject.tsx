@@ -40,7 +40,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { Card, Button, Input, Alert, Badge, CostInput } from '../components/shared';
-import { formatRupiahDots } from '../components/shared/CostInput';
+import { formatRupiah } from '../utils/currency';
 
 export interface WizardTaskItem {
   id: string;
@@ -381,9 +381,6 @@ export default function AddProject() {
     ? totalAggregatedCost
     : Number(projectData.totalBudget) || totalAggregatedCost;
 
-  const formatRupiah = (num: number) => {
-    return formatRupiahDots(num);
-  };
 
   const getWeight = (cost: number) => {
     if (effectiveBudget <= 0) return 0;

@@ -23,9 +23,11 @@ export interface WorkItem {
   cost: number;   // Total Cost (Rv) for this item
   weight: number; // Calculated Percentage (Cost / TotalProjectBudget * 100)
   actualCost: number;
+  startDate?: string;
+  endDate?: string;
   
   // Schedule
-  dates: {
+  dates?: {
     plannedStart: string;
     plannedEnd: string;
     actualStart?: string;
@@ -47,16 +49,21 @@ export interface WorkItem {
 }
 
 export interface ProjectSupply {
-  id: string;
+  _id: string;
+  id?: string;
   item: string;
   qty: number;
   unit: string;
   cost: number; // Estimated Cost
-  staffAssigned: string;
-  deadline: string;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'Ordered' | 'Delivered';
+  actualCost: number;
+  staffAssigned?: string;
+  deadline?: string;
+  status: 'Pending' | 'Ordered' | 'Delivered' | 'Approved' | 'Rejected' | string;
   actualPurchaseDate?: string;
-  actualCost?: number;
+  startDate?: string;
+  endDate?: string;
+  deliveryDate?: string;
+  totalQtyUsed?: number;
 }
 
 export interface ProjectData {
@@ -731,5 +738,127 @@ export interface LocalPurchase {
   createdAt?: string;
   updatedAt?: string;
 }
+
+// === Unified ERP Shared Domain Types ===
+
+export interface AttendanceRecord {
+  _id: string;
+  userId?: {
+    _id: string;
+    fullName: string;
+    role: string;
+    profileImage?: string;
+    dailyRate?: number;
+    username?: string;
+  };
+  date: string;
+  checkIn?: {
+    time: string;
+    photo?: string;
+    isGroupPhoto?: boolean;
+    location?: { lat: number; lng: number };
+    distanceToOffice?: number;
+    geofenceStatus?: 'in_radius' | 'out_of_range' | 'exempt_wfh' | 'exempt_dinas' | string;
+  };
+  checkOut?: {
+    time: string;
+    photo?: string;
+    location?: { lat: number; lng: number };
+    distanceToOffice?: number;
+    geofenceStatus?: 'in_radius' | 'out_of_range' | 'exempt_wfh' | 'exempt_dinas' | string;
+  };
+  wageType?: string;
+  wageMultiplier?: number;
+  dailyRate?: number;
+  hourlyRate?: number;
+  overtimePay?: number;
+  paymentStatus?: 'Unpaid' | 'Paid' | string;
+  paidAt?: string;
+  projectId?: { _id: string; nama: string; lokasi?: string };
+  overtimeProjectId?: { _id: string; nama: string; lokasi?: string } | string;
+  sessionId?: { _id: string; photoUrl?: string; notes?: string; createdAt?: string };
+  workType?: string;
+  officeLocation?: string;
+  workSummary?: string;
+  category?: string;
+  status: string;
+  notes?: string;
+  overtimeHours?: number;
+  permit?: {
+    reason: string;
+    evidence?: string;
+    permitType?: string;
+    status: string;
+  };
+  invalidatedBy?: { fullName: string };
+  invalidatedAt?: string;
+  invalidatedReason?: string;
+  isOffline?: boolean;
+}
+
+export interface ProjectOption {
+  _id: string;
+  nama: string;
+  name?: string;
+  lokasi?: string;
+  location?: string;
+  progress?: number;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+  workItems?: unknown[];
+  supplies?: unknown[];
+  payrollConfig?: {
+    cutoffStartDay?: number;
+    cutoffEndDay?: number;
+  };
+}
+
+export interface UserOption {
+  _id: string;
+  fullName: string;
+  username?: string;
+  role: string;
+  position?: string;
+  profilePhoto?: string;
+  dailyRate?: number;
+}
+
+export interface KasbonRecord {
+  _id: string;
+  amount: number;
+  reason: string;
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Paid';
+  approvedBy?: { fullName: string };
+  approvedAt?: string;
+  paidAt?: string;
+  rejectionReason?: string;
+  createdAt: string;
+}
+
+export interface Worker {
+  _id: string;
+  fullName: string;
+  role: string;
+  position?: string;
+  phone?: string;
+  email?: string;
+  paymentInfo?: { bankAccount: string; bankPlatform: string; accountName: string };
+}
+
+export interface WorkerEntry {
+  _id: string;
+  name: string;
+  role: string;
+  status: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  project: string;
+  dailyRate: number;
+  overtimePay: number;
+  wageType: string;
+  paymentStatus: string;
+}
+
 
 

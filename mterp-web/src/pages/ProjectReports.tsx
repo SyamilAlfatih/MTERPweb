@@ -6,132 +6,21 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import jsPDF from 'jspdf';
-import QRCode from 'qrcode';
 import api from '../api/api';
 import { Card, Button, Input, Alert, Badge } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
 import { getImageUrl } from '../utils/image';
+import { monthRange, dayRange, costInMonth, costInDay } from '../utils/projectCostEngine';
+import { loadImageAsBase64, generateQrWithOverlay } from '../utils/documentSeal';
 
 /* ─── Helpers ─── */
-
-const formatRupiah = (num: number) =>
-  new Intl.NumberFormat('id-ID').format(num || 0);
 
 const fmtDate = (d: string | Date) =>
   formatWIBDate(d, { day: 'numeric', month: 'short', year: 'numeric' }) || '';
 
 const fmtDateLong = (d: string | Date) =>
   formatWIBDate(d, { day: 'numeric', month: 'long', year: 'numeric' }) || '';
-
-const loadImageAsBase64 = (src: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { reject('No context'); return; }
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
-    };
-    img.onerror = () => reject('Failed to load image');
-    img.src = src;
-  });
-};
-
-/** Generate a QR code with a custom image overlaid in the center */
-const generateQrWithOverlay = async (qrData: string, overlayImageSrc: string, size = 600): Promise<string> => {
-  // 1. Generate QR code as canvas
-  const qrCanvas = document.createElement('canvas');
-  await QRCode.toCanvas(qrCanvas, qrData, {
-    width: size,
-    margin: 3,
-    color: { dark: '#312E59', light: '#FFFFFF' },
-    errorCorrectionLevel: 'H', // High error correction to allow center overlay
-  });
-
-  // 2. Load the overlay image
-  const overlayImg = new Image();
-  overlayImg.crossOrigin = 'anonymous';
-  await new Promise<void>((resolve, reject) => {
-    overlayImg.onload = () => resolve();
-    overlayImg.onerror = () => reject('Failed to load overlay');
-    overlayImg.src = overlayImageSrc;
-  });
-
-  // 3. Composite: draw overlay in center with white background
-  const ctx = qrCanvas.getContext('2d');
-  if (ctx) {
-    const overlaySize = size * 0.22; // 22% of QR size — keeps QR scannable
-    const cx = (size - overlaySize) / 2;
-    const cy = (size - overlaySize) / 2;
-
-    // White rounded background behind signature
-    const padding = 4;
-    ctx.fillStyle = '#FFFFFF';
-    const rx = cx - padding, ry = cy - padding;
-    const rw = overlaySize + padding * 2, rh = overlaySize + padding * 2;
-    const radius = 6;
-    ctx.beginPath();
-    ctx.moveTo(rx + radius, ry);
-    ctx.lineTo(rx + rw - radius, ry);
-    ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + radius);
-    ctx.lineTo(rx + rw, ry + rh - radius);
-    ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - radius, ry + rh);
-    ctx.lineTo(rx + radius, ry + rh);
-    ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - radius);
-    ctx.lineTo(rx, ry + radius);
-    ctx.quadraticCurveTo(rx, ry, rx + radius, ry);
-    ctx.closePath();
-    ctx.fill();
-
-    // Draw the signature image
-    ctx.drawImage(overlayImg, cx, cy, overlaySize, overlaySize);
-  }
-
-  return qrCanvas.toDataURL('image/png');
-};
-
-/* ─── S-Curve helpers (same as DailyReport) ─── */
-
-function monthRange(start: Date, end: Date): Date[] {
-  const months: Date[] = [];
-  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
-  const last = new Date(end.getFullYear(), end.getMonth(), 1);
-  while (cur <= last) { months.push(new Date(cur)); cur.setMonth(cur.getMonth() + 1); }
-  return months;
-}
-
-function dayRange(start: Date, end: Date): Date[] {
-  const days: Date[] = [];
-  const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-  while (cur <= last) { days.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
-  return days;
-}
-
-function costInMonth(itemStart: Date, itemEnd: Date, totalCost: number, month: Date): number {
-  const mStart = new Date(month.getFullYear(), month.getMonth(), 1);
-  const mEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-  const overlapStart = itemStart > mStart ? itemStart : mStart;
-  const overlapEnd = itemEnd < mEnd ? itemEnd : mEnd;
-  if (overlapStart > overlapEnd) return 0;
-  const totalDays = Math.max(1, (itemEnd.getTime() - itemStart.getTime()) / 86400000);
-  const overlapDays = (overlapEnd.getTime() - overlapStart.getTime()) / 86400000 + 1;
-  return totalCost * (overlapDays / totalDays);
-}
-
-function costInDay(itemStart: Date, itemEnd: Date, totalCost: number, day: Date): number {
-  const iStart = new Date(itemStart.getFullYear(), itemStart.getMonth(), itemStart.getDate());
-  const iEnd = new Date(itemEnd.getFullYear(), itemEnd.getMonth(), itemEnd.getDate());
-  const dDay = new Date(day.getFullYear(), day.getMonth(), day.getDate());
-  if (dDay < iStart || dDay > iEnd) return 0;
-  const totalDays = Math.max(1, Math.round((iEnd.getTime() - iStart.getTime()) / 86400000) + 1);
-  return totalCost / totalDays;
-}
 
 function fmtShort(d: Date) {
   return formatWIBDate(d, { month: 'short', year: '2-digit' });

@@ -13,6 +13,7 @@ import { Card, Badge, Button, EmptyState, Input } from '../components/shared';
 import { PhotoView } from 'react-photo-view';
 import { getImageUrl } from '../utils/image';
 import { formatDate as formatWIBDate } from '../utils/date';
+import { ProjectData, UserOption } from '../types';
 
 interface ToolData {
   _id: string;
@@ -26,18 +27,6 @@ interface ToolData {
   lastChecked?: string;
   assignedTo?: { _id: string; fullName: string; role: string };
   projectId?: { _id: string; nama: string };
-}
-
-interface UserOption {
-  _id: string;
-  fullName: string;
-  role: string;
-}
-
-interface ProjectData {
-  _id: string;
-  nama: string;
-  lokasi: string;
 }
 
 const CONDITION_CONFIG: Record<string, { color: string; bg: string; icon: any; label: string }> = {

@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { formatDate } from './date';
+import { loadImageAsBase64 } from './documentSeal';
 
 export interface SpklPdfData {
   spklNumber: string;
@@ -77,60 +78,19 @@ export async function exportSpklToPdf(data: SpklPdfData) {
   const TEXT_DARK = [30, 30, 30] as const;
   const RED_TITLE = [190, 40, 40] as const;
 
-  // ── 1. HEADER & LETTERHEAD ───────────────────────────────────────────────
-  // Mega Tama Enerco Logo / Branding
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(30, 41, 59);
-  doc.text('MEGA TAMA', mx + 18, y + 4);
-  doc.text('ENERCO', mx + 18, y + 9);
-
-  // Logo geometric icon
-  doc.setFillColor(30, 41, 59);
-  doc.triangle(mx, y + 1, mx + 7, y + 5, mx, y + 9, 'F');
-  doc.setFillColor(234, 88, 12);
-  doc.triangle(mx + 8, y + 1, mx + 15, y + 5, mx + 8, y + 9, 'F');
-
-  // Contact Info
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.setTextColor(80, 80, 80);
-  doc.text('Jl. Raya Alun-Alun Pangalengan No. 221, Jawa Barat 40378', mx + 62, y + 3);
-  doc.text('www.mte.megatama-enerco.com | mte.business08@gmail.com', mx + 62, y + 6.5);
-  doc.text('022 6321 4006 | +62 817 206 191', mx + 62, y + 10);
-
-  // ISO Certification badges text block (top-right)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.setTextColor(16, 149, 193);
-  doc.text('ISO', pw - mx - 45, y + 3);
-  doc.text('ISO', pw - mx - 30, y + 3);
-  doc.text('ISO', pw - mx - 15, y + 3);
-
-  doc.setFontSize(5);
-  doc.setTextColor(100, 100, 100);
-  doc.text('9001:2015', pw - mx - 47, y + 6.5);
-  doc.text('14001:2015', pw - mx - 32, y + 6.5);
-  doc.text('45001:2018', pw - mx - 17, y + 6.5);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.5);
-  doc.setTextColor(22, 163, 74);
-  doc.text('SMK3', pw - mx - 3, y + 5, { align: 'right' });
-
-  y += 14;
-
-  // Integrated Engineering Solution Divider Bar
-  doc.setDrawColor(180, 180, 180);
-  doc.setLineWidth(0.4);
-  doc.line(mx, y, mx + 40, y);
-  doc.line(pw - mx - 40, y, pw - mx, y);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.setTextColor(70, 70, 70);
-  doc.text('INTEGRATED ENGINEERING SOLUTION', pw / 2, y + 1, { align: 'center' });
-  y += 6;
+  // ── 1. HEADER & LETTERHEAD (Kop Surat) ───────────────────────────────────
+  try {
+    const kopData = await loadImageAsBase64('/Kop Surat Aplikasi.webp');
+    const kopH = cw * 0.12;
+    doc.addImage(kopData, 'PNG', mx, y, cw, kopH);
+    y += kopH + 4;
+  } catch {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(30, 41, 59);
+    doc.text('PT MEGA TAMA ENERCO', mx, y + 6);
+    y += 14;
+  }
 
   // Document Title
   doc.setFont('helvetica', 'bold');

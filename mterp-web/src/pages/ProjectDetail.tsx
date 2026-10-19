@@ -22,6 +22,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSetBreadcrumb } from '../contexts/BreadcrumbContext';
 import { formatDate as formatWIBDate, todayWIB, wibDate } from '../utils/date';
 import { getImageUrl } from '../utils/image';
+import { formatRupiah } from '../utils/currency';
+import { getMonday, monthRange, dayRange, weekRange, costInMonth, costInDay, costInWeek } from '../utils/projectCostEngine';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /* ─── Types ─── */
@@ -47,13 +49,6 @@ interface SCurveDataPoint {
 
 /* ─── Helpers ─── */
 
-const formatRupiah = (num: number) => {
-  if (num >= 1_000_000_000) return `Rp ${(num / 1_000_000_000).toFixed(1)}B`;
-  if (num >= 1_000_000) return `Rp ${(num / 1_000_000).toFixed(0)}M`;
-  if (num >= 1_000) return `Rp ${(num / 1_000).toFixed(0)}K`;
-  return `Rp ${num}`;
-};
-
 const fmtDate = (d: string | Date | undefined) => {
   if (!d) return '-';
   return formatWIBDate(d, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -67,121 +62,6 @@ const fmtWeek = (d: Date | string) => {
   end.setDate(end.getDate() + 6);
   return `${formatWIBDate(dt, { day: 'numeric', month: 'short' })} - ${formatWIBDate(end, { day: 'numeric', month: 'short' })}`;
 };
-
-function getMonday(d: Date) {
-  const dt = new Date(d);
-  const day = dt.getDay();
-  const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(dt.setDate(diff));
-}
-
-/** Generate an array of first-of-month Date objects from start to end (inclusive). */
-function monthRange(start: Date, end: Date): Date[] {
-  const months: Date[] = [];
-  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
-  const last = new Date(end.getFullYear(), end.getMonth(), 1);
-  while (cur <= last) {
-    months.push(new Date(cur));
-    cur.setMonth(cur.getMonth() + 1);
-  }
-  return months;
-}
-
-/** Generate an array of Date objects for each day from start to end (inclusive). */
-function dayRange(start: Date, end: Date): Date[] {
-  const days: Date[] = [];
-  const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-  while (cur <= last) {
-    days.push(new Date(cur));
-    cur.setDate(cur.getDate() + 1);
-  }
-  return days;
-}
-
-/** Generate an array of Mondays from start to end (inclusive of the week containing end). */
-function weekRange(start: Date, end: Date): Date[] {
-  const weeks: Date[] = [];
-  const cur = getMonday(start);
-  cur.setHours(0,0,0,0);
-  const last = getMonday(end);
-  last.setHours(0,0,0,0);
-  while (cur <= last) {
-    weeks.push(new Date(cur));
-    cur.setDate(cur.getDate() + 7);
-  }
-  return weeks;
-}
-
-/**
- * For a given item with [itemStart, itemEnd] and a given month,
- * return the fraction of the item's cost that falls in that month.
- * We spread cost evenly across the item's months.
- */
-function costInMonth(
-  itemStart: Date, itemEnd: Date, totalCost: number, month: Date
-): number {
-  const iStart = new Date(itemStart.getFullYear(), itemStart.getMonth(), 1);
-  const iEnd = new Date(itemEnd.getFullYear(), itemEnd.getMonth(), 1);
-  const mStart = new Date(month.getFullYear(), month.getMonth(), 1);
-
-  if (mStart < iStart || mStart > iEnd) return 0;
-
-  // Count total months this item spans
-  let totalMonths = 0;
-  const tmp = new Date(iStart);
-  while (tmp <= iEnd) {
-    totalMonths++;
-    tmp.setMonth(tmp.getMonth() + 1);
-  }
-  if (totalMonths === 0) totalMonths = 1;
-
-  return totalCost / totalMonths;
-}
-
-/**
- * For a given item with [itemStart, itemEnd] and a given day,
- * return the fraction of the item's cost that falls on that day.
- * We spread cost evenly across all days the item spans.
- */
-function costInDay(
-  itemStart: Date, itemEnd: Date, totalCost: number, day: Date
-): number {
-  const iStart = new Date(itemStart.getFullYear(), itemStart.getMonth(), itemStart.getDate());
-  const iEnd = new Date(itemEnd.getFullYear(), itemEnd.getMonth(), itemEnd.getDate());
-  const dDay = new Date(day.getFullYear(), day.getMonth(), day.getDate());
-
-  if (dDay < iStart || dDay > iEnd) return 0;
-
-  const totalDays = Math.max(1, Math.round((iEnd.getTime() - iStart.getTime()) / 86400000) + 1);
-  return totalCost / totalDays;
-}
-
-/**
- * For a given item with [itemStart, itemEnd] and a given week (starting on Monday),
- * return the fraction of the item's cost that falls in that week.
- */
-function costInWeek(
-  itemStart: Date, itemEnd: Date, totalCost: number, weekStart: Date
-): number {
-  const wStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
-  const wEnd = new Date(wStart);
-  wEnd.setDate(wEnd.getDate() + 6);
-  wEnd.setHours(23, 59, 59, 999);
-
-  const iStart = new Date(itemStart.getFullYear(), itemStart.getMonth(), itemStart.getDate());
-  const iEnd = new Date(itemEnd.getFullYear(), itemEnd.getMonth(), itemEnd.getDate(), 23, 59, 59, 999);
-
-  if (wEnd < iStart || wStart > iEnd) return 0;
-
-  const overlapStart = wStart > iStart ? wStart : iStart;
-  const overlapEnd = wEnd < iEnd ? wEnd : iEnd;
-  const overlapDays = Math.max(0, Math.round((overlapEnd.getTime() - overlapStart.getTime()) / 86400000) + 1);
-
-  const totalDays = Math.max(1, Math.round((iEnd.getTime() - iStart.getTime()) / 86400000) + 1);
-  
-  return (totalCost / totalDays) * overlapDays;
-}
 
 /* ─── Tooltip ─── */
 

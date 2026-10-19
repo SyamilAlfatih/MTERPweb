@@ -23,22 +23,11 @@ import {
   Subtask, 
   CompletionEvidence 
 } from '../components/tasks/TaskCompletionModal';
+import { ProjectOption, UserOption } from '../types';
 
 interface WorkItemOption {
   _id: string;
   name: string;
-}
-
-interface ProjectOption {
-  _id: string;
-  nama: string;
-}
-
-interface UserOption {
-  _id: string;
-  fullName: string;
-  role: string;
-  position?: string;
 }
 
 type ViewMode = 'cards' | 'table';

@@ -1,105 +1,10 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import QRCode from 'qrcode';
 import { MaterialRequest, IProcurementItem, ISupplierComparison } from '../types';
 import { formatDate } from './date';
 import { resolveImageUrl } from './image';
-
-/** Helper to load an image asset as base64 from a URL (matching Daily Report implementation) */
-const loadImageAsBase64 = (src: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const targetUrl = resolveImageUrl(src);
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject('No context');
-        return;
-      }
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
-    };
-    img.onerror = () => {
-      // If /photos/ failed, try /misc/ fallback just in case backend saved to misc
-      if (targetUrl.includes('/photos/')) {
-        const fallbackUrl = targetUrl.replace('/photos/', '/misc/');
-        const imgFallback = new Image();
-        imgFallback.crossOrigin = 'anonymous';
-        imgFallback.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = imgFallback.naturalWidth;
-          canvas.height = imgFallback.naturalHeight;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            reject('No context');
-            return;
-          }
-          ctx.drawImage(imgFallback, 0, 0);
-          resolve(canvas.toDataURL('image/png'));
-        };
-        imgFallback.onerror = () => reject('Failed to load image');
-        imgFallback.src = fallbackUrl;
-        return;
-      }
-      reject('Failed to load image');
-    };
-    img.src = targetUrl;
-  });
-};
-
-/** Generate a QR code canvas composite with digital signature stamp */
-const generateQrSignatureSeal = async (
-  qrData: string,
-  signatureAssetUrl: string,
-  size = 500
-): Promise<string> => {
-  const qrCanvas = document.createElement('canvas');
-  await QRCode.toCanvas(qrCanvas, qrData, {
-    width: size,
-    margin: 2,
-    color: { dark: '#0F172A', light: '#FFFFFF' },
-    errorCorrectionLevel: 'H',
-  });
-
-  try {
-    const sigImg = new Image();
-    sigImg.crossOrigin = 'anonymous';
-    await new Promise<void>((resolve, reject) => {
-      sigImg.onload = () => resolve();
-      sigImg.onerror = () => reject();
-      sigImg.src = signatureAssetUrl;
-    });
-
-    const ctx = qrCanvas.getContext('2d');
-    if (ctx) {
-      const overlaySize = size * 0.28;
-      const cx = (size - overlaySize) / 2;
-      const cy = (size - overlaySize) / 2;
-
-      ctx.fillStyle = '#FFFFFF';
-      const pad = 4;
-      ctx.fillRect(cx - pad, cy - pad, overlaySize + pad * 2, overlaySize + pad * 2);
-      ctx.drawImage(sigImg, cx, cy, overlaySize, overlaySize);
-    }
-  } catch {
-    // If signature image fails to load, QR remains valid
-  }
-
-  return qrCanvas.toDataURL('image/png');
-};
-
-const formatRupiah = (val?: number) => {
-  if (val === undefined || val === null || isNaN(val)) return 'Rp 0';
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    maximumFractionDigits: 0,
-  }).format(val);
-};
+import { formatRupiah } from './currency';
+import { loadImageAsBase64, generateQrSignatureSeal } from './documentSeal';
 
 const fmtDateStr = (dateVal?: string | Date) => {
   if (!dateVal) return '-';

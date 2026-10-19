@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { ProjectTask, ProjectResource, TaskResource } from '../../types';
+import { parseLocalDate, toDateStr, formatHours } from '../../utils/date';
 import {
   ChevronRight,
   ChevronDown,
@@ -22,24 +23,6 @@ interface TaskUsageViewProps {
   resources: ProjectResource[];
   onUpdateTask?: (taskId: string, field: keyof ProjectTask, value: any) => Promise<void> | void;
 }
-
-// Helpers
-const toDateStr = (date: Date): string => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
-
-const parseLocalDate = (str: string): Date => {
-  const [y, m, d] = str.slice(0, 10).split('-').map(Number);
-  return new Date(y, m - 1, d);
-};
-
-const formatHours = (h: number): string => {
-  const rounded = Math.round(h * 10) / 10;
-  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`;
-};
 
 export const TaskUsageView: React.FC<TaskUsageViewProps> = ({
   tasks,

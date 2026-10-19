@@ -18,22 +18,8 @@ export interface CostInputProps {
   id?: string;
 }
 
-/**
- * Format a number with Indonesian dot thousand separators (e.g. 1000000 -> "1.000.000")
- */
-export function formatRupiahDots(num: number | string | null | undefined): string {
-  if (num === null || num === undefined || num === '') return '';
-  const n = typeof num === 'string' ? Number(num.replace(/\./g, '')) : Number(num);
-  if (isNaN(n)) return '';
-  return new Intl.NumberFormat('id-ID').format(Math.round(n));
-}
-
-/**
- * Strips all dot separators and non-digit characters to obtain the raw integer string.
- */
-export function stripDots(str: string): string {
-  return str.replace(/\./g, '').replace(/[^\d]/g, '').trim();
-}
+export { formatRupiahDots, stripDots } from '../../utils/currency';
+import { formatRupiahDots, stripDots } from '../../utils/currency';
 
 /**
  * ERP-standard CostInput:
@@ -68,7 +54,7 @@ export default function CostInput({
 
   // Keep internal display synced with external value changes (e.g. form reset or programmatic updates)
   useEffect(() => {
-    const currentNum = displayValue ? Number(stripDots(displayValue)) : 0;
+    const currentNum = displayValue ? stripDots(displayValue) : 0;
     if (value !== currentNum) {
       setDisplayValue(value || value === 0 ? (value === 0 ? '' : formatRupiahDots(value)) : '');
     }
@@ -80,10 +66,10 @@ export default function CostInput({
     const cursor = input.selectionStart || 0;
 
     // Count non-dot digits before cursor
-    const digitsBeforeCursor = stripDots(rawVal.slice(0, cursor)).length;
+    const digitsBeforeCursor = rawVal.slice(0, cursor).replace(/\D/g, '').length;
 
     // Strip dots to get pure number
-    const cleanDigits = stripDots(rawVal);
+    const cleanDigits = rawVal.replace(/\D/g, '');
 
     if (cleanDigits === '') {
       setDisplayValue('');
@@ -91,7 +77,7 @@ export default function CostInput({
       return;
     }
 
-    const numericValue = Number(cleanDigits);
+    const numericValue = stripDots(rawVal);
     const formatted = formatRupiahDots(numericValue);
 
     setDisplayValue(formatted);

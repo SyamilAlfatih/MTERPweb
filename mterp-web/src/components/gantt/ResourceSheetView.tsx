@@ -26,10 +26,6 @@ type EditingCell = { id: string; field: string } | null;
 const ACCRUE_OPTIONS: Array<'Start' | 'Prorated' | 'End'> = ['Start', 'Prorated', 'End'];
 const RESOURCE_TYPES: ResourceType[] = ['Work', 'Material', 'Cost'];
 
-function fmtRp(val?: number) {
-  return `Rp ${(val || 0).toLocaleString('id-ID')}`;
-}
-
 export const ResourceSheetView: React.FC<ResourceSheetViewProps> = ({
   resources,
   availableUsers,

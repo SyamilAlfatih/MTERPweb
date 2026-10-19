@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
-import QRCode from 'qrcode';
 import { formatDate } from './date';
+import { formatRupiah as fmtRp } from './currency';
+import { buildSignatureQr } from './documentSeal';
 
 /**
  * Generate a professional salary slip PDF using jsPDF (direct drawing).
@@ -51,64 +52,8 @@ interface SlipPdfData {
   notes?: string;
 }
 
-const fmtRp = (v: number) => `Rp ${new Intl.NumberFormat('id-ID').format(v || 0)}`;
 const fmtDate = (iso: string) =>
   formatDate(iso, { day: 'numeric', month: 'long', year: 'numeric' });
-
-/** Load an image URL into an HTMLImageElement. Returns null on failure. */
-function loadImage(src: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
-
-/**
- * Generate a QR code PNG data URL with a signature image composited at the center.
- * The center ~25% of the QR modules are left white (error correction L/M keeps scan valid).
- */
-async function buildSignatureQr(
-  qrText: string,
-  signatureUrl: string,
-  sizePx = 300
-): Promise<string> {
-  // 1. Generate QR as data URL (uses error-correction level M → 15% recovery)
-  const qrDataUrl = await QRCode.toDataURL(qrText, {
-    width: sizePx,
-    margin: 1,
-    errorCorrectionLevel: 'M',
-    color: { dark: '#1a1a2e', light: '#ffffff' },
-  });
-
-  // 2. Draw QR onto canvas
-  const canvas = document.createElement('canvas');
-  canvas.width = sizePx;
-  canvas.height = sizePx;
-  const ctx = canvas.getContext('2d')!;
-
-  const qrImg = await loadImage(qrDataUrl);
-  if (qrImg) ctx.drawImage(qrImg, 0, 0, sizePx, sizePx);
-
-  // 3. Overlay signature image centered (~28% of QR size)
-  const sigImg = await loadImage(signatureUrl);
-  if (sigImg) {
-    const sigSize = Math.round(sizePx * 0.28);
-    const sigX = Math.round((sizePx - sigSize) / 2);
-    const sigY = Math.round((sizePx - sigSize) / 2);
-
-    // White backing so signature is readable on QR pattern
-    ctx.fillStyle = '#ffffff';
-    const padding = 6;
-    ctx.fillRect(sigX - padding, sigY - padding, sigSize + padding * 2, sigSize + padding * 2);
-
-    ctx.drawImage(sigImg, sigX, sigY, sigSize, sigSize);
-  }
-
-  return canvas.toDataURL('image/png');
-}
 
 export async function exportSlipToPdf(data: SlipPdfData) {
   // ── Pre-generate QR images (async) before starting the PDF ──────────────

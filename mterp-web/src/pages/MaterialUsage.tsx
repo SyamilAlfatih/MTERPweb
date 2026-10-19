@@ -6,19 +6,9 @@ import {
 } from 'lucide-react';
 import api from '../api/api';
 import { Card, Input, Button, Alert, EmptyState, LoadingOverlay, CostInput } from '../components/shared';
-import { ProjectData } from '../types';
+import { ProjectData, ProjectSupply as Supply } from '../types';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB } from '../utils/date';
-
-interface Supply {
-  _id: string;
-  item: string;
-  qty: number;
-  unit: string;
-  cost: number;
-  actualCost: number;
-  totalQtyUsed: number;
-  status: 'Pending' | 'Ordered' | 'Delivered';
-}
+import { formatRupiah } from '../utils/currency';
 
 interface MaterialLog {
   _id: string;
@@ -104,8 +94,6 @@ export default function MaterialUsage() {
     }
   };
 
-  const formatRupiah = (num: number) =>
-    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
   const formatDate = (dateStr: string) => formatWIBDate(dateStr, { day: 'numeric', month: 'short', year: 'numeric' });
   const formatTime = (dateStr: string) => formatWIBTime(dateStr);

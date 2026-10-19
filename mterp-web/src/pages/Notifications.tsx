@@ -22,6 +22,7 @@ import { useNotifications } from '../contexts/NotificationContext';
 import { clearReadNotifications, deleteNotification } from '../api/api';
 import type { AppNotification, NotificationType } from '../types';
 import { PushNotificationSettings } from '../components/notifications/PushNotificationSettings';
+import { timeAgo } from '../utils/date';
 
 /* ── Notification type → icon/color mapping ── */
 const TYPE_CONFIG: Record<NotificationType, { icon: ElementType; color: string; bg: string }> = {
@@ -40,22 +41,6 @@ const TYPE_CONFIG: Record<NotificationType, { icon: ElementType; color: string; 
 
 function getConfig(type: NotificationType) {
   return TYPE_CONFIG[type] || TYPE_CONFIG.general;
-}
-
-/* ── Time ago helper ── */
-function timeAgo(timestamp: string): string {
-  const now = new Date();
-  const date = new Date(timestamp);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
 /* ── Notification Card ── */

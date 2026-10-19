@@ -37,20 +37,8 @@ import {
 import api from '../api/api';
 import { Card } from '../components/shared';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime } from '../utils/date';
-
-interface WorkerEntry {
-    _id: string;
-    name: string;
-    role: string;
-    status: string;
-    checkIn: string | null;
-    checkOut: string | null;
-    project: string;
-    dailyRate: number;
-    overtimePay: number;
-    wageType: string;
-    paymentStatus: string;
-}
+import { formatRupiah as formatCurrency } from '../utils/currency';
+import { WorkerEntry } from '../types';
 
 interface WeeklyTrendEntry {
     date: string;
@@ -112,13 +100,6 @@ const STATUS_STYLES: Record<string, { color: string; bg: string }> = {
     Absent: { color: '#DC2626', bg: '#FEE2E2' },
     'Half-day': { color: '#6366F1', bg: '#EEF2FF' },
     Permit: { color: '#8B5CF6', bg: '#EDE9FE' },
-};
-
-const formatCurrency = (val: number): string => {
-    if (val >= 1_000_000_000) return `Rp ${(val / 1_000_000_000).toFixed(1)}B`;
-    if (val >= 1_000_000) return `Rp ${(val / 1_000_000).toFixed(1)}M`;
-    if (val >= 1_000) return `Rp ${(val / 1_000).toFixed(0)}K`;
-    return `Rp ${val.toLocaleString('id-ID')}`;
 };
 
 const formatTime = (dateStr: string | null): string => {

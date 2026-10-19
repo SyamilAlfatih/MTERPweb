@@ -276,3 +276,43 @@ export function shiftMonthRange(
   const refDateStr = `${newYear}-${String(newMonth).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
   return getManagementMonthRange(refDateStr, cutoffDay);
 }
+
+export function formatShortDate(dateInput?: string | Date | null): string {
+  if (!dateInput) return '-';
+  return formatDate(dateInput, { day: '2-digit', month: 'short' });
+}
+
+export function formatDayDate(dateInput?: string | Date | null): string {
+  if (!dateInput) return '-';
+  return formatDate(dateInput, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+export function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+export function toDateStr(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function formatHours(h: number): string {
+  if (!h || isNaN(h)) return '0h';
+  const rounded = Math.round(h * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`;
+}
+
+export function timeAgo(dateInput: string | Date): string {
+  const diffSec = Math.floor((Date.now() - new Date(dateInput).getTime()) / 1000);
+  if (diffSec < 60) return 'Baru saja';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m lalu`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}j lalu`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}h lalu`;
+}
+
