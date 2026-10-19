@@ -75,4 +75,16 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
-module.exports = { auth, authorize, optionalAuth };
+// Tolerant middleware: accepts JWT Bearer OR X-API-Key
+const apiKeyAuth = require('./apiKeyAuth');
+const authOrApiKey = (req, res, next) => {
+  if (req.header('X-API-Key') || req.header('x-api-key')) {
+    return apiKeyAuth(req, res, () => {
+      req.user = { role: 'admin', isApiKey: true };
+      next();
+    });
+  }
+  return auth(req, res, next);
+};
+
+module.exports = { auth, authorize, optionalAuth, authOrApiKey };

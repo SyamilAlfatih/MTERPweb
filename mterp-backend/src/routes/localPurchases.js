@@ -4,6 +4,7 @@ const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const { withTransaction } = require('../utils/transaction');
+const rabBudgetService = require('../services/rabBudgetService');
 
 const router = express.Router({ mergeParams: true });
 
@@ -184,35 +185,15 @@ router.post(
           await newPurchase.save();
         }
 
-        // 4. Update RAB Realization Ledger & ProjectTask atomically
-        const updateDoc = {
-          $inc: {
-            realizedQuantity: numQuantity,
-            realizedAmount: calculatedTotal,
-            actualCost: calculatedTotal,
-          },
-        };
-
-        if (session) {
-          await RABItem.updateOne({ _id: rabItemId }, updateDoc, { session });
-          await ProjectTask.updateOne({ _id: rabItemId }, updateDoc, { session });
-          if (taskItem && taskItem.itemType === 'supply') {
-            await Supply.updateOne(
-              { projectId, item: taskItem.name },
-              { $inc: { totalQtyUsed: numQuantity, actualCost: calculatedTotal } },
-              { session }
-            );
-          }
-        } else {
-          await RABItem.updateOne({ _id: rabItemId }, updateDoc);
-          await ProjectTask.updateOne({ _id: rabItemId }, updateDoc);
-          if (taskItem && taskItem.itemType === 'supply') {
-            await Supply.updateOne(
-              { projectId, item: taskItem.name },
-              { $inc: { totalQtyUsed: numQuantity, actualCost: calculatedTotal } }
-            );
-          }
-        }
+        // 4. Update RAB Realization Ledger & ProjectTask atomically via domain service
+        await rabBudgetService.commitPurchaseToRabAndSupply({
+          projectId,
+          rabItemId,
+          quantity: numQuantity,
+          totalPrice: calculatedTotal,
+          taskItem,
+          session,
+        });
 
         return newPurchase;
       });
@@ -379,35 +360,15 @@ router.post(
             await newPurchase.save();
           }
 
-          // 4. Update RAB Realization Ledger & ProjectTask atomically
-          const updateDoc = {
-            $inc: {
-              realizedQuantity: numQuantity,
-              realizedAmount: calculatedTotal,
-              actualCost: calculatedTotal,
-            },
-          };
-
-          if (session) {
-            await RABItem.updateOne({ _id: rabItemId }, updateDoc, { session });
-            await ProjectTask.updateOne({ _id: rabItemId }, updateDoc, { session });
-            if (taskItem && taskItem.itemType === 'supply') {
-              await Supply.updateOne(
-                { projectId, item: taskItem.name },
-                { $inc: { totalQtyUsed: numQuantity, actualCost: calculatedTotal } },
-                { session }
-              );
-            }
-          } else {
-            await RABItem.updateOne({ _id: rabItemId }, updateDoc);
-            await ProjectTask.updateOne({ _id: rabItemId }, updateDoc);
-            if (taskItem && taskItem.itemType === 'supply') {
-              await Supply.updateOne(
-                { projectId, item: taskItem.name },
-                { $inc: { totalQtyUsed: numQuantity, actualCost: calculatedTotal } }
-              );
-            }
-          }
+          // 4. Update RAB Realization Ledger & ProjectTask atomically via domain service
+          await rabBudgetService.commitPurchaseToRabAndSupply({
+            projectId,
+            rabItemId,
+            quantity: numQuantity,
+            totalPrice: calculatedTotal,
+            taskItem,
+            session,
+          });
 
           results.push(newPurchase);
         }
@@ -457,23 +418,14 @@ const handleVerifyPurchase = async (req, res) => {
           throw err;
         }
 
-        // If previously submitted/verified and now rejected, rollback the realized amount
+        // If previously submitted/verified and now rejected, rollback the realized amount via domain service
         if (status === 'REJECTED' && purchase.status !== 'REJECTED') {
-          const rollbackDoc = {
-            $inc: {
-              realizedQuantity: -purchase.quantity,
-              realizedAmount: -purchase.totalPrice,
-              actualCost: -purchase.totalPrice,
-            },
-          };
-
-          if (session) {
-            await RABItem.updateOne({ _id: purchase.rabItemId }, rollbackDoc, { session });
-            await ProjectTask.updateOne({ _id: purchase.rabItemId }, rollbackDoc, { session });
-          } else {
-            await RABItem.updateOne({ _id: purchase.rabItemId }, rollbackDoc);
-            await ProjectTask.updateOne({ _id: purchase.rabItemId }, rollbackDoc);
-          }
+          await rabBudgetService.rollbackPurchaseFromRabAndSupply({
+            rabItemId: purchase.rabItemId,
+            quantity: purchase.quantity,
+            totalPrice: purchase.totalPrice,
+            session,
+          });
           purchase.rejectionReason = rejectionReason || 'Ditolak oleh verifikator anggaran';
         }
 

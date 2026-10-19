@@ -8,23 +8,7 @@ const upload = require('../middleware/upload');
 
 const router = express.Router();
 
-// Helper to safely delete file from disk
-const deleteLocalFile = (fileUrl) => {
-  if (!fileUrl) return;
-  try {
-    const cleanPath = fileUrl.replace(/\\/g, '/');
-    const uploadIndex = cleanPath.indexOf('uploads/');
-    if (uploadIndex !== -1) {
-      const relativePath = cleanPath.substring(uploadIndex);
-      const fullPath = path.join(__dirname, '../../', relativePath);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-      }
-    }
-  } catch (err) {
-    console.error('Error deleting local file:', err.message);
-  }
-};
+const { deleteLocalFile } = require('../utils/imageProcessor');
 
 // All routes in this file require auth and owner role
 router.use(auth);

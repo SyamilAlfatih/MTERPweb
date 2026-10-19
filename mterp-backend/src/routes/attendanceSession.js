@@ -4,7 +4,7 @@ const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const { wibDayRange, nowWIB } = require('../utils/date');
-const sharp = require('sharp');
+const { compressImage, deleteLocalFile } = require('../utils/imageProcessor');
 const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
@@ -84,21 +84,13 @@ router.post(
         return res.status(404).json({ msg: 'Project not found' });
       }
 
-      // 3. Compress image server-side with sharp
-      const compressedFilename = `session-${Date.now()}-compressed.jpg`;
+      // 3. Compress image server-side with imageProcessor
       const compressedDir = path.join(__dirname, '../../uploads/attendance-sessions');
-      if (!fs.existsSync(compressedDir)) {
-        fs.mkdirSync(compressedDir, { recursive: true });
-      }
-      const compressedPath = path.join(compressedDir, compressedFilename);
-
-      await sharp(req.file.path)
-        .resize({ width: 1920, withoutEnlargement: true })
-        .jpeg({ quality: 80 })
-        .toFile(compressedPath);
-
-      // Delete the original uncompressed file
-      fs.unlink(req.file.path, () => {});
+      const { filename: compressedFilename } = await compressImage(req.file.path, compressedDir, {
+        prefix: `session-${Date.now()}`,
+        maxWidth: 1920,
+        quality: 80,
+      });
 
       const photoUrl = `uploads/attendance-sessions/${compressedFilename}`;
 

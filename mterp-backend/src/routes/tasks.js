@@ -1,7 +1,6 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
-const sharp = require('sharp');
+const { compressImage, deleteLocalFile } = require('../utils/imageProcessor');
 const { Task, Project, User } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -560,24 +559,16 @@ router.post('/:id/complete', auth, upload.single('evidence'), async (req, res) =
     let photoUrl = '';
 
     if (req.file.mimetype.startsWith('image/')) {
-      const compressedFilename = `task-evidence-${Date.now()}-${Math.round(Math.random() * 1e6)}.jpg`;
       const photosDir = path.join(__dirname, '../../uploads/photos');
-      if (!fs.existsSync(photosDir)) {
-        fs.mkdirSync(photosDir, { recursive: true });
-      }
-      const compressedPath = path.join(photosDir, compressedFilename);
-
       try {
-        await sharp(req.file.path)
-          .resize({ width: 1920, withoutEnlargement: true })
-          .jpeg({ quality: 80 })
-          .toFile(compressedPath);
-
-        // Clean up raw upload
-        fs.unlink(req.file.path, () => {});
-        photoUrl = `uploads/photos/${compressedFilename}`;
+        const { filename } = await compressImage(req.file.path, photosDir, {
+          maxWidth: 1920,
+          quality: 80,
+          prefix: `task-evidence-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+        });
+        photoUrl = `uploads/photos/${filename}`;
       } catch (sharpErr) {
-        console.warn('Sharp compression error, falling back to original upload:', sharpErr);
+        console.warn('Image compression error, falling back to original upload:', sharpErr);
         photoUrl = `uploads/photos/${path.basename(req.file.path)}`;
       }
     } else {
