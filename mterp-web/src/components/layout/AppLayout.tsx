@@ -20,6 +20,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useSidebar } from '../../contexts/SidebarContext';
 import type { AppNotification, NotificationType } from '../../types';
+import { timeAgo } from '../../utils/date';
 
 /* ── Notification type → icon/color ── */
 const TYPE_ICONS: Record<NotificationType, { icon: React.ElementType; color: string; bg: string }> = {
@@ -35,20 +36,6 @@ const TYPE_ICONS: Record<NotificationType, { icon: React.ElementType; color: str
   attendance_permit:{ icon: Clock,         color: '#7C3AED', bg: '#EDE9FE' },
   general:          { icon: Megaphone,     color: '#6366F1', bg: '#EEF2FF' },
 };
-
-function timeAgo(timestamp: string): string {
-  const now = new Date();
-  const date = new Date(timestamp);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins < 1) return 'Now';
-  if (diffMins < 60) return `${diffMins}m`;
-  if (diffHours < 24) return `${diffHours}h`;
-  if (diffDays < 7) return `${diffDays}d`;
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-}
 
 export default function AppLayout() {
   const { t } = useTranslation();
