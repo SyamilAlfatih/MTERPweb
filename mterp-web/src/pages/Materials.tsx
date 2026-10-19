@@ -38,30 +38,30 @@ import {
   LayoutGrid,
   ArrowUpDown,
   ChevronRight,
-  Save,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api, {
-  createMaterialRequest,
   reviewMaterialRequest,
   opsApproveMaterialRequest,
-  submitSupplierComparisons,
   financeApproveMaterialRequest,
   dispatchMaterialOrder,
-  receiveMaterialOrder,
   deleteMaterialRequest,
   getProcurementAuthorizers,
-  assignProcurementAuthorizers,
   getProcurementConfig,
-  updateProcurementConfig,
 } from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, Button, Input, EmptyState, LoadingOverlay, Badge, SignaturePad } from '../components/shared';
+import { Card, Button, Input, EmptyState, LoadingOverlay, Badge } from '../components/shared';
+import {
+  ProcurementConfigModal,
+  OrderAuthorizerAssignModal,
+  SupplierSourcingModal,
+  MaterialRequestCreateModal,
+  MaterialOrderReceiveModal,
+  MaterialBulkActionModal,
+  BulkActionType,
+} from '../components/materials';
 import {
   MaterialRequest,
-  IProcurementItem,
-  ISupplierComparison,
-  ISupplierComparisonItemRate,
   ProjectData,
   ProcurementStatus,
   ProcurementAuthorizersResponse,
@@ -69,6 +69,7 @@ import {
 } from '../types';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { formatDate } from '../utils/date';
+import { formatRupiah } from '../utils/currency';
 import {
   exportPurchaseRequestPdf,
   exportPurchaseOrderPdf,
@@ -78,15 +79,6 @@ import { getImageUrl } from '../utils/image';
 
 type PipelineTab = 'PR' | 'PO_SOURCING' | 'MUST_PURCHASE' | 'ON_THE_WAY' | 'DELIVERED' | 'ALL';
 
-const formatRupiah = (num?: number) => {
-  if (num === undefined || num === null || isNaN(num)) return 'Rp 0';
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    maximumFractionDigits: 0,
-  }).format(num);
-};
-
 const fmtDateStr = (d?: string) => {
   if (!d) return '-';
   try {
@@ -94,16 +86,6 @@ const fmtDateStr = (d?: string) => {
   } catch {
     return d;
   }
-};
-
-const EMPTY_LINE_ITEM: IProcurementItem = {
-  isRabBased: false,
-  item: '',
-  specifications: '',
-  qty: 1,
-  unit: 'Pcs',
-  budgetUnitRate: 0,
-  totalBudget: 0,
 };
 
 export default function Materials() {
@@ -133,34 +115,12 @@ export default function Materials() {
   });
   const [showAuthorizerDirectoryModal, setShowAuthorizerDirectoryModal] = useState(false);
   const [assignModalOrder, setAssignModalOrder] = useState<MaterialRequest | null>(null);
-  const [assignReviewerId, setAssignReviewerId] = useState('');
-  const [assignOpsApproverId, setAssignOpsApproverId] = useState('');
-  const [assignFinanceApproverId, setAssignFinanceApproverId] = useState('');
-  const [savingAssignment, setSavingAssignment] = useState(false);
 
   // Global Procurement Config State (Company-Wide Auto Routing)
   const [procurementConfig, setProcurementConfig] = useState<ProcurementConfigResponse | null>(null);
-  const [globalReviewerId, setGlobalReviewerId] = useState('');
-  const [globalOpsApproverId, setGlobalOpsApproverId] = useState('');
-  const [globalFinanceApproverId, setGlobalFinanceApproverId] = useState('');
-  const [globalAutoAssign, setGlobalAutoAssign] = useState(true);
-  const [savingGlobalConfig, setSavingGlobalConfig] = useState(false);
-  const [showOwnerOverridePrApprovers, setShowOwnerOverridePrApprovers] = useState(false);
 
   // Multi-Item PR Creation Modal State
   const [showAddPrModal, setShowAddPrModal] = useState(false);
-  const [prMode, setPrMode] = useState<'RAB' | 'NON_RAB'>('RAB');
-  const [loadingRab, setLoadingRab] = useState(false);
-  const [prProjectId, setPrProjectId] = useState('');
-  const [prDateNeeded, setPrDateNeeded] = useState('');
-  const [prUrgency, setPrUrgency] = useState<'Low' | 'Normal' | 'High' | 'Urgent'>('Normal');
-  const [prPurpose, setPrPurpose] = useState('');
-  const [prReviewerId, setPrReviewerId] = useState('');
-  const [prOpsApproverId, setPrOpsApproverId] = useState('');
-  const [prFinanceApproverId, setPrFinanceApproverId] = useState('');
-  const [prItems, setPrItems] = useState<IProcurementItem[]>([{ ...EMPTY_LINE_ITEM, isRabBased: true }]);
-  const [projectRabItems, setProjectRabItems] = useState<any[]>([]);
-  const [submittingPr, setSubmittingPr] = useState(false);
 
   // Review & Approval Modals
   const [reviewModalOrder, setReviewModalOrder] = useState<MaterialRequest | null>(null);
@@ -174,11 +134,6 @@ export default function Materials() {
 
   // Sourcing & Multi-Supplier Comparison Modal State
   const [sourcingOrder, setSourcingOrder] = useState<MaterialRequest | null>(null);
-  const [candidateSuppliers, setCandidateSuppliers] = useState<ISupplierComparison[]>([]);
-  const [sourcingViewMode, setSourcingViewMode] = useState<'form' | 'matrix'>('form');
-  const [activeVendorIndex, setActiveVendorIndex] = useState<number>(0);
-  const [sourcingFinanceApproverId, setSourcingFinanceApproverId] = useState<string>('');
-  const [submittingSourcing, setSubmittingSourcing] = useState(false);
 
   // Finance Approval Modal State
   const [financeApproveOrder, setFinanceApproveOrder] = useState<MaterialRequest | null>(null);
@@ -199,17 +154,21 @@ export default function Materials() {
 
   // Goods Receipt / Site Reception Modal State
   const [receiveOrder, setReceiveOrder] = useState<MaterialRequest | null>(null);
-  const [sitePhotoFile, setSitePhotoFile] = useState<File | null>(null);
-  const [sitePhotoPreview, setSitePhotoPreview] = useState<string | null>(null);
-  const [receivingItemsState, setReceivingItemsState] = useState<any[]>([]);
-  const [overallCondition, setOverallCondition] = useState<'Good' | 'Damaged' | 'Partial'>('Good');
-  const [receiverNotes, setReceiverNotes] = useState('');
-  const [receiverSignature, setReceiverSignature] = useState<string | null>(null);
-  const [driverSignature, setDriverSignature] = useState<string | null>(null);
-  const [submittingReceive, setSubmittingReceive] = useState(false);
 
   // Expanded items in list view
   const [expandedOrders, setExpandedOrders] = useState<string[]>([]);
+
+  // Multi-Selection State for Bulk Approval & Actions
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [bulkModalConfig, setBulkModalConfig] = useState<{
+    isOpen: boolean;
+    actionType: BulkActionType;
+    orders: MaterialRequest[];
+  }>({
+    isOpen: false,
+    actionType: 'ops',
+    orders: [],
+  });
 
   // User role helpers
   const userRole = user?.role?.toLowerCase() || 'worker';
@@ -242,13 +201,6 @@ export default function Materials() {
       }
       if (configRes) {
         setProcurementConfig(configRes);
-        const revId = typeof configRes.defaultReviewerId === 'object' ? configRes.defaultReviewerId?._id : configRes.defaultReviewerId;
-        const opsId = typeof configRes.defaultOpsApproverId === 'object' ? configRes.defaultOpsApproverId?._id : configRes.defaultOpsApproverId;
-        const finId = typeof configRes.defaultFinanceApproverId === 'object' ? configRes.defaultFinanceApproverId?._id : configRes.defaultFinanceApproverId;
-        setGlobalReviewerId(revId || '');
-        setGlobalOpsApproverId(opsId || '');
-        setGlobalFinanceApproverId(finId || '');
-        setGlobalAutoAssign(configRes.autoAssignEnabled !== false);
       }
     } catch (err) {
       console.error('Failed to fetch procurement data', err);
@@ -257,252 +209,8 @@ export default function Materials() {
     }
   };
 
-  const handleSaveGlobalConfig = async () => {
-    setSavingGlobalConfig(true);
-    try {
-      const updated = await updateProcurementConfig({
-        defaultReviewerId: globalReviewerId || undefined,
-        defaultOpsApproverId: globalOpsApproverId || undefined,
-        defaultFinanceApproverId: globalFinanceApproverId || undefined,
-        autoAssignEnabled: globalAutoAssign,
-      });
-      setProcurementConfig(updated);
-      alert('Kebijakan Alur Otorisasi Global berhasil disimpan. Seluruh PR baru otomatis akan dialirkan ke approver yang telah ditentukan.');
-      await fetchData();
-    } catch (err: any) {
-      alert(err.response?.data?.msg || 'Gagal menyimpan kebijakan approver global');
-    } finally {
-      setSavingGlobalConfig(false);
-    }
-  };
-
-  // Open PR modal with default authorizers pre-selected from global config
-  const handleOpenAddPrModal = () => {
-    setPrMode('RAB');
-    setPrProjectId('');
-    setProjectRabItems([]);
-    setPrPurpose('');
-    setPrDateNeeded('');
-    setPrUrgency('Normal');
-    setPrItems([{ ...EMPTY_LINE_ITEM, isRabBased: true }]);
-    setShowOwnerOverridePrApprovers(false);
-
-    // Auto-populate from global company config (or first authorizer fallback)
-    const revId = typeof procurementConfig?.defaultReviewerId === 'object'
-      ? procurementConfig.defaultReviewerId?._id
-      : (procurementConfig?.defaultReviewerId || (authorizers.reviewers[0]?._id || ''));
-    const opsId = typeof procurementConfig?.defaultOpsApproverId === 'object'
-      ? procurementConfig.defaultOpsApproverId?._id
-      : (procurementConfig?.defaultOpsApproverId || (authorizers.opsApprovers[0]?._id || ''));
-    const finId = typeof procurementConfig?.defaultFinanceApproverId === 'object'
-      ? procurementConfig.defaultFinanceApproverId?._id
-      : (procurementConfig?.defaultFinanceApproverId || (authorizers.financeApprovers[0]?._id || ''));
-
-    setPrReviewerId(revId || '');
-    setPrOpsApproverId(opsId || '');
-    setPrFinanceApproverId(finId || '');
-    setShowAddPrModal(true);
-  };
-
-  // Switch between RAB-Based and Non-RAB PR
-  const handlePrModeChange = (newMode: 'RAB' | 'NON_RAB') => {
-    setPrMode(newMode);
-    if (newMode === 'NON_RAB') {
-      // Convert all lines to Non-RAB
-      setPrItems((prev) =>
-        prev.map((itm) => ({
-          ...itm,
-          isRabBased: false,
-          rabItemId: undefined,
-          wbsCode: '',
-        }))
-      );
-    } else {
-      // In RAB mode, mark lines as RAB based
-      setPrItems((prev) =>
-        prev.map((itm) => ({
-          ...itm,
-          isRabBased: true,
-        }))
-      );
-      if (prProjectId && projectRabItems.length === 0) {
-        handleSelectPrProject(prProjectId);
-      }
-    }
-  };
-
-  // Authorizer quick assignment handlers
-  const handleOpenAssignModal = (order: MaterialRequest) => {
-    setAssignModalOrder(order);
-    const revId = typeof order.assignedReviewerId === 'object' ? order.assignedReviewerId?._id : order.assignedReviewerId;
-    const opsId = typeof order.assignedOpsApproverId === 'object' ? order.assignedOpsApproverId?._id : order.assignedOpsApproverId;
-    const finId = typeof order.assignedFinanceApproverId === 'object' ? order.assignedFinanceApproverId?._id : order.assignedFinanceApproverId;
-    setAssignReviewerId(revId || authorizers.reviewers[0]?._id || '');
-    setAssignOpsApproverId(opsId || authorizers.opsApprovers[0]?._id || '');
-    setAssignFinanceApproverId(finId || authorizers.financeApprovers[0]?._id || '');
-  };
-
-  const handleSaveAssignAuthorizers = async () => {
-    if (!assignModalOrder) return;
-    setSavingAssignment(true);
-    try {
-      await assignProcurementAuthorizers(assignModalOrder._id!, {
-        assignedReviewerId: assignReviewerId || undefined,
-        assignedOpsApproverId: assignOpsApproverId || undefined,
-        assignedFinanceApproverId: assignFinanceApproverId || undefined,
-      });
-      setAssignModalOrder(null);
-      await fetchData();
-    } catch (err: any) {
-      alert(err.response?.data?.msg || 'Gagal memperbarui penugasan approver');
-    } finally {
-      setSavingAssignment(false);
-    }
-  };
-
-  // Load RAB items when project is chosen in PR modal
-  const handleSelectPrProject = async (projId: string) => {
-    setPrProjectId(projId);
-    if (!projId) {
-      setProjectRabItems([]);
-      return;
-    }
-    setLoadingRab(true);
-    try {
-      const res = await api.get(`/projects/${projId}/rab`);
-      const raw = Array.isArray(res.data?.rabItems)
-        ? res.data.rabItems
-        : Array.isArray(res.data)
-        ? res.data
-        : [];
-      // Filter out summary/header groups, keeping actionable line items
-      const leaves = raw.filter((r: any) => !r.isSummary);
-      setProjectRabItems(leaves.length > 0 ? leaves : raw);
-    } catch (err) {
-      console.error('Failed to fetch project RAB', err);
-      setProjectRabItems([]);
-    } finally {
-      setLoadingRab(false);
-    }
-  };
-
-  // Multi-item row manipulation
-  const handleAddPrItem = () => {
-    setPrItems((prev) => [
-      ...prev,
-      {
-        ...EMPTY_LINE_ITEM,
-        isRabBased: prMode === 'RAB',
-      },
-    ]);
-  };
-
-  const handleRemovePrItem = (idx: number) => {
-    if (prItems.length <= 1) return;
-    setPrItems((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const handleUpdatePrItem = (idx: number, patch: Partial<IProcurementItem>) => {
-    setPrItems((prev) => {
-      const copy = [...prev];
-      const updated = { ...copy[idx], ...patch };
-      const q = Number(updated.qty) || 0;
-      const rate = Number(updated.budgetUnitRate) || 0;
-      updated.totalBudget = q * rate;
-      copy[idx] = updated;
-      return copy;
-    });
-  };
-
-  const handleToggleItemRabType = (idx: number, makeRab: boolean) => {
-    if (makeRab) {
-      handleUpdatePrItem(idx, {
-        isRabBased: true,
-      });
-    } else {
-      handleUpdatePrItem(idx, {
-        isRabBased: false,
-        rabItemId: undefined,
-        wbsCode: '',
-      });
-    }
-  };
-
-  const handleSelectRabItem = (idx: number, rabItemId: string) => {
-    const rab = projectRabItems.find((r) => r._id === rabItemId);
-    if (!rab) {
-      handleUpdatePrItem(idx, { isRabBased: false, rabItemId: undefined, wbsCode: '' });
-      return;
-    }
-    const currentQty = Number(prItems[idx]?.qty) || 1;
-    const unitRate = Number(rab.unitRate) || 0;
-    handleUpdatePrItem(idx, {
-      isRabBased: true,
-      rabItemId: rab._id,
-      wbsCode: rab.wbsCode,
-      item: rab.description,
-      unit: rab.unitOfMeasure || 'Pcs',
-      budgetUnitRate: unitRate,
-      totalBudget: currentQty * unitRate,
-    });
-  };
-
-  const prTotalEstimatedBudget = useMemo(() => {
-    return prItems.reduce((acc, itm) => acc + (Number(itm.totalBudget) || 0), 0);
-  }, [prItems]);
-
-  // Submit Multi-Item PR with Configured Reviewer & Approvers
-  const handleCreatePrSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (prMode === 'RAB' && !prProjectId) {
-      alert('Mohon pilih proyek tujuan untuk Purchase Request berbasis RAB');
-      return;
-    }
-    if (!prDateNeeded) {
-      alert('Mohon tentukan tanggal kebutuhan');
-      return;
-    }
-    const validItems = prItems.filter((i) => i.item.trim().length > 0 && Number(i.qty) > 0);
-    if (validItems.length === 0) {
-      alert('Mohon lengkapi minimal 1 baris material dengan nama dan kuantitas valid');
-      return;
-    }
-
-    if (prMode === 'RAB' && projectRabItems.length > 0) {
-      const anyRabLinked = validItems.some((i) => i.isRabBased && i.rabItemId);
-      if (!anyRabLinked) {
-        const proceed = window.confirm(
-          'Anda memilih mode Berbasis RAB namun belum memilih mata anggaran RAB pada baris material. Apakah Anda ingin tetap melanjutkan?'
-        );
-        if (!proceed) return;
-      }
-    }
-
-    setSubmittingPr(true);
-    try {
-      await createMaterialRequest({
-        projectId: prProjectId || undefined,
-        dateNeeded: prDateNeeded,
-        urgency: prUrgency,
-        purpose: prPurpose,
-        items: validItems,
-        assignedReviewerId: prReviewerId || undefined,
-        assignedOpsApproverId: prOpsApproverId || undefined,
-        assignedFinanceApproverId: prFinanceApproverId || undefined,
-      });
-      setShowAddPrModal(false);
-      setPrItems([{ ...EMPTY_LINE_ITEM }]);
-      setPrPurpose('');
-      setPrDateNeeded('');
-      setPrProjectId('');
-      setProjectRabItems([]);
-      await fetchData();
-    } catch (err: any) {
-      alert(err.response?.data?.msg || 'Gagal mengajukan Purchase Request');
-    } finally {
-      setSubmittingPr(false);
-    }
-  };
+  const handleOpenAddPrModal = () => setShowAddPrModal(true);
+  const handleOpenAssignModal = (order: MaterialRequest) => setAssignModalOrder(order);
 
   // Submit Supervisor / QC Review (Approve or Reject with Passphrase)
   const handleReviewSubmit = async (action: 'approve' | 'reject' = 'approve') => {
@@ -551,222 +259,7 @@ export default function Materials() {
     }
   };
 
-  // Sourcing & Multi-Supplier Comparison Matrix Handlers
-  const handleOpenSourcingModal = (order: MaterialRequest) => {
-    setSourcingOrder(order);
-    setSourcingViewMode('form');
-    setActiveVendorIndex(0);
-
-    const initialFinId = (typeof order.assignedFinanceApproverId === 'object'
-      ? order.assignedFinanceApproverId?._id
-      : order.assignedFinanceApproverId) || authorizers.financeApprovers[0]?._id || '';
-    setSourcingFinanceApproverId(initialFinId);
-
-    const itemsList = order.items && order.items.length > 0 ? order.items : [{
-      item: order.item,
-      specifications: '',
-      qty: Number(order.qty) || 1,
-      unit: order.unit || 'Pcs',
-      budgetUnitRate: order.costEstimate ? (Number(order.costEstimate) / (Number(order.qty) || 1)) : 0,
-      totalBudget: Number(order.costEstimate) || 0,
-    }];
-
-    const existingComps = order.supplierComparisons || order.comparisons;
-    if (existingComps && existingComps.length > 0) {
-      const mapped = existingComps.map((sc: ISupplierComparison, scIdx: number) => {
-        const itemRates = itemsList.map((itm, idx) => {
-          const existingRate = sc.itemRates?.find((r: ISupplierComparisonItemRate) => r.itemIndex === idx || r.itemName === itm.item);
-          const quotedUnitPrice = existingRate ? existingRate.quotedUnitPrice : (itm.budgetUnitRate || 0);
-          const quotedTotalAmount = (Number(itm.qty) || 1) * quotedUnitPrice;
-          return {
-            itemIndex: idx,
-            itemName: itm.item,
-            quotedUnitPrice,
-            quotedTotalAmount,
-          };
-        });
-        const subtotal = itemRates.reduce((acc: number, r: ISupplierComparisonItemRate) => acc + (r.quotedTotalAmount || 0), 0);
-        const shipping = Number(sc.shippingCost) || 0;
-        return {
-          ...sc,
-          itemRates,
-          subtotalItems: subtotal,
-          shippingCost: shipping,
-          totalLandedCost: subtotal + shipping,
-          isRecommended: sc.isRecommended ?? (scIdx === 0),
-        };
-      });
-      setCandidateSuppliers(mapped);
-    } else {
-      const createDefaultCandidate = (name: string, loc: string, rec: boolean): ISupplierComparison => {
-        const itemRates = itemsList.map((itm, idx) => {
-          const rate = itm.budgetUnitRate || 0;
-          return {
-            itemIndex: idx,
-            itemName: itm.item,
-            quotedUnitPrice: rate,
-            quotedTotalAmount: (Number(itm.qty) || 1) * rate,
-          };
-        });
-        const subtotal = itemRates.reduce((acc, r) => acc + (r.quotedTotalAmount || 0), 0);
-        return {
-          supplierName: name,
-          location: loc,
-          contact: '',
-          shippingCost: 0,
-          paymentTerms: 'Tempo 14 Hari',
-          notes: '',
-          isRecommended: rec,
-          itemRates,
-          subtotalItems: subtotal,
-          totalLandedCost: subtotal,
-        };
-      };
-
-      setCandidateSuppliers([
-        createDefaultCandidate('Vendor A (Rekomendasi Utama)', 'Lokal / Dekat Proyek', true),
-        createDefaultCandidate('Vendor B (Pembanding 1)', 'Pusat Kota', false),
-      ]);
-    }
-  };
-
-  const handleUpdateItemRate = (vendorIdx: number, itemIdx: number, unitPrice: number) => {
-    if (!sourcingOrder) return;
-    const itemsList = sourcingOrder.items && sourcingOrder.items.length > 0 ? sourcingOrder.items : [{
-      item: sourcingOrder.item,
-      qty: Number(sourcingOrder.qty) || 1,
-    }];
-    const itemQty = Number(itemsList[itemIdx]?.qty) || 1;
-
-    setCandidateSuppliers((prev) => {
-      const copy = [...prev];
-      const supp = { ...copy[vendorIdx] };
-      const rates = supp.itemRates ? [...supp.itemRates] : [];
-      rates[itemIdx] = {
-        itemIndex: itemIdx,
-        itemName: itemsList[itemIdx]?.item || '',
-        quotedUnitPrice: unitPrice,
-        quotedTotalAmount: itemQty * unitPrice,
-      };
-      supp.itemRates = rates;
-      const subtotal = rates.reduce((acc, r) => acc + (Number(r?.quotedTotalAmount) || 0), 0);
-      const shipping = Number(supp.shippingCost) || 0;
-      supp.subtotalItems = subtotal;
-      supp.totalLandedCost = subtotal + shipping;
-      copy[vendorIdx] = supp;
-      return copy;
-    });
-  };
-
-  const handleUpdateSupplierField = (vendorIdx: number, patch: Partial<ISupplierComparison>) => {
-    setCandidateSuppliers((prev) => {
-      const copy = [...prev];
-      const supp = { ...copy[vendorIdx], ...patch };
-      if ('shippingCost' in patch) {
-        const subtotal = supp.subtotalItems || supp.itemRates?.reduce((acc, r) => acc + (Number(r?.quotedTotalAmount) || 0), 0) || 0;
-        const shipping = Number(supp.shippingCost) || 0;
-        supp.subtotalItems = subtotal;
-        supp.totalLandedCost = subtotal + shipping;
-      }
-      copy[vendorIdx] = supp;
-      return copy;
-    });
-  };
-
-  const handleAddCandidateSupplier = () => {
-    if (!sourcingOrder) return;
-    const itemsList = sourcingOrder.items && sourcingOrder.items.length > 0 ? sourcingOrder.items : [{
-      item: sourcingOrder.item,
-      qty: Number(sourcingOrder.qty) || 1,
-      budgetUnitRate: 0,
-    }];
-    const itemRates = itemsList.map((itm, idx) => {
-      const rate = itm.budgetUnitRate || 0;
-      return {
-        itemIndex: idx,
-        itemName: itm.item,
-        quotedUnitPrice: rate,
-        quotedTotalAmount: (Number(itm.qty) || 1) * rate,
-      };
-    });
-    const subtotal = itemRates.reduce((acc, r) => acc + (r.quotedTotalAmount || 0), 0);
-    const newIdx = candidateSuppliers.length;
-    setCandidateSuppliers((prev) => [
-      ...prev,
-      {
-        supplierName: `Vendor ${String.fromCharCode(65 + newIdx)}`,
-        location: '',
-        contact: '',
-        shippingCost: 0,
-        paymentTerms: 'Tempo 14 Hari',
-        notes: '',
-        isRecommended: false,
-        itemRates,
-        subtotalItems: subtotal,
-        totalLandedCost: subtotal,
-      },
-    ]);
-    setActiveVendorIndex(newIdx);
-  };
-
-  const handleRemoveCandidateSupplier = (idx: number) => {
-    if (candidateSuppliers.length <= 1) return;
-    setCandidateSuppliers((prev) => {
-      const filtered = prev.filter((_, i) => i !== idx);
-      if (!filtered.some((s) => s.isRecommended)) {
-        filtered[0].isRecommended = true;
-      }
-      return filtered;
-    });
-    if (activeVendorIndex >= idx && activeVendorIndex > 0) {
-      setActiveVendorIndex(activeVendorIndex - 1);
-    }
-  };
-
-  const handleSelectRecommendedSupplier = (recIdx: number) => {
-    setCandidateSuppliers((prev) =>
-      prev.map((s, i) => ({ ...s, isRecommended: i === recIdx }))
-    );
-  };
-
-  // Submit Sourcing Multi-Supplier Comparison Matrix
-  const handleSubmitSourcing = async () => {
-    if (!sourcingOrder) return;
-    const validSuppliers = candidateSuppliers.filter((s) => s.supplierName.trim().length > 0);
-    if (validSuppliers.length === 0) {
-      alert('Mohon masukkan minimal 1 nama vendor/supplier');
-      return;
-    }
-    const hasRecommended = validSuppliers.some((s) => s.isRecommended);
-    if (!hasRecommended) {
-      validSuppliers[0].isRecommended = true;
-    }
-
-    setSubmittingSourcing(true);
-    try {
-      const processed = validSuppliers.map((supp) => {
-        const itemSubtotal = supp.itemRates?.reduce((acc, r) => acc + (Number(r?.quotedTotalAmount) || 0), 0) || 0;
-        const shipping = Number(supp.shippingCost) || 0;
-        return {
-          ...supp,
-          subtotalItems: itemSubtotal,
-          shippingCost: shipping,
-          totalLandedCost: itemSubtotal + shipping,
-        };
-      });
-
-      await submitSupplierComparisons(sourcingOrder._id!, {
-        comparisons: processed,
-        assignedFinanceApproverId: sourcingFinanceApproverId || undefined,
-      });
-      setSourcingOrder(null);
-      await fetchData();
-    } catch (err: any) {
-      alert(err.response?.data?.msg || 'Gagal mengirim komparasi supplier');
-    } finally {
-      setSubmittingSourcing(false);
-    }
-  };
+  const handleOpenSourcingModal = (order: MaterialRequest) => setSourcingOrder(order);
 
   // Submit Finance Director PO Approval
   const handleFinanceApproveSubmit = async () => {
@@ -813,68 +306,7 @@ export default function Materials() {
     }
   };
 
-  // Open Receive modal and initialize items checklist
-  const handleOpenReceiveModal = (order: MaterialRequest) => {
-    setReceiveOrder(order);
-    const initialItems = (order.items && order.items.length > 0 ? order.items : [{
-      item: order.item,
-      specifications: '',
-      qty: Number(order.qty) || 1,
-      unit: order.unit || 'Pcs',
-    }]).map((itm: any, idx: number) => ({
-      itemIndex: idx,
-      item: itm.item,
-      specifications: itm.specifications || '',
-      qty: itm.qty,
-      receivedQty: itm.qty,
-      unit: itm.unit,
-      receivedCondition: 'Good',
-    }));
-    setReceivingItemsState(initialItems);
-    setSitePhotoFile(null);
-    setSitePhotoPreview(null);
-    setReceiverSignature(null);
-    setDriverSignature(null);
-  };
-
-  // Submit Goods Receipt at Job Site
-  const handleReceiveSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!receiveOrder) return;
-    if (!sitePhotoFile) {
-      alert('Foto bukti fisik material di lokasi proyek wajib diunggah');
-      return;
-    }
-    if (!receiverSignature) {
-      alert('Tanda tangan digital penerima proyek wajib dibuat sebelum menyelesaikan penerimaan barang');
-      return;
-    }
-
-    setSubmittingReceive(true);
-    try {
-      const formData = new FormData();
-      formData.append('sitePhoto', sitePhotoFile);
-      formData.append('overallCondition', overallCondition);
-      formData.append('notes', receiverNotes);
-      formData.append('receivedItems', JSON.stringify(receivingItemsState));
-      formData.append('receiverSignature', receiverSignature);
-      if (driverSignature) {
-        formData.append('driverSignature', driverSignature);
-      }
-
-      await receiveMaterialOrder(receiveOrder._id!, formData);
-      setReceiveOrder(null);
-      setSitePhotoFile(null);
-      setSitePhotoPreview(null);
-      setReceiverSignature(null);
-      setDriverSignature(null);
-      await fetchData();
-    } catch (err: any) {
-      alert(err.response?.data?.msg || 'Gagal mengonfirmasi penerimaan barang');
-    } finally {
-      setSubmittingReceive(false);
-    }
-  };
+  const handleOpenReceiveModal = (order: MaterialRequest) => setReceiveOrder(order);
 
   const toggleExpandOrder = (id: string) => {
     setExpandedOrders((prev) =>
@@ -1089,6 +521,64 @@ export default function Materials() {
     return filteredRequests.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
   }, [filteredRequests]);
 
+  // Selected orders list
+  const selectedOrders = useMemo(() => {
+    return requests.filter((r) => r._id && selectedOrderIds.includes(r._id));
+  }, [requests, selectedOrderIds]);
+
+  // Approvable partitions among selected orders
+  const pendingReviewSelected = useMemo(() => {
+    return selectedOrders.filter((r) => ['PR_PENDING', 'Pending'].includes(r.status));
+  }, [selectedOrders]);
+
+  const pendingOpsSelected = useMemo(() => {
+    return selectedOrders.filter((r) => r.status === 'PR_REVIEWED');
+  }, [selectedOrders]);
+
+  const pendingFinanceSelected = useMemo(() => {
+    return selectedOrders.filter((r) => r.status === 'PO_PENDING_FINANCE');
+  }, [selectedOrders]);
+
+  // Master checkbox states for current visible list
+  const visibleIds = useMemo(() => {
+    return sortedRequests.map((r) => r._id!).filter(Boolean);
+  }, [sortedRequests]);
+
+  const isAllSelected = useMemo(() => {
+    return visibleIds.length > 0 && visibleIds.every((id) => selectedOrderIds.includes(id));
+  }, [visibleIds, selectedOrderIds]);
+
+  const isSomeSelected = useMemo(() => {
+    return visibleIds.some((id) => selectedOrderIds.includes(id)) && !isAllSelected;
+  }, [visibleIds, selectedOrderIds, isAllSelected]);
+
+  const handleToggleSelectOrder = (id: string) => {
+    setSelectedOrderIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedOrderIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+    } else {
+      setSelectedOrderIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedOrderIds([]);
+  };
+
+  const handleOpenBulkModal = (actionType: BulkActionType, targetOrders: MaterialRequest[]) => {
+    if (targetOrders.length === 0) return;
+    setBulkModalConfig({
+      isOpen: true,
+      actionType,
+      orders: targetOrders,
+    });
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* ── Header Banner ── */}
@@ -1243,6 +733,19 @@ export default function Materials() {
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-900 text-white border-b-2 border-slate-950 text-[11px] font-black uppercase tracking-wider select-none">
+                  {/* Master Selection Checkbox */}
+                  <th className="py-3.5 px-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      aria-label="Pilih semua data pengadaan pada halaman ini"
+                      className="w-4 h-4 rounded border-slate-500 text-primary accent-primary cursor-pointer transition-colors"
+                      checked={isAllSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = isSomeSelected;
+                      }}
+                      onChange={handleToggleSelectAll}
+                    />
+                  </th>
                   <th className="py-3.5 px-3 w-12 text-center text-slate-300">#</th>
                   <th
                     className="py-3.5 px-3 text-left cursor-pointer hover:bg-slate-800 transition-colors text-white"
@@ -1281,6 +784,7 @@ export default function Materials() {
               <tbody className="divide-y divide-slate-200">
                 {sortedRequests.map((order) => {
                   const isExpanded = expandedOrders.includes(order._id!);
+                  const isSelected = selectedOrderIds.includes(order._id!);
                   const itemsList =
                     order.items && order.items.length > 0
                       ? order.items
@@ -1303,11 +807,24 @@ export default function Materials() {
                     <React.Fragment key={order._id}>
                       <tr
                         className={`transition-colors hover:bg-blue-50/80 ${
-                          isExpanded
+                          isSelected
+                            ? 'bg-blue-50/90 border-l-4 border-l-blue-600 font-medium'
+                            : isExpanded
                             ? 'bg-blue-50/50 border-l-4 border-l-primary font-medium'
                             : 'even:bg-slate-50/70 odd:bg-white'
                         }`}
                       >
+                        {/* Checkbox Column */}
+                        <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Pilih ${order.prNumber || 'order'}`}
+                            className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer transition-colors"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectOrder(order._id!)}
+                          />
+                        </td>
+
                         {/* 0. Expand Button */}
                         <td className="py-3 px-3 text-center">
                           <button
@@ -1566,7 +1083,7 @@ export default function Materials() {
                       {/* ── EXPANDABLE SUB-ROW ACCORDION (LINE-ITEMS DETAIL) ── */}
                       {isExpanded && (
                         <tr className="bg-slate-100/90 border-b-2 border-slate-300">
-                          <td colSpan={9} className="p-4 sm:p-5">
+                          <td colSpan={10} className="p-4 sm:p-5">
                             <div className="space-y-4">
                               {/* Rejection notice if present */}
                               {order.rejectionReason && (
@@ -1828,14 +1345,27 @@ export default function Materials() {
               totalBudget: Number(order.costEstimate) || 0,
             }];
 
+            const isCardSelected = selectedOrderIds.includes(order._id!);
+
             return (
               <div
                 key={order._id}
-                className="bg-bg-white border border-border-light rounded-2xl p-4 sm:p-5 shadow-xs transition-all hover:border-primary/30"
+                className={`bg-bg-white border rounded-2xl p-4 sm:p-5 shadow-xs transition-all ${
+                  isCardSelected
+                    ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20'
+                    : 'border-border-light hover:border-primary/30'
+                }`}
               >
                 {/* Header row */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border-light">
                   <div className="flex items-start sm:items-center gap-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Pilih ${order.prNumber || 'order'}`}
+                      className="w-4 h-4 mt-2 sm:mt-0 rounded border-slate-300 text-primary accent-primary cursor-pointer transition-colors shrink-0"
+                      checked={isCardSelected}
+                      onChange={() => handleToggleSelectOrder(order._id!)}
+                    />
                     <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 text-slate-700 font-black text-xs">
                       PR
                     </div>
@@ -2145,520 +1675,15 @@ export default function Materials() {
       )}
 
       {/* ── MODAL 1: BUAT PURCHASE REQUEST BARU (MULTI-ITEM) ── */}
-      {showAddPrModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-bg-white border border-border-light rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-5 sm:p-6 shadow-xl animate-dropdown-enter">
-            <div className="flex items-center justify-between pb-4 border-b border-border-light">
-              <div>
-                <h2 className="text-lg font-black text-text-primary m-0">Pengajuan Purchase Request (PR) Baru</h2>
-                <p className="text-xs text-text-muted m-0 mt-0.5">
-                  Tentukan jenis pengadaan: Berbasis RAB Proyek atau Non-RAB (Kustom / Operasional)
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddPrModal(false)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:bg-bg-secondary"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreatePrSubmit} className="space-y-5 mt-4">
-              {/* PR Mode Decision Cards (RAB Based vs Non-RAB) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => handlePrModeChange('RAB')}
-                  className={`flex items-start gap-3 p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-                    prMode === 'RAB'
-                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-xs'
-                      : 'border-border-light bg-bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                      prMode === 'RAB' ? 'bg-primary text-white shadow-2xs' : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    <Layers size={18} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-xs font-black text-text-primary">Berbasis RAB (RAB-Based)</span>
-                      <span
-                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
-                          prMode === 'RAB' ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-500'
-                        }`}
-                      >
-                        Terkontrol Anggaran
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
-                      Material ditautkan ke mata anggaran WBS proyek. Memastikan harga dan kuantitas sesuai plafon RAB.
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handlePrModeChange('NON_RAB')}
-                  className={`flex items-start gap-3 p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-                    prMode === 'NON_RAB'
-                      ? 'border-amber-500 bg-amber-500/5 ring-2 ring-amber-500/20 shadow-xs'
-                      : 'border-border-light bg-bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                      prMode === 'NON_RAB' ? 'bg-amber-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    <Package size={18} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-xs font-black text-text-primary">Non-RAB (Kustom / Operasional)</span>
-                      <span
-                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
-                          prMode === 'NON_RAB' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'
-                        }`}
-                      >
-                        Bebas / Fleksibel
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
-                      Pengadaan bebas untuk kebutuhan darurat, operasional umum kantor/workshop, atau material tak terduga.
-                    </p>
-                  </div>
-                </button>
-              </div>
-
-              {/* Basic Parameters */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-text-muted uppercase block">
-                      {prMode === 'RAB' ? 'Proyek Tujuan *' : 'Proyek / Alokasi'}
-                    </label>
-                    {prMode === 'NON_RAB' && (
-                      <span className="text-[10px] text-text-muted italic">(Opsional)</span>
-                    )}
-                  </div>
-                  <select
-                    value={prProjectId}
-                    onChange={(e) => handleSelectPrProject(e.target.value)}
-                    required={prMode === 'RAB'}
-                    className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium"
-                  >
-                    <option value="">
-                      {prMode === 'RAB' ? '-- Pilih Proyek (Wajib untuk RAB) --' : 'Non-Proyek / Umum (Operasional Kantor & Workshop)'}
-                    </option>
-                    {projects.map((p) => (
-                      <option key={p._id} value={p._id}>
-                        {p.nama}
-                      </option>
-                    ))}
-                  </select>
-                  {prMode === 'RAB' && prProjectId && (
-                    <div className="mt-1.5 text-[11px]">
-                      {loadingRab ? (
-                        <span className="text-text-muted flex items-center gap-1">
-                          <Clock size={11} className="animate-spin text-primary" /> Memuat data anggaran RAB...
-                        </span>
-                      ) : projectRabItems.length > 0 ? (
-                        <span className="text-emerald-700 font-bold flex items-center gap-1">
-                          <CheckCircle2 size={12} /> {projectRabItems.length} mata anggaran RAB aktif ditemukan
-                        </span>
-                      ) : (
-                        <span className="text-amber-700 font-bold flex items-center gap-1">
-                          <AlertTriangle size={12} /> Belum ada RAB pada proyek ini (bisa beralih ke mode Non-RAB)
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-text-muted uppercase mb-1 block">Tgl. Dibutuhkan *</label>
-                  <input
-                    type="date"
-                    value={prDateNeeded}
-                    onChange={(e) => setPrDateNeeded(e.target.value)}
-                    required
-                    className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-text-muted uppercase mb-1 block">Tingkat Urgensi</label>
-                  <select
-                    value={prUrgency}
-                    onChange={(e) => setPrUrgency(e.target.value as any)}
-                    className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium"
-                  >
-                    <option value="Low">Low (Rendah)</option>
-                    <option value="Normal">Normal</option>
-                    <option value="High">High (Tinggi)</option>
-                    <option value="Urgent">Urgent (Kritis)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-text-muted uppercase mb-1 block">Keperluan / Catatan Paket Kerja</label>
-                <input
-                  type="text"
-                  value={prPurpose}
-                  onChange={(e) => setPrPurpose(e.target.value)}
-                  placeholder="Contoh: Pekerjaan Balok & Plat Lantai 2 Zona A"
-                  className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white"
-                />
-              </div>
-
-              {/* Alur Persetujuan Otomatis (Company-Wide Auto-Routing) */}
-              <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/40 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs font-black text-blue-900 uppercase tracking-wide">
-                    <ShieldCheck size={15} className="text-blue-600" />
-                    <span>Alur Persetujuan Otomatis (Kebijakan Perusahaan)</span>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                    Auto-Routing Aktif
-                  </span>
-                </div>
-                <p className="text-[11px] text-text-muted m-0">
-                  PR ini akan langsung didistribusikan secara otomatis ke personil berwenang tanpa perlu penugasan manual satu per satu:
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1">
-                  <div className="p-2 rounded-lg bg-white border border-blue-100 flex items-center gap-2">
-                    <UserCheck size={14} className="text-blue-600 shrink-0" />
-                    <div className="min-w-0">
-                      <span className="text-[9px] font-bold text-text-muted uppercase block">1. Tinjau QC / SPV</span>
-                      <span className="font-bold text-text-primary text-[11px] truncate block">
-                        {authorizers.reviewers.find((u) => u._id === prReviewerId)?.fullName ||
-                          (typeof procurementConfig?.defaultReviewerId === 'object' && procurementConfig.defaultReviewerId?.fullName) ||
-                          'Reviewer QC / SPV'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-2 rounded-lg bg-white border border-blue-100 flex items-center gap-2">
-                    <ShieldCheck size={14} className="text-indigo-600 shrink-0" />
-                    <div className="min-w-0">
-                      <span className="text-[9px] font-bold text-text-muted uppercase block">2. Approval Ops</span>
-                      <span className="font-bold text-text-primary text-[11px] truncate block">
-                        {authorizers.opsApprovers.find((u) => u._id === prOpsApproverId)?.fullName ||
-                          (typeof procurementConfig?.defaultOpsApproverId === 'object' && procurementConfig.defaultOpsApproverId?.fullName) ||
-                          'Direktur Operasional'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-2 rounded-lg bg-white border border-blue-100 flex items-center gap-2">
-                    <DollarSign size={14} className="text-emerald-600 shrink-0" />
-                    <div className="min-w-0">
-                      <span className="text-[9px] font-bold text-text-muted uppercase block">3. Approval Keuangan</span>
-                      <span className="font-bold text-text-primary text-[11px] truncate block">
-                        {authorizers.financeApprovers.find((u) => u._id === prFinanceApproverId)?.fullName ||
-                          (typeof procurementConfig?.defaultFinanceApproverId === 'object' && procurementConfig.defaultFinanceApproverId?.fullName) ||
-                          'Direktur Keuangan'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {isOwner && (
-                  <div className="pt-1 flex items-center justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setShowOwnerOverridePrApprovers((prev) => !prev)}
-                      className="text-[11px] font-bold text-primary hover:underline cursor-pointer flex items-center gap-1"
-                    >
-                      <SlidersHorizontal size={12} />
-                      <span>{showOwnerOverridePrApprovers ? 'Tutup Penyesuaian Manual' : 'Sesuaikan Personil Khusus (Owner Override)'}</span>
-                    </button>
-                  </div>
-                )}
-
-                {isOwner && showOwnerOverridePrApprovers && (
-                  <div className="p-3 mt-2 rounded-lg bg-white border border-border-light grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[9px] font-bold text-text-muted uppercase mb-1 block">Override QC / SPV</label>
-                      <select
-                        value={prReviewerId}
-                        onChange={(e) => setPrReviewerId(e.target.value)}
-                        className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white font-medium"
-                      >
-                        <option value="">-- Bebas (Semua QC/SPV) --</option>
-                        {authorizers.reviewers.map((u) => (
-                          <option key={u._id} value={u._id}>
-                            {u.fullName} ({u.role})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[9px] font-bold text-text-muted uppercase mb-1 block">Override Ops Director</label>
-                      <select
-                        value={prOpsApproverId}
-                        onChange={(e) => setPrOpsApproverId(e.target.value)}
-                        className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white font-medium"
-                      >
-                        <option value="">-- Bebas (Semua Direktur Ops) --</option>
-                        {authorizers.opsApprovers.map((u) => (
-                          <option key={u._id} value={u._id}>
-                            {u.fullName} ({u.role})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[9px] font-bold text-text-muted uppercase mb-1 block">Override Finance Director</label>
-                      <select
-                        value={prFinanceApproverId}
-                        onChange={(e) => setPrFinanceApproverId(e.target.value)}
-                        className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white font-medium"
-                      >
-                        <option value="">-- Bebas (Semua Direktur Keuangan) --</option>
-                        {authorizers.financeApprovers.map((u) => (
-                          <option key={u._id} value={u._id}>
-                            {u.fullName} ({u.role})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Dynamic Line-Items Table */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black uppercase text-text-primary tracking-wide">
-                      Daftar Material ({prItems.length} Baris)
-                    </span>
-                    <span
-                      className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
-                        prMode === 'RAB'
-                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                          : 'bg-amber-50 text-amber-700 border border-amber-200'
-                      }`}
-                    >
-                      Mode: {prMode === 'RAB' ? 'Berbasis RAB' : 'Non-RAB / Bebas'}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddPrItem}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary font-bold text-xs hover:bg-primary/20 transition-all cursor-pointer"
-                  >
-                    <Plus size={14} />
-                    <span>Tambah Baris Material</span>
-                  </button>
-                </div>
-
-                <div className="border border-border-light rounded-xl overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-border-light text-[11px] font-black text-text-muted uppercase">
-                        <th className="py-2.5 px-2 w-8 text-center">No</th>
-                        <th className="py-2.5 px-2 w-48">Tipe / Sumber</th>
-                        <th className="py-2.5 px-2 min-w-[160px]">Nama Material *</th>
-                        <th className="py-2.5 px-2 min-w-[130px] text-primary">Spesifikasi / Spec</th>
-                        <th className="py-2.5 px-2 w-20 text-center">Qty *</th>
-                        <th className="py-2.5 px-2 w-20 text-center">Satuan</th>
-                        <th className="py-2.5 px-2 w-28 text-right">Tarif Est.</th>
-                        <th className="py-2.5 px-2 w-28 text-right">Subtotal</th>
-                        <th className="py-2.5 px-2 w-8 text-center"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border-light">
-                      {prItems.map((itm, idx) => {
-                        const isRabRow = Boolean(itm.isRabBased);
-                        return (
-                          <tr key={idx} className="hover:bg-slate-50/50">
-                            <td className="py-2 px-2 text-center text-text-muted font-bold">{idx + 1}</td>
-
-                            {/* Tipe / Sumber Column */}
-                            <td className="py-2 px-2">
-                              {prMode === 'RAB' ? (
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleItemRabType(idx, true)}
-                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
-                                        isRabRow
-                                          ? 'bg-primary text-white shadow-2xs'
-                                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                      }`}
-                                    >
-                                      RAB
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleItemRabType(idx, false)}
-                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
-                                        !isRabRow
-                                          ? 'bg-amber-600 text-white shadow-2xs'
-                                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                      }`}
-                                    >
-                                      Non-RAB
-                                    </button>
-                                  </div>
-
-                                  {isRabRow ? (
-                                    prProjectId && projectRabItems.length > 0 ? (
-                                      <select
-                                        value={itm.rabItemId || ''}
-                                        onChange={(e) => handleSelectRabItem(idx, e.target.value)}
-                                        className="w-full p-1 text-[11px] rounded border border-border-light bg-bg-white font-medium"
-                                      >
-                                        <option value="">-- Pilih Mata Anggaran RAB --</option>
-                                        {projectRabItems.map((rab) => (
-                                          <option key={rab._id} value={rab._id}>
-                                            [{rab.wbsCode}] {rab.description} ({formatRupiah(rab.unitRate)}/{rab.unitOfMeasure || 'pcs'})
-                                          </option>
-                                        ))}
-                                      </select>
-                                    ) : (
-                                      <span className="text-[10px] text-amber-600 italic block">
-                                        {prProjectId ? 'RAB tidak ditemukan' : 'Pilih proyek dahulu'}
-                                      </span>
-                                    )
-                                  ) : (
-                                    <span className="text-[10px] text-amber-700 font-bold block">
-                                      Kustom (Non-RAB)
-                                    </span>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                  <Package size={10} />
-                                  <span>Non-RAB</span>
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Nama Material */}
-                            <td className="py-2 px-2">
-                              <input
-                                type="text"
-                                value={itm.item}
-                                onChange={(e) => handleUpdatePrItem(idx, { item: e.target.value })}
-                                placeholder={isRabRow ? 'Pilih RAB atau isi nama barang...' : 'Nama barang / material...'}
-                                required
-                                className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white font-bold text-text-primary"
-                              />
-                              {itm.wbsCode && (
-                                <span className="inline-block mt-0.5 text-[9px] font-mono px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                  WBS: {itm.wbsCode}
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Spesifikasi */}
-                            <td className="py-2 px-2">
-                              <input
-                                type="text"
-                                value={itm.specifications || ''}
-                                onChange={(e) => handleUpdatePrItem(idx, { specifications: e.target.value })}
-                                placeholder="Merk, ukuran, standar..."
-                                className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white"
-                              />
-                            </td>
-
-                            {/* Qty */}
-                            <td className="py-2 px-2">
-                              <input
-                                type="number"
-                                min="0.1"
-                                step="any"
-                                value={itm.qty}
-                                onChange={(e) => handleUpdatePrItem(idx, { qty: parseFloat(e.target.value) || 0 })}
-                                required
-                                className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white text-center font-bold"
-                              />
-                            </td>
-
-                            {/* Satuan */}
-                            <td className="py-2 px-2">
-                              <input
-                                type="text"
-                                value={itm.unit}
-                                onChange={(e) => handleUpdatePrItem(idx, { unit: e.target.value })}
-                                className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white text-center font-medium"
-                              />
-                            </td>
-
-                            {/* Tarif Est. */}
-                            <td className="py-2 px-2">
-                              <input
-                                type="number"
-                                min="0"
-                                value={itm.budgetUnitRate || ''}
-                                onChange={(e) => handleUpdatePrItem(idx, { budgetUnitRate: parseFloat(e.target.value) || 0 })}
-                                placeholder="0"
-                                className="w-full p-1.5 text-xs rounded border border-border-light bg-bg-white text-right font-mono font-medium"
-                              />
-                            </td>
-
-                            {/* Subtotal */}
-                            <td className="py-2 px-2 text-right font-bold font-mono text-text-primary">
-                              {formatRupiah(itm.totalBudget)}
-                            </td>
-
-                            {/* Remove Row Button */}
-                            <td className="py-2 px-2 text-center">
-                              {prItems.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemovePrItem(idx)}
-                                  className="text-red-400 hover:text-red-600 p-1 cursor-pointer transition-colors"
-                                  title="Hapus baris"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="flex justify-end pt-2 text-xs font-bold text-text-primary">
-                  <span>Total Estimasi Anggaran PR: </span>
-                  <span className="ml-2 font-mono text-sm text-primary">{formatRupiah(prTotalEstimatedBudget)}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-border-light">
-                <button
-                  type="button"
-                  onClick={() => setShowAddPrModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:bg-bg-secondary cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingPr}
-                  className="px-5 py-2.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark disabled:opacity-50 cursor-pointer shadow-xs"
-                >
-                  {submittingPr ? 'Menyimpan...' : 'Ajukan Purchase Request'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <MaterialRequestCreateModal
+        isOpen={showAddPrModal}
+        onClose={() => setShowAddPrModal(false)}
+        projects={projects}
+        authorizers={authorizers}
+        procurementConfig={procurementConfig}
+        isOwner={isOwner}
+        onSuccess={fetchData}
+      />
 
       {/* ── MODAL 2: REVIEW SUPERVISOR / QC / QA (WITH PASSPHRASE & REJECT) ── */}
       {reviewModalOrder && (
@@ -2829,496 +1854,13 @@ export default function Materials() {
       )}
 
       {/* ── MODAL 4: MULTI-ITEM SOURCING & PRICE COMPARISON MATRIX ── */}
-      {sourcingOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-bg-white border border-border-light rounded-2xl w-full max-w-5xl p-5 sm:p-6 shadow-2xl max-h-[92vh] overflow-y-auto animate-dropdown-enter">
-            {/* Modal Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border-light">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs">
-                    PO
-                  </span>
-                  <h3 className="text-base sm:text-lg font-black text-text-primary m-0">
-                    Evaluasi Komparasi Harga Supplier (Multi-Item Sourcing Matrix)
-                  </h3>
-                </div>
-                <p className="text-xs text-text-muted m-0 mt-1">
-                  PR: <b>{sourcingOrder.prNumber}</b> • Proyek: <b>{typeof sourcingOrder.projectId === 'object' ? sourcingOrder.projectId?.nama : 'Proyek'}</b> • {sourcingOrder.items?.length || 1} Baris Material
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* View Mode Toggle */}
-                <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setSourcingViewMode('form')}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                      sourcingViewMode === 'form'
-                        ? 'bg-white text-purple-700 shadow-xs'
-                        : 'text-text-muted hover:text-text-primary'
-                    }`}
-                  >
-                    📋 Rincian Per Vendor
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSourcingViewMode('matrix')}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                      sourcingViewMode === 'matrix'
-                        ? 'bg-white text-purple-700 shadow-xs'
-                        : 'text-text-muted hover:text-text-primary'
-                    }`}
-                  >
-                    📊 Matriks Berdampingan
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setSourcingOrder(null)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:bg-slate-100"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-
-            {/* Content area: Mode 1 (Form / Per-Vendor Tab) or Mode 2 (Side-by-side Matrix) */}
-            {sourcingViewMode === 'form' ? (
-              <div className="mt-4 space-y-4">
-                {/* Vendor Tabs Bar */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-border-light">
-                  {candidateSuppliers.map((supp, sIdx) => {
-                    const isActive = activeVendorIndex === sIdx;
-                    return (
-                      <button
-                        key={sIdx}
-                        type="button"
-                        onClick={() => setActiveVendorIndex(sIdx)}
-                        className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                          isActive
-                            ? 'bg-purple-600 text-white shadow-xs'
-                            : 'bg-slate-100 text-text-secondary hover:bg-slate-200'
-                        }`}
-                      >
-                        <span>
-                          {supp.supplierName.trim() ? supp.supplierName : `Vendor #${sIdx + 1}`}
-                        </span>
-                        {supp.isRecommended && (
-                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                            isActive ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            ⭐ Pemenang
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-
-                  <button
-                    type="button"
-                    onClick={handleAddCandidateSupplier}
-                    className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 transition-all cursor-pointer shrink-0"
-                  >
-                    <Plus size={14} />
-                    <span>Tambah Alternatif Vendor</span>
-                  </button>
-                </div>
-
-                {/* Active Vendor Card */}
-                {candidateSuppliers[activeVendorIndex] && (() => {
-                  const currentSupp = candidateSuppliers[activeVendorIndex];
-                  const prItemsList = sourcingOrder.items && sourcingOrder.items.length > 0 ? sourcingOrder.items : [{
-                    item: sourcingOrder.item,
-                    specifications: sourcingOrder.specifications || '',
-                    qty: Number(sourcingOrder.qty) || 1,
-                    unit: sourcingOrder.unit || 'Pcs',
-                    budgetUnitRate: sourcingOrder.costEstimate ? (Number(sourcingOrder.costEstimate) / (Number(sourcingOrder.qty) || 1)) : 0,
-                    totalBudget: Number(sourcingOrder.costEstimate) || 0,
-                  }];
-
-                  return (
-                    <div className="space-y-4">
-                      {/* Top Action & Recommendation Flag */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-purple-50/60 border border-purple-100">
-                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-purple-900">
-                          <input
-                            type="radio"
-                            name="selectedRecommendedRadio"
-                            checked={currentSupp.isRecommended}
-                            onChange={() => handleSelectRecommendedSupplier(activeVendorIndex)}
-                            className="w-4 h-4 text-purple-600"
-                          />
-                          <span>Pilih Vendor Ini Sebagai Rekomendasi Utama (Pemenang PO)</span>
-                        </label>
-
-                        {candidateSuppliers.length > 2 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveCandidateSupplier(activeVendorIndex)}
-                            className="flex items-center gap-1 text-xs font-bold text-red-600 hover:text-red-700 cursor-pointer"
-                          >
-                            <Trash2 size={13} />
-                            <span>Hapus Vendor Ini</span>
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Vendor Details Grid */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl border border-border-light bg-slate-50/50">
-                        <div>
-                          <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block">Nama Toko / PT Vendor *</label>
-                          <input
-                            type="text"
-                            value={currentSupp.supplierName}
-                            onChange={(e) => handleUpdateSupplierField(activeVendorIndex, { supplierName: e.target.value })}
-                            placeholder="PT Sinar Logam Abadi..."
-                            className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white font-bold"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block">Lokasi / Jarak</label>
-                          <input
-                            type="text"
-                            value={currentSupp.location || ''}
-                            onChange={(e) => handleUpdateSupplierField(activeVendorIndex, { location: e.target.value })}
-                            placeholder="Jl. Lingkar Luar (8 km dari site)..."
-                            className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block">No. Kontak / PIC</label>
-                          <input
-                            type="text"
-                            value={currentSupp.contact || ''}
-                            onChange={(e) => handleUpdateSupplierField(activeVendorIndex, { contact: e.target.value })}
-                            placeholder="0812-3456-7890 (Pak Johan)..."
-                            className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block">Syarat Pembayaran</label>
-                          <input
-                            type="text"
-                            value={currentSupp.paymentTerms || ''}
-                            onChange={(e) => handleUpdateSupplierField(activeVendorIndex, { paymentTerms: e.target.value })}
-                            placeholder="Tempo 14 Hari / COD / DP 30%..."
-                            className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block">Biaya Pengiriman / Ongkir (Rp)</label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={currentSupp.shippingCost || ''}
-                            onChange={(e) => handleUpdateSupplierField(activeVendorIndex, { shippingCost: parseFloat(e.target.value) || 0 })}
-                            placeholder="0"
-                            className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white font-mono text-right font-bold"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block">Catatan / Garansi Vendor</label>
-                          <input
-                            type="text"
-                            value={currentSupp.notes || ''}
-                            onChange={(e) => handleUpdateSupplierField(activeVendorIndex, { notes: e.target.value })}
-                            placeholder="Ready stock, pengiriman H+1..."
-                            className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Multi-Item Quotation Rate Table */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black uppercase text-text-primary tracking-wide">
-                            Penawaran Harga Material ({prItemsList.length} Item Sesuai PR)
-                          </span>
-                          <span className="text-[11px] text-text-muted">
-                            Isi harga satuan per item yang ditawarkan oleh vendor ini
-                          </span>
-                        </div>
-
-                        <div className="border border-border-light rounded-xl overflow-x-auto">
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="bg-slate-50 border-b border-border-light text-[11px] font-black text-text-muted uppercase">
-                                <th className="py-2.5 px-2 w-8 text-center">No</th>
-                                <th className="py-2.5 px-2 min-w-[140px]">Nama Material</th>
-                                <th className="py-2.5 px-2 min-w-[140px] text-primary">Spesifikasi / Spec</th>
-                                <th className="py-2.5 px-2 w-20 text-center">Qty</th>
-                                <th className="py-2.5 px-2 w-20 text-center">Satuan</th>
-                                <th className="py-2.5 px-2 w-28 text-right">Tarif Est. PR</th>
-                                <th className="py-2.5 px-2 w-36 text-right text-purple-700">Harga Penawaran Satuan *</th>
-                                <th className="py-2.5 px-2 w-32 text-right">Subtotal Ditawarkan</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border-light">
-                              {prItemsList.map((itm, itmIdx) => {
-                                const rateObj = currentSupp.itemRates?.[itmIdx];
-                                const quotedPrice = rateObj?.quotedUnitPrice ?? (itm.budgetUnitRate || 0);
-                                const quotedSubtotal = (Number(itm.qty) || 1) * quotedPrice;
-
-                                return (
-                                  <tr key={itmIdx} className="hover:bg-slate-50/50">
-                                    <td className="py-2 px-2 text-center text-text-muted">{itmIdx + 1}</td>
-                                    <td className="py-2 px-2 font-bold text-text-primary">{itm.item}</td>
-                                    <td className="py-2 px-2 text-text-secondary italic">{itm.specifications || '-'}</td>
-                                    <td className="py-2 px-2 text-center font-bold">{itm.qty}</td>
-                                    <td className="py-2 px-2 text-center text-text-muted">{itm.unit}</td>
-                                    <td className="py-2 px-2 text-right font-mono text-text-muted">
-                                      {formatRupiah(itm.budgetUnitRate)}
-                                    </td>
-                                    <td className="py-2 px-2 text-right">
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        value={quotedPrice || ''}
-                                        onChange={(e) => handleUpdateItemRate(activeVendorIndex, itmIdx, parseFloat(e.target.value) || 0)}
-                                        placeholder="0"
-                                        className="w-full p-1.5 text-xs rounded border border-purple-200 bg-purple-50/30 font-mono text-right font-bold text-purple-900 focus:bg-white"
-                                      />
-                                    </td>
-                                    <td className="py-2 px-2 text-right font-mono font-bold text-text-primary">
-                                      {formatRupiah(quotedSubtotal)}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                      {/* Landed Cost Summary Cards */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                        <div className="p-3 rounded-xl border border-border-light bg-slate-50 text-right">
-                          <span className="text-[10px] font-bold text-text-muted uppercase block">Subtotal Material</span>
-                          <span className="text-sm font-bold font-mono text-text-primary">
-                            {formatRupiah(currentSupp.subtotalItems)}
-                          </span>
-                        </div>
-                        <div className="p-3 rounded-xl border border-border-light bg-slate-50 text-right">
-                          <span className="text-[10px] font-bold text-text-muted uppercase block">Ongkos Kirim (Shipping)</span>
-                          <span className="text-sm font-bold font-mono text-text-primary">
-                            {formatRupiah(currentSupp.shippingCost)}
-                          </span>
-                        </div>
-                        <div className="p-3 rounded-xl border-2 border-purple-300 bg-purple-50/50 text-right">
-                          <span className="text-[10px] font-black text-purple-700 uppercase block">Total Landed Cost (PO)</span>
-                          <span className="text-base font-black font-mono text-purple-900">
-                            {formatRupiah(currentSupp.totalLandedCost)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            ) : (
-              /* Mode 2: Side-by-Side Comparison Matrix */
-              <div className="mt-4 space-y-4">
-                <div className="border border-border-light rounded-xl overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-border-light text-[11px] font-black text-text-muted uppercase">
-                        <th className="py-2.5 px-2 w-8 text-center sticky left-0 bg-slate-50">No</th>
-                        <th className="py-2.5 px-2 min-w-[130px] sticky left-8 bg-slate-50">Nama Material</th>
-                        <th className="py-2.5 px-2 min-w-[130px] text-primary">Spesifikasi / Spec</th>
-                        <th className="py-2.5 px-2 w-20 text-center">Qty & Sat</th>
-                        {candidateSuppliers.map((supp, sIdx) => (
-                          <th key={sIdx} className="py-2.5 px-3 min-w-[160px] text-right border-l border-border-light bg-slate-50">
-                            <div className="font-bold text-text-primary">
-                              {supp.supplierName || `Vendor #${sIdx + 1}`}
-                            </div>
-                            <div className="text-[9px] font-normal text-text-muted">
-                              {supp.location || 'Lokal'} • {supp.paymentTerms || '-'}
-                            </div>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border-light">
-                      {(sourcingOrder.items && sourcingOrder.items.length > 0 ? sourcingOrder.items : [{
-                        item: sourcingOrder.item,
-                        specifications: sourcingOrder.specifications || '',
-                        qty: Number(sourcingOrder.qty) || 1,
-                        unit: sourcingOrder.unit || 'Pcs',
-                      }]).map((itm, itmIdx) => {
-                        // Find lowest price for this item among candidate suppliers
-                        const quotes = candidateSuppliers.map((s) => s.itemRates?.[itmIdx]?.quotedUnitPrice ?? 0);
-                        const validQuotes = quotes.filter((q) => q > 0);
-                        const minQuote = validQuotes.length > 0 ? Math.min(...validQuotes) : 0;
-
-                        return (
-                          <tr key={itmIdx} className="hover:bg-slate-50/50">
-                            <td className="py-2 px-2 text-center text-text-muted sticky left-0 bg-bg-white">{itmIdx + 1}</td>
-                            <td className="py-2 px-2 font-bold text-text-primary sticky left-8 bg-bg-white">{itm.item}</td>
-                            <td className="py-2 px-2 text-text-secondary italic">{itm.specifications || '-'}</td>
-                            <td className="py-2 px-2 text-center font-bold">{itm.qty} {itm.unit}</td>
-                            {candidateSuppliers.map((supp, sIdx) => {
-                              const unitPrice = supp.itemRates?.[itmIdx]?.quotedUnitPrice ?? 0;
-                              const lineTotal = (Number(itm.qty) || 1) * unitPrice;
-                              const isLowest = unitPrice > 0 && unitPrice === minQuote && candidateSuppliers.length > 1;
-
-                              return (
-                                <td key={sIdx} className="py-2 px-3 text-right font-mono border-l border-border-light">
-                                  <div className="font-bold text-text-primary flex items-center justify-end gap-1">
-                                    <span>{formatRupiah(unitPrice)}</span>
-                                    {isLowest && (
-                                      <span className="px-1 py-0.2 rounded text-[9px] font-black bg-emerald-100 text-emerald-800">
-                                        Termurah
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="text-[10px] text-text-muted">
-                                    Total: {formatRupiah(lineTotal)}
-                                  </div>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-
-                      {/* Subtotal Row */}
-                      <tr className="bg-slate-50/80 font-bold border-t-2 border-border-light">
-                        <td colSpan={4} className="py-2.5 px-3 text-right text-xs uppercase font-black text-text-muted">
-                          Subtotal Material
-                        </td>
-                        {candidateSuppliers.map((supp, sIdx) => (
-                          <td key={sIdx} className="py-2.5 px-3 text-right font-mono font-bold text-xs border-l border-border-light">
-                            {formatRupiah(supp.subtotalItems)}
-                          </td>
-                        ))}
-                      </tr>
-
-                      {/* Shipping Cost Row */}
-                      <tr className="bg-slate-50/80 font-bold">
-                        <td colSpan={4} className="py-2 px-3 text-right text-xs uppercase font-black text-text-muted">
-                          Ongkos Kirim
-                        </td>
-                        {candidateSuppliers.map((supp, sIdx) => (
-                          <td key={sIdx} className="py-2 px-3 text-right font-mono text-xs border-l border-border-light">
-                            {formatRupiah(supp.shippingCost)}
-                          </td>
-                        ))}
-                      </tr>
-
-                      {/* Total Landed Cost Row */}
-                      {(() => {
-                        const landedCosts = candidateSuppliers.map((s) => s.totalLandedCost || 0);
-                        const validLanded = landedCosts.filter((c) => c > 0);
-                        const minLanded = validLanded.length > 0 ? Math.min(...validLanded) : 0;
-
-                        return (
-                          <tr className="bg-purple-50/50 font-black border-t-2 border-purple-200">
-                            <td colSpan={4} className="py-3 px-3 text-right text-xs uppercase font-black text-purple-900">
-                              Total Landed Cost
-                            </td>
-                            {candidateSuppliers.map((supp, sIdx) => {
-                              const isLowestLanded = (supp.totalLandedCost || 0) === minLanded && validLanded.length > 1;
-                              return (
-                                <td key={sIdx} className="py-3 px-3 text-right font-mono text-sm border-l border-border-light text-purple-955">
-                                  <div>{formatRupiah(supp.totalLandedCost)}</div>
-                                  {isLowestLanded && (
-                                    <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800">
-                                      Terendah Keseluruhan
-                                    </span>
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })()}
-
-                      {/* Recommendation Selector Row */}
-                      <tr className="bg-white border-t border-border-light">
-                        <td colSpan={4} className="py-3 px-3 text-right text-xs font-black text-text-primary">
-                          Pilihan Pemenang PO:
-                        </td>
-                        {candidateSuppliers.map((supp, sIdx) => (
-                          <td key={sIdx} className="py-3 px-3 text-center border-l border-border-light">
-                            <button
-                              type="button"
-                              onClick={() => handleSelectRecommendedSupplier(sIdx)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                supp.isRecommended
-                                  ? 'bg-amber-500 text-white shadow-xs'
-                                  : 'bg-slate-100 hover:bg-slate-200 text-text-secondary'
-                              }`}
-                            >
-                              {supp.isRecommended ? '⭐ Terpilih Pemenang' : 'Pilih Ini'}
-                            </button>
-                          </td>
-                        ))}
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Bottom Section: Finance Approver Selection & Submission */}
-            <div className="mt-5 pt-4 border-t border-border-light flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex-1 max-w-md">
-                <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block flex items-center gap-1">
-                  <ShieldCheck size={12} className="text-emerald-600" />
-                  <span>Otorisasi PO Ditujukan Kepada (Direktur Keuangan / Budget Controller):</span>
-                </label>
-                {isOwner ? (
-                  <select
-                    value={sourcingFinanceApproverId}
-                    onChange={(e) => setSourcingFinanceApproverId(e.target.value)}
-                    className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white font-medium"
-                  >
-                    <option value="">-- Bebas (Semua Direktur Keuangan) --</option>
-                    {authorizers.financeApprovers.map((u) => (
-                      <option key={u._id} value={u._id}>
-                        {u.fullName} ({u.role})
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="p-2 text-xs rounded-lg bg-bg-light border border-border-light text-text-secondary font-medium">
-                    {typeof sourcingOrder?.assignedFinanceApproverId === 'object'
-                      ? (sourcingOrder.assignedFinanceApproverId?.fullName || sourcingOrder.assignedFinanceApproverId?.name)
-                      : (authorizers.financeApprovers.find((u) => u._id === sourcingOrder?.assignedFinanceApproverId)?.fullName || 'Direktur Keuangan (Sesuai Alur Perusahaan)')}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 justify-end shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setSourcingOrder(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:bg-slate-100"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSubmitSourcing}
-                  disabled={submittingSourcing}
-                  className="px-5 py-2.5 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  <CheckCircle2 size={15} />
-                  <span>{submittingSourcing ? 'Menyimpan...' : 'Ajukan Komparasi ke Direktur Keuangan'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <SupplierSourcingModal
+        order={sourcingOrder}
+        onClose={() => setSourcingOrder(null)}
+        authorizers={authorizers}
+        isOwner={isOwner}
+        onSuccess={fetchData}
+      />
 
       {/* ── MODAL 5: FINANCE DIRECTOR PO APPROVAL ── */}
       {financeApproveOrder && (
@@ -3433,537 +1975,120 @@ export default function Materials() {
       )}
 
       {/* ── MODAL 7: GOODS RECEIPT AT SITE (MANDATORY PHOTO PROOF) ── */}
-      {receiveOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-bg-white border border-border-light rounded-2xl w-full max-w-2xl p-5 sm:p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-base font-black text-text-primary m-0">Penerimaan Fisik Barang di Proyek (Goods Receipt)</h3>
-            <p className="text-xs text-text-muted m-0 mt-1">PO: {receiveOrder.poNumber || receiveOrder.prNumber}</p>
-
-            <form onSubmit={handleReceiveSubmit} className="space-y-4 mt-4">
-              {/* Mandatory Job-Site Photo Upload */}
-              <div className="p-4 rounded-xl border-2 border-dashed border-primary/40 bg-primary/[0.02]">
-                <label className="text-xs font-black uppercase text-primary mb-1 block flex items-center gap-1.5">
-                  <Camera size={16} /> Foto Bukti Fisik Material Tiba di Lokasi Proyek (Wajib) *
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  required
-                  onChange={(e) => {
-                    const f = e.target.files?.[0] || null;
-                    setSitePhotoFile(f);
-                    if (f) setSitePhotoPreview(URL.createObjectURL(f));
-                  }}
-                  className="w-full text-xs mt-2"
-                />
-                {sitePhotoPreview && (
-                  <div className="mt-3 w-40 h-28 rounded-lg overflow-hidden border border-border">
-                    <img src={sitePhotoPreview} alt="Site arrival preview" className="w-full h-full object-cover" />
-                  </div>
-                )}
-              </div>
-
-              {/* Multi-Item Receiving Checklist */}
-              <div>
-                <span className="text-xs font-bold text-text-muted uppercase mb-1 block">Verifikasi Kuantitas Fisik per Baris</span>
-                <div className="border border-border-light rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-50 border-b border-border-light text-[11px] font-black text-text-muted uppercase">
-                      <tr>
-                        <th className="p-2">Nama Material</th>
-                        <th className="p-2 text-primary">Spesifikasi / Spec</th>
-                        <th className="p-2 text-center w-24">Qty Dipesan</th>
-                        <th className="p-2 text-center w-28">Qty Diterima</th>
-                        <th className="p-2 text-center w-36">Kondisi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border-light">
-                      {receivingItemsState.map((itm, idx) => (
-                        <tr key={idx}>
-                          <td className="p-2 font-bold text-text-primary">{itm.item}</td>
-                          <td className="p-2 text-text-secondary italic">{itm.specifications || '-'}</td>
-                          <td className="p-2 text-center">{itm.qty} {itm.unit}</td>
-                          <td className="p-2 text-center">
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              value={itm.receivedQty}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value) || 0;
-                                setReceivingItemsState((prev) => {
-                                  const c = [...prev];
-                                  c[idx].receivedQty = val;
-                                  return c;
-                                });
-                              }}
-                              className="w-20 p-1 text-center font-bold border rounded border-border-light"
-                            />
-                          </td>
-                          <td className="p-2 text-center">
-                            <select
-                              value={itm.receivedCondition}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setReceivingItemsState((prev) => {
-                                  const c = [...prev];
-                                  c[idx].receivedCondition = val;
-                                  return c;
-                                });
-                              }}
-                              className="p-1 text-xs border rounded border-border-light"
-                            >
-                              <option value="Good">Lengkap & Baik</option>
-                              <option value="Partial">Kurang / Selisih</option>
-                              <option value="Damaged">Ada Kerusakan</option>
-                            </select>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-text-muted uppercase mb-1 block">Catatan Penerima</label>
-                <input
-                  type="text"
-                  value={receiverNotes}
-                  onChange={(e) => setReceiverNotes(e.target.value)}
-                  placeholder="Material telah dibongkar dan diletakkan di gudang zona 1..."
-                  className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white"
-                />
-              </div>
-
-              {/* Digital Handwritten Signatures */}
-              <div className="pt-2 border-t border-border-light space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase text-text-primary tracking-wide block">
-                    Tanda Tangan Digital Verifikasi Lapangan (GRN)
-                  </span>
-                  <span className="text-[11px] text-text-muted">Gunakan sentuhan layar (HP/Tablet) atau kursor</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <SignaturePad
-                      label="Tanda Tangan Penerima Lapangan"
-                      required
-                      height={140}
-                      onSave={(dataUrl) => setReceiverSignature(dataUrl)}
-                      onClear={() => setReceiverSignature(null)}
-                    />
-                  </div>
-                  <div>
-                    <SignaturePad
-                      label="Tanda Tangan Pengantar / Supir (Opsional)"
-                      required={false}
-                      height={140}
-                      onSave={(dataUrl) => setDriverSignature(dataUrl)}
-                      onClear={() => setDriverSignature(null)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-border-light">
-                <button
-                  type="button"
-                  onClick={() => setReceiveOrder(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingReceive}
-                  className="px-5 py-2.5 rounded-xl bg-teal-600 text-white text-xs font-bold hover:bg-teal-700 cursor-pointer shadow-xs"
-                >
-                  {submittingReceive ? 'Menyimpan & Memasukkan Stok...' : 'Konfirmasi Selesai & Tambah ke Stok Proyek'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <MaterialOrderReceiveModal
+        order={receiveOrder}
+        onClose={() => setReceiveOrder(null)}
+        onSuccess={fetchData}
+      />
 
       {/* ── MODAL 8: UBAH PENUGASAN APPROVER & REVIEWER (OWNER ONLY) ── */}
-      {isOwner && assignModalOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-bg-white border border-border-light rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-xl animate-dropdown-enter">
-            <div className="flex items-center justify-between pb-3 border-b border-border-light">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
-                  <SlidersHorizontal size={16} />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-text-primary m-0">Atur Penugasan Approver PR & PO</h3>
-                  <p className="text-xs text-text-muted m-0 mt-0.5">
-                    PR: <b>{assignModalOrder.prNumber}</b>
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAssignModalOrder(null)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:bg-slate-100"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-4 mt-4">
-              <p className="text-xs text-text-muted">
-                Tentukan personel spesifik yang bertanggung jawab meninjau teknis, menyetujui PR operasional, dan menyetujui anggaran PO untuk transaksi ini.
-              </p>
-
-              <div>
-                <label className="text-xs font-bold text-text-muted uppercase mb-1 block flex items-center gap-1.5">
-                  <UserCheck size={14} className="text-blue-600" />
-                  <span>1. Peninjau Teknis / QC (Supervisor / QA)</span>
-                </label>
-                <select
-                  value={assignReviewerId}
-                  onChange={(e) => setAssignReviewerId(e.target.value)}
-                  className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium"
-                >
-                  <option value="">-- Bebas (Semua QC/SPV Berhak Reviu) --</option>
-                  {authorizers.reviewers.map((u) => (
-                    <option key={u._id} value={u._id}>
-                      {u.fullName} ({u.role}) - {u.email || ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-text-muted uppercase mb-1 block flex items-center gap-1.5">
-                  <ShieldCheck size={14} className="text-indigo-600" />
-                  <span>2. Penyetuju PR (Direktur Operasional)</span>
-                </label>
-                <select
-                  value={assignOpsApproverId}
-                  onChange={(e) => setAssignOpsApproverId(e.target.value)}
-                  className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium"
-                >
-                  <option value="">-- Bebas (Semua Direktur Ops Berhak Setujui) --</option>
-                  {authorizers.opsApprovers.map((u) => (
-                    <option key={u._id} value={u._id}>
-                      {u.fullName} ({u.role}) - {u.email || ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-text-muted uppercase mb-1 block flex items-center gap-1.5">
-                  <DollarSign size={14} className="text-emerald-600" />
-                  <span>3. Penyetuju PO & Budget (Direktur Keuangan)</span>
-                </label>
-                <select
-                  value={assignFinanceApproverId}
-                  onChange={(e) => setAssignFinanceApproverId(e.target.value)}
-                  className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium"
-                >
-                  <option value="">-- Bebas (Semua Direktur Keuangan Berhak Setujui) --</option>
-                  {authorizers.financeApprovers.map((u) => (
-                    <option key={u._id} value={u._id}>
-                      {u.fullName} ({u.role}) - {u.email || ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-5 pt-3 border-t border-border-light">
-              <button
-                type="button"
-                onClick={() => setAssignModalOrder(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:bg-slate-100"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveAssignAuthorizers}
-                disabled={savingAssignment}
-                className="px-5 py-2.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark cursor-pointer shadow-xs disabled:opacity-50"
-              >
-                {savingAssignment ? 'Menyimpan...' : 'Simpan Penugasan Approver'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {isOwner && (
+        <OrderAuthorizerAssignModal
+          order={assignModalOrder}
+          onClose={() => setAssignModalOrder(null)}
+          authorizers={authorizers}
+          onSuccess={fetchData}
+        />
       )}
 
       {/* ── MODAL 9: DIREKTORI ALUR & PERSONEL APPROVER (OWNER ONLY) ── */}
-      {isOwner && showAuthorizerDirectoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-bg-white border border-border-light rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-5 sm:p-6 shadow-2xl animate-dropdown-enter">
-            <div className="flex items-center justify-between pb-4 border-b border-border-light">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                  <Users size={18} />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-black text-text-primary m-0">
-                    Alur Otorisasi & Direktori Personel Approver
-                  </h3>
-                  <p className="text-xs text-text-muted m-0 mt-0.5">
-                    Panduan 7 tahap alur pengadaan & daftar personil yang berwenang melakukan review dan approval
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAuthorizerDirectoryModal(false)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:bg-slate-100"
-              >
-                <X size={18} />
-              </button>
+      {isOwner && (
+        <ProcurementConfigModal
+          isOpen={showAuthorizerDirectoryModal}
+          onClose={() => setShowAuthorizerDirectoryModal(false)}
+          authorizers={authorizers}
+          procurementConfig={procurementConfig}
+          onConfigUpdated={fetchData}
+        />
+      )}
+
+      {/* ── FLOATING BULK ACTION BAR ── */}
+      {selectedOrderIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-auto max-w-[95vw] bg-slate-950/95 text-white border border-slate-700/80 shadow-2xl rounded-2xl px-4 py-3 flex items-center gap-3 sm:gap-4 backdrop-blur-md animate-in fade-in slide-in-from-bottom-5">
+          <div className="flex items-center gap-2 pl-1 border-r border-slate-700/80 pr-3">
+            <div className="w-7 h-7 rounded-lg bg-primary/20 text-blue-300 flex items-center justify-center font-black text-xs font-mono">
+              {selectedOrderIds.length}
             </div>
-
-            {/* Kebijakan Alur Otorisasi Global untuk Seluruh PR */}
-            <div className="mt-5 p-4 sm:p-5 rounded-2xl border border-indigo-200 bg-indigo-50/40 space-y-3 shadow-xs">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                    <SlidersHorizontal size={17} />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-indigo-950 m-0">
-                      Kebijakan Alur Approver Global (Untuk Seluruh PR)
-                    </h4>
-                    <p className="text-[11px] text-text-muted m-0">
-                      Konfigurasi personil approver perusahaan. Seluruh PR yang diajukan akan otomatis dialirkan ke sini tanpa perlu dipilih manual.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-2 text-xs font-bold text-text-primary cursor-pointer select-none px-3 py-1.5 rounded-lg bg-white border border-indigo-200">
-                    <input
-                      type="checkbox"
-                      checked={globalAutoAssign}
-                      onChange={(e) => setGlobalAutoAssign(e.target.checked)}
-                      className="rounded text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                    />
-                    <span>Auto-Assign Otomatis Aktif</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                <div>
-                  <label className="text-[11px] font-bold text-blue-900 uppercase mb-1 block flex items-center gap-1">
-                    <UserCheck size={13} className="text-blue-600" />
-                    <span>1. Default Reviewer QC / SPV</span>
-                  </label>
-                  <select
-                    value={globalReviewerId}
-                    onChange={(e) => setGlobalReviewerId(e.target.value)}
-                    className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">-- Bebas (Semua Reviewer QC / SPV) --</option>
-                    {authorizers.reviewers.map((u) => (
-                      <option key={u._id} value={u._id}>
-                        {u.fullName} ({u.role}) - {u.email || ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-indigo-900 uppercase mb-1 block flex items-center gap-1">
-                    <ShieldCheck size={13} className="text-indigo-600" />
-                    <span>2. Default Penyetuju Ops (Direktur Ops)</span>
-                  </label>
-                  <select
-                    value={globalOpsApproverId}
-                    onChange={(e) => setGlobalOpsApproverId(e.target.value)}
-                    className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">-- Bebas (Semua Direktur Operasional) --</option>
-                    {authorizers.opsApprovers.map((u) => (
-                      <option key={u._id} value={u._id}>
-                        {u.fullName} ({u.role}) - {u.email || ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-emerald-900 uppercase mb-1 block flex items-center gap-1">
-                    <DollarSign size={13} className="text-emerald-600" />
-                    <span>3. Default Penyetuju Keuangan (Direktur Keuangan)</span>
-                  </label>
-                  <select
-                    value={globalFinanceApproverId}
-                    onChange={(e) => setGlobalFinanceApproverId(e.target.value)}
-                    className="w-full p-2.5 text-xs rounded-xl border border-border-light bg-bg-white font-medium focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">-- Bebas (Semua Direktur Keuangan) --</option>
-                    {authorizers.financeApprovers.map((u) => (
-                      <option key={u._id} value={u._id}>
-                        {u.fullName} ({u.role}) - {u.email || ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={handleSaveGlobalConfig}
-                  disabled={savingGlobalConfig}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark transition-all cursor-pointer shadow-xs disabled:opacity-50"
-                >
-                  <Save size={14} />
-                  <span>{savingGlobalConfig ? 'Menyimpan...' : 'Simpan Kebijakan Global untuk Seluruh PR'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Visual Workflow Steps */}
-            <div className="mt-5 space-y-4">
-              <div className="p-4 rounded-xl bg-slate-50 border border-border-light">
-                <span className="text-xs font-black uppercase tracking-wide text-text-primary block mb-3">
-                  7 Tahap Alur Standar Procurement & Purchase Order
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                  <div className="p-3 rounded-lg bg-white border border-border-light space-y-1">
-                    <span className="text-[10px] font-black text-slate-500 uppercase block">Tahap 1</span>
-                    <span className="font-bold text-text-primary block">Pengajuan PR Baru</span>
-                    <p className="text-[11px] text-text-muted m-0">Berdasarkan RAB Proyek atau item kustom, multi-item material.</p>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-white border border-blue-200 bg-blue-50/20 space-y-1">
-                    <span className="text-[10px] font-black text-blue-600 uppercase block">Tahap 2</span>
-                    <span className="font-bold text-blue-900 block">Reviu QC / SPV</span>
-                    <p className="text-[11px] text-text-muted m-0">Supervisor atau Quality Control memverifikasi spesifikasi & qty.</p>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-white border border-indigo-200 bg-indigo-50/20 space-y-1">
-                    <span className="text-[10px] font-black text-indigo-600 uppercase block">Tahap 3</span>
-                    <span className="font-bold text-indigo-900 block">Persetujuan Ops Director</span>
-                    <p className="text-[11px] text-text-muted m-0">Otorisasi PR resmi dengan passphrase tanda tangan digital.</p>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-white border border-purple-200 bg-purple-50/20 space-y-1">
-                    <span className="text-[10px] font-black text-purple-600 uppercase block">Tahap 4</span>
-                    <span className="font-bold text-purple-900 block">Komparasi Supplier Multi-Item</span>
-                    <p className="text-[11px] text-text-muted m-0">Membandingkan tarif per item vendor, ongkir, dan landed cost.</p>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-white border border-emerald-200 bg-emerald-50/20 space-y-1">
-                    <span className="text-[10px] font-black text-emerald-600 uppercase block">Tahap 5</span>
-                    <span className="font-bold text-emerald-900 block">Persetujuan Finance Director</span>
-                    <p className="text-[11px] text-text-muted m-0">Approval anggaran PO mengikat, ditandai sebagai Siap Beli (Must Purchase).</p>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-white border border-sky-200 bg-sky-50/20 space-y-1">
-                    <span className="text-[10px] font-black text-sky-600 uppercase block">Tahap 6</span>
-                    <span className="font-bold text-sky-900 block">Pengiriman (On The Way)</span>
-                    <p className="text-[11px] text-text-muted m-0">Input no. polisi, nama supir, dan foto Surat Jalan supplier.</p>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-white border border-teal-200 bg-teal-50/20 space-y-1 col-span-1 sm:col-span-2">
-                    <span className="text-[10px] font-black text-teal-600 uppercase block">Tahap 7</span>
-                    <span className="font-bold text-teal-900 block">Penerimaan Fisik di Proyek (Goods Receipt)</span>
-                    <p className="text-[11px] text-text-muted m-0">Wajib unggah foto fisik material tiba di lokasi proyek & ceklist kuantitas per baris sebelum masuk inventaris stok.</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Authorizers Directory Groups */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* 1. Reviewers */}
-                <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase text-blue-900 flex items-center gap-1.5">
-                      <UserCheck size={14} className="text-blue-600" />
-                      <span>Reviewer QC / SPV</span>
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
-                      {authorizers.reviewers.length} Personel
-                    </span>
-                  </div>
-                  <div className="divide-y divide-blue-100 max-h-48 overflow-y-auto">
-                    {authorizers.reviewers.map((u) => (
-                      <div key={u._id} className="py-2 text-xs">
-                        <div className="font-bold text-text-primary">{u.fullName}</div>
-                        <div className="text-[11px] text-text-muted flex items-center justify-between">
-                          <span>{u.role}</span>
-                          <span className="italic">{u.email}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 2. Ops Approvers */}
-                <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase text-indigo-900 flex items-center gap-1.5">
-                      <ShieldCheck size={14} className="text-indigo-600" />
-                      <span>Ops Director Approver</span>
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
-                      {authorizers.opsApprovers.length} Personel
-                    </span>
-                  </div>
-                  <div className="divide-y divide-indigo-100 max-h-48 overflow-y-auto">
-                    {authorizers.opsApprovers.map((u) => (
-                      <div key={u._id} className="py-2 text-xs">
-                        <div className="font-bold text-text-primary">{u.fullName}</div>
-                        <div className="text-[11px] text-text-muted flex items-center justify-between">
-                          <span>{u.role}</span>
-                          <span className="italic">{u.email}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 3. Finance Approvers */}
-                <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase text-emerald-900 flex items-center gap-1.5">
-                      <DollarSign size={14} className="text-emerald-600" />
-                      <span>Finance Director Approver</span>
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                      {authorizers.financeApprovers.length} Personel
-                    </span>
-                  </div>
-                  <div className="divide-y divide-emerald-100 max-h-48 overflow-y-auto">
-                    {authorizers.financeApprovers.map((u) => (
-                      <div key={u._id} className="py-2 text-xs">
-                        <div className="font-bold text-text-primary">{u.fullName}</div>
-                        <div className="text-[11px] text-text-muted flex items-center justify-between">
-                          <span>{u.role}</span>
-                          <span className="italic">{u.email}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-4 mt-5 border-t border-border-light">
-              <button
-                type="button"
-                onClick={() => setShowAuthorizerDirectoryModal(false)}
-                className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 cursor-pointer shadow-xs"
-              >
-                Tutup Direktori
-              </button>
+            <div className="hidden sm:block">
+              <span className="text-xs font-black text-white">Dipilih</span>
+              <span className="text-[10px] text-slate-400 block font-medium">Bulk Action</span>
             </div>
           </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {canReview && pendingReviewSelected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleOpenBulkModal('review', pendingReviewSelected)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs transition-all shadow-xs cursor-pointer active:scale-95"
+              >
+                <UserCheck size={14} />
+                <span>Review QC ({pendingReviewSelected.length})</span>
+              </button>
+            )}
+
+            {canOpsApprove && pendingOpsSelected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleOpenBulkModal('ops', pendingOpsSelected)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs transition-all shadow-xs cursor-pointer active:scale-95"
+              >
+                <ShieldCheck size={14} />
+                <span>Approve Ops ({pendingOpsSelected.length})</span>
+              </button>
+            )}
+
+            {canFinanceApprove && pendingFinanceSelected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleOpenBulkModal('finance', pendingFinanceSelected)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-all shadow-xs cursor-pointer active:scale-95"
+              >
+                <DollarSign size={14} />
+                <span>Approve Finance ({pendingFinanceSelected.length})</span>
+              </button>
+            )}
+
+            {/* Hint message if none are eligible for current role */}
+            {!canReview && !canOpsApprove && !canFinanceApprove && (
+              <span className="text-xs text-slate-400 font-medium px-2">
+                Hanya peninjau/approver berwenang yang dapat melakukan otorisasi.
+              </span>
+            )}
+            {((canReview && pendingReviewSelected.length === 0) || !canReview) &&
+              ((canOpsApprove && pendingOpsSelected.length === 0) || !canOpsApprove) &&
+              ((canFinanceApprove && pendingFinanceSelected.length === 0) || !canFinanceApprove) &&
+              (canReview || canOpsApprove || canFinanceApprove) && (
+                <span className="text-xs text-slate-400 font-medium px-2">
+                  Tidak ada item terpilih yang siap diotorisasi sesuai hak akses Anda.
+                </span>
+              )}
+          </div>
+
+          {/* Reset / Deselect Button */}
+          <button
+            type="button"
+            onClick={handleClearSelection}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer ml-1"
+            title="Batalkan Pilihan"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
+
+      {/* ── BULK APPROVAL & ACTIONS MODAL ── */}
+      <MaterialBulkActionModal
+        isOpen={bulkModalConfig.isOpen}
+        onClose={() => setBulkModalConfig((prev) => ({ ...prev, isOpen: false }))}
+        actionType={bulkModalConfig.actionType}
+        orders={bulkModalConfig.orders}
+        onComplete={async () => {
+          await fetchData();
+          setSelectedOrderIds([]);
+        }}
+      />
     </div>
   );
 }

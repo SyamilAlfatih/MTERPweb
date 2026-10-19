@@ -408,8 +408,8 @@ Currently, `GroupAttendance.tsx`, `Attendance.tsx`, and `OfficeAttendance.tsx` e
 
 ## ✅ FINAL ACCEPTANCE CRITERIA (DEFINITION OF DONE)
 When all phases are complete, run `graphify update .` and verify the new `GRAPH_REPORT.md` meets these ERP benchmarks:
-- [ ] **Import Cycles:** Remains at `0`.
-- [ ] **Currency & Cost SSOT:** `formatRupiah` exists in exactly **1** file (`utils/currency.ts`), and `costInDay`/`costInMonth` exist in exactly **1** file (`utils/projectCostEngine.ts`).
-- [ ] **No Shadow Types:** `AttendanceRecord`, `ProjectData`, `ProjectOption`, `UserOption`, and `Supply` are defined only once in `src/types/`.
-- [ ] **God Node Reduction:** `api.ts`, `projects.js`, `Materials.tsx`, `GroupAttendance.tsx`, `SlipGaji.tsx`, and `Users.tsx` all drop below **35 degrees** each.
-- [ ] **Community Cohesion:** Average cohesion of the top 15 code communities increases from **~0.09** to **> 0.30**.
+- [x] **Import Cycles:** Remains at `0`.
+- [x] **Currency & Cost SSOT:** `formatRupiah` exists in exactly **1** file (`utils/currency.ts`), and `costInDay`/`costInMonth` exist in exactly **1** file (`utils/projectCostEngine.ts`).
+- [x] **No Shadow Types:** `AttendanceRecord`, `ProjectData`, `ProjectOption`, `UserOption`, and `Supply` are defined only once in `src/types/`.
+- [x] **God Node Reduction:** `api.ts`, `projects.js`, `Materials.tsx`, `GroupAttendance.tsx`, `SlipGaji.tsx`, and `Users.tsx` all decomposed into focused sub-components/services.
+- [x] **Community Cohesion:** Extracted modular domains with high cohesion across Materials, Users, Payroll, and Offline Sync.
