@@ -15,6 +15,16 @@ const fmtDateStr = (dateVal?: string | Date) => {
   }
 };
 
+const getSignatureDataUrl = async (sig?: string): Promise<string | null> => {
+  if (!sig) return null;
+  if (sig.startsWith('data:image/')) return sig;
+  try {
+    return await loadImageAsBase64(sig);
+  } catch {
+    return null;
+  }
+};
+
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  * 1. EXPORT PURCHASE REQUEST (PR) PDF
@@ -775,16 +785,6 @@ export async function exportGoodsReceiptPdf(order: MaterialRequest) {
   doc.text('Diterima & Diverifikasi oleh (Gudang / Site):', margin + sigW + 2, curY);
 
   // Handwritten Digital Signatures (Driver & Receiver)
-  const getSignatureDataUrl = async (sig?: string): Promise<string | null> => {
-    if (!sig) return null;
-    if (sig.startsWith('data:image/')) return sig;
-    try {
-      return await loadImageAsBase64(sig);
-    } catch {
-      return null;
-    }
-  };
-
   const driverSigData = await getSignatureDataUrl(order.deliveryProof?.driverSignature);
   const receiverSigData = await getSignatureDataUrl(order.deliveryProof?.receiverSignature);
 
