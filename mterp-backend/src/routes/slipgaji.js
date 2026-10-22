@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const { User, Attendance, Kasbon, SlipGaji, Project } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const { wibDayRange, nowWIB, getProjectWeekRange } = require('../utils/date');
+const { deduplicateAttendanceRecords, calculateStandardOvertime } = require('../utils/attendanceSSOT');
 
 const router = express.Router();
 
@@ -64,11 +65,14 @@ const PAYROLL_ADMIN_ROLES = [
 
 /**
  * Helper to compute project-filtered earnings from attendance records.
+ * - Deduplicates records by (worker, dateKey) to guarantee SSOT and prevent double-counting.
  * - Regular daily wage belongs if record.projectId == targetProjectId
  * - Overtime belongs if (record.overtimeProjectId || record.projectId) == targetProjectId
+ * - Standard OT formula: hourlyRate = dailyRate / 8, overtimePay = hours * hourlyRate
  */
 function computeProjectEarnings(attendanceRecords, targetProjectId) {
     const targetStr = targetProjectId ? targetProjectId.toString() : null;
+    const deduplicated = deduplicateAttendanceRecords(attendanceRecords || []);
 
     let totalDays = 0;
     let presentDays = 0;
@@ -81,14 +85,14 @@ function computeProjectEarnings(attendanceRecords, targetProjectId) {
     let totalOvertime = 0;
     let dailyRate = 0;
 
-    for (const a of attendanceRecords) {
+    for (const a of deduplicated) {
         const regularProjStr = a.projectId?._id?.toString() || a.projectId?.toString() || null;
         const otProjStr = a.overtimeProjectId?._id?.toString() || a.overtimeProjectId?.toString() || regularProjStr;
 
         const isRegularMatch = (targetStr === null) ? !regularProjStr : (regularProjStr === targetStr);
         const isOtMatch = (targetStr === null) ? !otProjStr : (otProjStr === targetStr);
 
-        // Process regular day wage
+        // Process regular day wage (single count per unique day)
         if (isRegularMatch) {
             totalDays++;
             if (a.status === 'Present') presentDays++;
@@ -104,15 +108,18 @@ function computeProjectEarnings(attendanceRecords, targetProjectId) {
         }
 
         // Process overtime
-        if (isOtMatch && a.overtimePay > 0) {
-            totalOvertime += a.overtimePay;
-            if (a.overtimeHours > 0) {
-                totalOvertimeHours += a.overtimeHours;
-            } else if (a.hourlyRate > 0) {
-                totalOvertimeHours += a.overtimePay / a.hourlyRate;
-            } else if (a.dailyRate > 0) {
-                totalOvertimeHours += a.overtimePay / (a.dailyRate / 8);
+        if (isOtMatch && (a.overtimePay > 0 || a.overtimeHours > 0)) {
+            let otHrs = a.overtimeHours || 0;
+            const effectiveDaily = a.dailyRate > 0 ? a.dailyRate : dailyRate;
+            const { hourlyRate, overtimePay: standardPay } = calculateStandardOvertime(effectiveDaily, otHrs);
+
+            if (!otHrs && a.overtimePay > 0 && hourlyRate > 0) {
+                otHrs = Math.round((a.overtimePay / hourlyRate) * 10) / 10;
             }
+
+            const effectiveOtPay = a.overtimePay > 0 ? a.overtimePay : standardPay;
+            totalOvertime += effectiveOtPay;
+            totalOvertimeHours += otHrs;
         }
 
         // Always capture baseline daily rate from any record if not yet set
@@ -264,6 +271,8 @@ router.get('/worker-projects', auth, authorize(...PAYROLL_ADMIN_ROLES), async (r
             .populate('overtimeProjectId', 'nama lokasi payrollConfig')
             .lean();
 
+        const deduplicatedRecords = deduplicateAttendanceRecords(records);
+
         const projectMap = new Map();
 
         const getOrCreate = (pId, pDoc) => {
@@ -284,7 +293,7 @@ router.get('/worker-projects', auth, authorize(...PAYROLL_ADMIN_ROLES), async (r
             return projectMap.get(key);
         };
 
-        for (const a of records) {
+        for (const a of deduplicatedRecords) {
             const regProj = a.projectId;
             const regId = regProj?._id || (mongoose.Types.ObjectId.isValid(regProj) ? regProj : null);
             const regEntry = getOrCreate(regId, regProj);
@@ -300,7 +309,7 @@ router.get('/worker-projects', auth, authorize(...PAYROLL_ADMIN_ROLES), async (r
                 otEntry.overtimePay += a.overtimePay || 0;
                 let otHours = a.overtimeHours || 0;
                 if (!otHours && a.hourlyRate > 0) otHours = a.overtimePay / a.hourlyRate;
-                else if (!otHours && a.dailyRate > 0) otHours = a.overtimePay / (a.dailyRate / 8);
+                else if (!otHours && a.dailyRate > 0) otHours = a.overtimePay / Math.round(a.dailyRate / 8);
                 otEntry.overtimeHours += otHours;
             }
         }

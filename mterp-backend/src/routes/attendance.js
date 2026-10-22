@@ -5,6 +5,7 @@ const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const { wibDayRange, nowWIB } = require('../utils/date');
+const { deduplicateAttendanceRecords, calculateStandardOvertime } = require('../utils/attendanceSSOT');
 
 const router = express.Router();
 
@@ -286,11 +287,11 @@ router.get('/', auth, async (req, res) => {
 // GET /api/attendance/today - Get today's attendance for current user
 router.get('/today', auth, async (req, res) => {
   try {
-    const today = getTodayStart();
+    const todayRange = wibDayRange();
     
     let attendance = await Attendance.findOne({
       userId: req.user._id,
-      date: today,
+      date: { $gte: todayRange.start, $lte: todayRange.end },
     })
       .populate('sessionId', 'photoUrl notes createdAt')
       .lean();
@@ -363,7 +364,8 @@ router.get('/recap', auth, async (req, res) => {
       rawAttendance = rawAttendance.filter(a => a.workType === workType);
     }
 
-    const attendance = await attachGroupPhotoProof(rawAttendance);
+    const rawWithPhotos = await attachGroupPhotoProof(rawAttendance);
+    const attendance = deduplicateAttendanceRecords(rawWithPhotos);
     
     // Calculate summary
     const summary = {
@@ -383,7 +385,7 @@ router.get('/recap', auth, async (req, res) => {
         summary.totalHours += hours;
       }
       summary.wageMultiplierTotal += a.wageMultiplier || 1;
-      // Sum overtime hours (use stored overtimeHours if available, otherwise calculate)
+      // Sum overtime hours (use stored overtimeHours if available, otherwise calculate using standard dailyRate/8)
       if (a.overtimeHours !== undefined && a.overtimeHours !== null && a.overtimeHours > 0) {
         summary.totalOvertimeHours += a.overtimeHours;
       } else if (a.overtimePay > 0 && a.hourlyRate > 0) {
@@ -395,9 +397,8 @@ router.get('/recap', auth, async (req, res) => {
     summary.totalHours = Math.round(summary.totalHours * 10) / 10;
     summary.totalOvertimeHours = Math.round(summary.totalOvertimeHours * 10) / 10;
     
-    // Calculate total payment
+    // Calculate total payment (SSOT: deduplicated records)
     summary.totalPayment = attendance.reduce((sum, a) => {
-      // Daily rate + Overtime
       const daily = a.dailyRate || 0;
       const overtime = a.overtimePay || 0;
       return sum + daily + overtime;
@@ -459,12 +460,13 @@ router.post('/checkin', auth, uploadLimiter, upload.single('photo'), async (req,
       return res.status(400).json({ msg: 'Please select a project to check in' });
     }
     
-    const today = getTodayStart(recordTime);
+    const todayRange = wibDayRange(recordTime);
+    const today = todayRange.start;
     
     // Check if already checked in today
     let attendance = await Attendance.findOne({
       userId: req.user._id,
-      date: today,
+      date: { $gte: todayRange.start, $lte: todayRange.end },
     });
     
     if (attendance && attendance.checkIn?.time) {
@@ -572,12 +574,13 @@ router.post('/permit', auth, uploadLimiter, upload.single('evidence'), async (re
       }
     }
 
-    const today = getTodayStart(recordTime);
+    const todayRange = wibDayRange(recordTime);
+    const today = todayRange.start;
 
     // Check if record exists
     let attendance = await Attendance.findOne({
       userId: req.user._id,
-      date: today,
+      date: { $gte: todayRange.start, $lte: todayRange.end },
     });
 
     const permitData = {
@@ -625,11 +628,12 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
       }
     }
 
-    const today = getTodayStart(recordTime);
+    const todayRange = wibDayRange(recordTime);
+    const today = todayRange.start;
     
     const attendance = await Attendance.findOne({
       userId: req.user._id,
-      date: today,
+      date: { $gte: todayRange.start, $lte: todayRange.end },
     });
     
     if (!attendance) {
@@ -725,7 +729,7 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
 // GET /api/attendance/office-today - Get today's office and management staff presence overview
 router.get('/office-today', auth, async (req, res) => {
   try {
-    const today = getTodayStart();
+    const todayRange = wibDayRange();
 
     // Find all users who are office/management
     const officeUsers = await User.find({
@@ -740,7 +744,7 @@ router.get('/office-today', auth, async (req, res) => {
 
     // Fetch attendance for these users today or any attendance with category='office'
     const todayRecords = await Attendance.find({
-      date: today,
+      date: { $gte: todayRange.start, $lte: todayRange.end },
       $or: [
         { userId: { $in: officeUserIds } },
         { category: 'office' },
@@ -833,9 +837,10 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
       dateColumns.push(d.toISOString().split('T')[0]);
     }
 
-    // 4. Group by userId and pivot into worker x date grid
+    // 4. Group by userId and pivot into worker x date grid (SSOT: deduplicated by worker & date)
+    const deduplicatedRecords = deduplicateAttendanceRecords(allRecords);
     const workerMap = {};
-    allRecords.forEach(record => {
+    deduplicatedRecords.forEach(record => {
       const uid = record.userId._id.toString();
       if (!workerMap[uid]) {
         workerMap[uid] = {
@@ -859,7 +864,7 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
       else if (record.status === 'Absent') score = 0;
       else if (record.status === 'Permit') score = 0;
 
-      // Calculate overtime hours for this record
+      // Calculate overtime hours for this record using standard dailyRate / 8
       let overtimeHours = 0;
       if (record.overtimeHours !== undefined && record.overtimeHours !== null && record.overtimeHours > 0) {
         overtimeHours = record.overtimeHours;
@@ -919,7 +924,7 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
     const totalPossibleDays = totalWorkforce * dateColumns.length;
     const totalActualScore = workers.reduce((sum, w) => sum + w.totalScore, 0);
     const avgAttendance = totalPossibleDays > 0 ? Math.round((totalActualScore / totalPossibleDays) * 1000) / 10 : 0;
-    const pendingPayroll = allRecords
+    const pendingPayroll = deduplicatedRecords
       .filter(r => (r.paymentStatus || 'Unpaid') === 'Unpaid')
       .reduce((sum, r) => {
         if (r.status === 'Absent' || r.status === 'Permit') return sum;
@@ -999,8 +1004,9 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'president_dire
       dateColumns.push(d.toISOString().split('T')[0]);
     }
 
+    const deduplicatedRecords = deduplicateAttendanceRecords(allRecords);
     const workerMap = {};
-    allRecords.forEach(record => {
+    deduplicatedRecords.forEach(record => {
       const uid = record.userId._id.toString();
       if (!workerMap[uid]) {
         workerMap[uid] = {
@@ -1107,11 +1113,11 @@ router.put('/:id/rate', auth, authorize('owner', 'president_director', 'operatio
       attendance.wageMultiplier = wageMultipliers[wageType] || 1;
     }
 
-    // Rate calculation
+    // Rate calculation (SSOT: hourlyRate = Math.round(dailyRate / 8))
     if (dailyRate !== undefined) {
       const rate = Number(dailyRate);
       attendance.dailyRate = rate;
-      attendance.hourlyRate = rate / 8; // Auto-calculate hourly
+      attendance.hourlyRate = Math.round(rate / 8);
     }
     
     // Calculate Overtime Pay
@@ -1123,10 +1129,11 @@ router.put('/:id/rate', auth, authorize('owner', 'president_director', 'operatio
        } else if (attendance.hourlyRate > 0) {
          attendance.overtimeHours = Math.round((attendance.overtimePay / attendance.hourlyRate) * 10) / 10;
        }
-    } else if (attendance.wageType.startsWith('overtime') && attendance.checkIn?.time && attendance.checkOut?.time) {
+    } else if (attendance.wageType && attendance.wageType.startsWith('overtime') && attendance.checkIn?.time && attendance.checkOut?.time) {
        const hours = Math.max(0, (new Date(attendance.checkOut.time) - new Date(attendance.checkIn.time)) / (1000 * 60 * 60));
        attendance.overtimeHours = Math.round(hours * 10) / 10;
-       attendance.overtimePay = Math.round(hours * attendance.hourlyRate * attendance.wageMultiplier);
+       const hrRate = attendance.hourlyRate || Math.round((attendance.dailyRate || 0) / 8);
+       attendance.overtimePay = Math.round(attendance.overtimeHours * hrRate);
     } else {
        // If not overtime type and no manual override, default to 0
        attendance.overtimePay = 0;
@@ -1167,16 +1174,27 @@ router.post('/quick-overtime', auth, authorize('owner', 'president_director', 'o
     }
 
     let record = null;
+    let startOfTargetDay = null;
+    let endOfTargetDay = null;
     if (attendanceId) {
       record = await Attendance.findById(attendanceId);
     } else if (userId && date) {
-      const startOfTargetDay = parseDateParam(date, false);
-      const endOfTargetDay = parseDateParam(date, true);
+      startOfTargetDay = parseDateParam(date, false);
+      endOfTargetDay = parseDateParam(date, true);
       if (startOfTargetDay && endOfTargetDay) {
-        record = await Attendance.findOne({
+        const matchingRecords = await Attendance.find({
           userId,
           date: { $gte: startOfTargetDay, $lte: endOfTargetDay },
-        });
+        }).sort({ createdAt: 1 });
+        if (matchingRecords.length > 0) {
+          record = matchingRecords[0];
+          // Clean up duplicates if any
+          if (matchingRecords.length > 1) {
+            for (let i = 1; i < matchingRecords.length; i++) {
+              await Attendance.findByIdAndDelete(matchingRecords[i]._id);
+            }
+          }
+        }
       }
     }
 
@@ -1184,16 +1202,15 @@ router.post('/quick-overtime', auth, authorize('owner', 'president_director', 'o
     const worker = await User.findById(targetUserId).select('fullName dailyRate');
     if (!worker) return res.status(404).json({ msg: 'Worker not found' });
 
-    // Baseline calculation: use existing dailyRate on record or worker's baseline dailyRate
+    // Baseline calculation: use existing dailyRate on record or worker's baseline dailyRate (SSOT: dailyRate / 8)
     const baselineDailyRate = (record?.dailyRate && record.dailyRate > 0)
       ? record.dailyRate
       : (worker.dailyRate && worker.dailyRate > 0 ? worker.dailyRate : 150000);
     const hourlyRate = Math.round(baselineDailyRate / 8);
 
-    const mult = Number(multiplier) || 1;
     const calculatedPay = (customPay !== undefined && Number(customPay) >= 0)
       ? Number(customPay)
-      : Math.round(otHours * hourlyRate * mult);
+      : Math.round(otHours * hourlyRate);
 
     const validOtProjId = (overtimeProjectId && mongoose.Types.ObjectId.isValid(overtimeProjectId))
       ? overtimeProjectId
@@ -1204,15 +1221,13 @@ router.post('/quick-overtime', auth, authorize('owner', 'president_director', 'o
       record.overtimePay = calculatedPay;
       record.overtimeProjectId = validOtProjId || record.projectId;
       record.wageType = 'overtime';
-      if (!record.hourlyRate || record.hourlyRate === 0) {
-        record.hourlyRate = hourlyRate;
-      }
+      record.hourlyRate = hourlyRate;
       if (notes) {
         record.notes = record.notes ? `${record.notes} | ${notes}` : notes;
       }
       await record.save();
     } else {
-      const targetDate = date ? parseDateParam(date, false) : new Date();
+      const targetDate = startOfTargetDay || (date ? parseDateParam(date, false) : getTodayStart());
       record = new Attendance({
         userId: targetUserId,
         date: targetDate,
@@ -1355,19 +1370,25 @@ router.put('/recap-table/adjust', auth, authorize('owner', 'president_director',
       return res.status(400).json({ msg: 'Invalid date format (YYYY-MM-DD expected)' });
     }
 
-    let record = await Attendance.findOne({
+    const existingRecords = await Attendance.find({
       userId,
       date: { $gte: startOfTargetDay, $lte: endOfTargetDay },
     });
+    let record = existingRecords[0] || null;
+    if (existingRecords.length > 1) {
+      const extraIds = existingRecords.slice(1).map(r => r._id);
+      await Attendance.deleteMany({ _id: { $in: extraIds } });
+    }
 
     const targetUser = await User.findById(userId).select('dailyRate');
     const existingRate = record?.dailyRate || 0;
     const userDailyRate = (dailyRate !== undefined && Number(dailyRate) >= 0)
       ? Number(dailyRate)
-      : (existingRate > 0 ? existingRate : (targetUser?.dailyRate || 150000));
-    const userHourlyRate = userDailyRate > 0 ? Math.round(userDailyRate / 8) : 18750;
+      : (existingRate > 0 ? existingRate : (targetUser?.dailyRate || 120000));
+    // SSOT OT Formula: hourlyRate = dailyRate / 8 (e.g. 120.000 / 8 = 15.000), overtimePay = otHours * hourlyRate
+    const userHourlyRate = userDailyRate > 0 ? Math.round(userDailyRate / 8) : 15000;
     const otHours = Math.max(0, Number(overtimeHours) || 0);
-    const calculatedOtPay = Math.round(otHours * userHourlyRate * 1.5);
+    const calculatedOtPay = Math.round(otHours * userHourlyRate);
 
     // Parse checkIn and checkOut Date objects in WIB timezone
     let checkInDate = null;
@@ -1394,6 +1415,7 @@ router.put('/recap-table/adjust', auth, authorize('owner', 'president_director',
 
     if (record) {
       if (status) record.status = status;
+      record.date = startOfTargetDay; // Normalize to WIB day start
       record.dailyRate = targetStatus === 'Absent' ? 0 : (targetStatus === 'Half-day' ? Math.round(userDailyRate / 2) : userDailyRate);
       record.hourlyRate = userHourlyRate;
       record.overtimeHours = targetStatus === 'Absent' ? 0 : otHours;
@@ -1482,11 +1504,12 @@ router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) =
   try {
     const { wageType, projectId, lat, lng } = req.body;
     
-    const today = getTodayStart();
+    const todayRange = wibDayRange();
+    const today = todayRange.start;
     
     let attendance = await Attendance.findOne({
       userId: req.user._id,
-      date: today,
+      date: { $gte: todayRange.start, $lte: todayRange.end },
     });
     
     if (attendance && attendance.checkIn?.time) {

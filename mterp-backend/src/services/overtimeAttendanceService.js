@@ -1,4 +1,5 @@
 const { Attendance, SPKL, SPKLBatch } = require('../models');
+const { wibDayRange } = require('../utils/date');
 
 /**
  * Parses time string "HH:mm" to minutes from midnight
@@ -35,18 +36,23 @@ function calculateEffectiveHours(startTime, endTime, breakMinutes = 0) {
 
 /**
  * Calculates overtime pay based on hourly rate, hours, and rate scheme.
- * Default is Indonesian Labor Law (PP 35/2021) standard weekday formula.
+ * Single Source of Truth (SSOT): Default is flat 1.0x hourly rate based on daily wage / 8.
+ * (e.g. 120.000 / 8 = 15.000/jam).
  *
  * @param {number} hourlyRate
  * @param {number} hours
- * @param {string} [rateScheme='standard_pp35']
- * @param {number} [multiplier=1.5]
+ * @param {string} [rateScheme='flat_1.0']
+ * @param {number} [multiplier=1.0]
  * @returns {number} Total overtime compensation in IDR
  */
-function calculateOvertimePay(hourlyRate, hours, rateScheme = 'standard_pp35', multiplier = 1.5) {
+function calculateOvertimePay(hourlyRate, hours, rateScheme = 'flat_1.0', multiplier = 1.0) {
   const hr = Number(hourlyRate) || 0;
   const h = Number(hours) || 0;
   if (hr <= 0 || h <= 0) return 0;
+
+  if (rateScheme === 'flat_1.0' || !rateScheme) return Math.round(h * 1.0 * hr);
+  if (rateScheme === 'flat_1.5') return Math.round(h * 1.5 * hr);
+  if (rateScheme === 'flat_2.0') return Math.round(h * 2.0 * hr);
 
   if (rateScheme === 'standard_pp35') {
     // Indonesian Labor Law (PP 35/2021) standard weekday formula:
@@ -59,11 +65,7 @@ function calculateOvertimePay(hourlyRate, hours, rateScheme = 'standard_pp35', m
     return Math.round(firstHourPay + (remainingHours * 2.0 * hr));
   }
 
-  if (rateScheme === 'flat_1.0') return Math.round(h * 1.0 * hr);
-  if (rateScheme === 'flat_1.5') return Math.round(h * 1.5 * hr);
-  if (rateScheme === 'flat_2.0') return Math.round(h * 2.0 * hr);
-
-  return Math.round(h * (Number(multiplier) || 1.5) * hr);
+  return Math.round(h * (Number(multiplier) || 1.0) * hr);
 }
 
 /**
@@ -138,14 +140,12 @@ async function generateNextBatchNumber(date, session = null) {
  * @param {object} [session=null]
  */
 async function syncSpklToAttendance(spkl, session = null) {
-  const targetDateStart = new Date(spkl.overtimeDate);
-  targetDateStart.setHours(0, 0, 0, 0);
-  const targetDateEnd = new Date(spkl.overtimeDate);
-  targetDateEnd.setHours(23, 59, 59, 999);
+  const dayRange = wibDayRange(spkl.overtimeDate);
+  if (!dayRange) throw new Error('Invalid SPKL overtime date');
 
   let query = Attendance.findOne({
     userId: spkl.workerId,
-    date: { $gte: targetDateStart, $lte: targetDateEnd },
+    date: { $gte: dayRange.start, $lte: dayRange.end },
   });
   if (session) query = query.session(session);
   let att = await query;
@@ -158,6 +158,7 @@ async function syncSpklToAttendance(spkl, session = null) {
   const effectiveHours = Number(spkl.scheduleActual?.effectiveHours || 0);
 
   if (att) {
+    att.date = dayRange.start; // Normalize to WIB day start
     att.overtimeHours = effectiveHours;
     att.overtimePay = effectivePay;
     att.overtimeProjectId = spkl.projectId;
@@ -171,7 +172,7 @@ async function syncSpklToAttendance(spkl, session = null) {
   } else {
     att = new Attendance({
       userId: spkl.workerId,
-      date: spkl.overtimeDate,
+      date: dayRange.start, // Always anchored to WIB day start
       status: 'Present',
       workType: 'Project',
       dailyRate: 0,

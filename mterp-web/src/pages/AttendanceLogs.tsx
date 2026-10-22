@@ -544,7 +544,7 @@ export default function AttendanceLogs() {
   // Wage Modal Handlers
   const openWageModal = (record: AttendanceRecord) => {
     setSelectedRecord(record);
-    const hourly = record.dailyRate ? record.dailyRate / 8 : 0;
+    const hourly = record.dailyRate ? Math.round(record.dailyRate / 8) : 0;
     const hours = (record.overtimeHours && record.overtimeHours > 0)
       ? record.overtimeHours
       : ((record.overtimePay && hourly) ? record.overtimePay / hourly : 0);
@@ -563,13 +563,13 @@ export default function AttendanceLogs() {
   const handleRateChange = (val: number) => {
     setNewDailyRate(val);
     const parsedHrs = parseFloat(newOvertimeHours.toString().replace(',', '.')) || 0;
-    setNewOvertimePay(Math.round(parsedHrs * (val / 8)));
+    setNewOvertimePay(Math.round(parsedHrs * Math.round(val / 8)));
   };
 
   const handleHoursChange = (valStr: string) => {
     setNewOvertimeHours(valStr);
     const parsedHrs = parseFloat(valStr.replace(',', '.')) || 0;
-    setNewOvertimePay(Math.round(parsedHrs * (newDailyRate / 8)));
+    setNewOvertimePay(Math.round(parsedHrs * Math.round(newDailyRate / 8)));
   };
 
   const handleTypeChange = (val: string) => {

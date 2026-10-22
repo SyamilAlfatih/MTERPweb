@@ -119,11 +119,13 @@ router.post(
       const conflicts = [];
       const created = [];
 
+      const dayRange = wibDayRange(recordTime);
+
       for (const workerId of parsedWorkerIds) {
         // Check if worker already has attendance for today
         const existing = await Attendance.findOne({
           userId: workerId,
-          date: today,
+          date: { $gte: dayRange.start, $lte: dayRange.end },
         }).lean();
 
         if (existing && existing.checkIn?.time) {
@@ -419,8 +421,12 @@ router.post(
       await session.save();
 
       // Create/upsert individual Attendance record
-      const today = session.date ? getTodayStart(session.date) : getTodayStart(recordTime);
-      const existing = await Attendance.findOne({ userId: workerId, date: today });
+      const dayRange = wibDayRange(session.date || recordTime);
+      const today = dayRange.start;
+      const existing = await Attendance.findOne({
+        userId: workerId,
+        date: { $gte: dayRange.start, $lte: dayRange.end },
+      });
 
       if (existing && existing.checkIn?.time) {
         return res.json({
@@ -524,7 +530,11 @@ router.post(
         });
 
         // Update the individual Attendance record with check-out time
-        const attendance = await Attendance.findOne({ userId: entry.workerId, date: today });
+        const dayRange = wibDayRange(today);
+        const attendance = await Attendance.findOne({
+          userId: entry.workerId,
+          date: { $gte: dayRange.start, $lte: dayRange.end },
+        });
         if (attendance) {
           // Parse leaveHour to create a Date object for today in WIB (UTC+7)
           const [hours, minutes] = entry.leaveHour.split(':').map(Number);
@@ -632,7 +642,11 @@ router.post(
             recordedAt: recordTime,
           });
 
-          const attendance = await Attendance.findOne({ userId: wId, date: today });
+          const dayRange = wibDayRange(today);
+          const attendance = await Attendance.findOne({
+            userId: wId,
+            date: { $gte: dayRange.start, $lte: dayRange.end },
+          });
           if (attendance) {
             attendance.checkOut = { time: leaveDateWIB };
             if (hours < 12) attendance.status = 'Half-day';

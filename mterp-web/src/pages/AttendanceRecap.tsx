@@ -475,7 +475,7 @@ export default function AttendanceRecap() {
           const otPay =
             day.overtimePay !== undefined && day.overtimePay > 0
               ? day.overtimePay
-              : Math.round(otHours * hourlyRate * 1.5);
+              : Math.round(otHours * hourlyRate);
           pendingPayroll += dayWage + otPay;
         }
       });
@@ -517,8 +517,8 @@ export default function AttendanceRecap() {
       const oldDay = w.days[date];
       const newScore =
         data.status === 'Present' ? 1 : data.status === 'Late' || data.status === 'Half-day' ? 0.5 : 0;
-      const hourlyRate = Math.round((data.dailyRate || w.dailyRate || 150000) / 8);
-      const calculatedOtPay = Math.round(data.otHours * hourlyRate * 1.5);
+      const hourlyRate = Math.round((data.dailyRate || w.dailyRate || 120000) / 8);
+      const calculatedOtPay = Math.round(data.otHours * hourlyRate);
 
       return {
         ...w,
@@ -1800,7 +1800,7 @@ export default function AttendanceRecap() {
                       {formatRp(editDayModal.status === 'Half-day' ? Math.round(editDayModal.dailyRate / 2) : editDayModal.dailyRate)}
                     </span>
                     {editDayModal.otHours > 0 && (
-                      <span> + Lembur: <span className="font-bold font-mono">{formatRp(Math.round(editDayModal.otHours * (editDayModal.dailyRate / 8) * 1.5))}</span></span>
+                      <span> + Lembur: <span className="font-bold font-mono">{formatRp(Math.round(editDayModal.otHours * (editDayModal.dailyRate / 8)))}</span></span>
                     )}
                   </div>
                   <div className="text-right">
@@ -1808,7 +1808,7 @@ export default function AttendanceRecap() {
                     <span className="text-sm font-black font-mono text-emerald-900">
                       {formatRp(
                         (editDayModal.status === 'Half-day' ? Math.round(editDayModal.dailyRate / 2) : editDayModal.dailyRate) +
-                        Math.round(editDayModal.otHours * (editDayModal.dailyRate / 8) * 1.5)
+                        Math.round(editDayModal.otHours * (editDayModal.dailyRate / 8))
                       )}
                     </span>
                   </div>
