@@ -458,9 +458,66 @@ export function SupplierSourcingModal({
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold text-text-muted uppercase mb-1 block">
-                        Syarat Pembayaran
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] font-bold text-text-muted uppercase block">
+                          Syarat Pembayaran
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newIsPaylater = !currentSupp.isPaylater;
+                              handleUpdateSupplierField(activeVendorIndex, {
+                                isPaylater: newIsPaylater,
+                                schemeType: newIsPaylater ? 'PAYLATER' : 'STANDARD',
+                                interestRate: 0,
+                                paymentTerms: newIsPaylater ? 'Paylater (Ambil Dulu Bayar Nanti - Bunga 0%)' : 'Tempo 14 Hari',
+                                settlementTerms: newIsPaylater ? 'Tempo Setelah GRN Tanpa Bunga' : '',
+                              });
+                            }}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition-all cursor-pointer border ${
+                              currentSupp.isPaylater
+                                ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                            }`}
+                          >
+                            {currentSupp.isPaylater ? '✓ Paylater Aktif (0% Bunga)' : '+ Skema Paylater'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Quick Preset Terms */}
+                      <div className="flex flex-wrap gap-1 mb-1.5">
+                        {[
+                          { label: 'Paylater (0% Bunga)', val: 'Paylater (Ambil Dulu Bayar Nanti - Bunga 0%)', isPl: true },
+                          { label: 'Tempo 14 Hari', val: 'Tempo 14 Hari', isPl: false },
+                          { label: 'Tempo 30 Hari', val: 'Tempo 30 Hari', isPl: false },
+                          { label: 'COD', val: 'Cash on Delivery (COD)', isPl: false },
+                          { label: 'DP 30%', val: 'DP 30% - Pelunasan GRN', isPl: false },
+                        ].map((preset) => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() =>
+                              handleUpdateSupplierField(activeVendorIndex, {
+                                paymentTerms: preset.val,
+                                isPaylater: preset.isPl,
+                                schemeType: preset.isPl ? 'PAYLATER' : 'STANDARD',
+                                interestRate: 0,
+                                settlementTerms: preset.isPl ? 'Tempo Setelah GRN Tanpa Bunga' : '',
+                              })
+                            }
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors border cursor-pointer ${
+                              currentSupp.paymentTerms === preset.val
+                                ? 'bg-primary text-white border-primary'
+                                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+
                       <input
                         type="text"
                         value={currentSupp.paymentTerms || ''}
@@ -470,6 +527,12 @@ export function SupplierSourcingModal({
                         placeholder="Tempo 14 Hari / COD / DP 30%..."
                         className="w-full p-2 text-xs rounded-lg border border-border-light bg-bg-white"
                       />
+
+                      {currentSupp.isPaylater && (
+                        <div className="mt-1.5 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 leading-tight">
+                          <span className="font-bold">Skema Paylater Aktif:</span> Material diambil / dikirim ke proyek tanpa uang muka (DP Rp 0). Pelunasan dilakukan setelah barang tiba (GRN) tanpa dikenakan beban bunga (Bunga 0%).
+                        </div>
+                      )}
                     </div>
 
                     <div>

@@ -341,7 +341,14 @@ export async function exportPurchaseOrderPdf(order: MaterialRequest) {
         { content: 'Ref. Nomor PR' },
         { content: `: ${order.prNumber || '-'}` },
         { content: 'Termin Bayar' },
-        { content: `: ${vendor?.paymentTerms || 'Tempo 14 Hari'}` },
+        {
+          content: `: ${
+            vendor?.isPaylater || vendor?.schemeType === 'PAYLATER'
+              ? 'Paylater (0% Bunga — Ambil Dulu Bayar Nanti)'
+              : (vendor?.paymentTerms || 'Tempo 14 Hari')
+          }`,
+          styles: { fontStyle: vendor?.isPaylater || vendor?.schemeType === 'PAYLATER' ? 'bold' : 'normal' },
+        },
       ],
       [
         { content: 'Proyek Tujuan' },
@@ -831,5 +838,236 @@ export async function exportGoodsReceiptPdf(order: MaterialRequest) {
   }
 
   const filename = `${order.poNumber || order.prNumber || 'GRN'}_TandaTerima_GRN.pdf`;
+  doc.save(filename);
+}
+
+function terbilangRupiah(num: number): string {
+  const satuan = ['', 'Satu', 'Dua', 'Tiga', 'Empat', 'Lima', 'Enam', 'Tujuh', 'Delapan', 'Sembilan', 'Sepuluh', 'Sebelas'];
+  function convert(n: number): string {
+    if (n < 12) return satuan[n];
+    if (n < 20) return convert(n - 10) + ' Belas';
+    if (n < 100) return convert(Math.floor(n / 10)) + ' Puluh ' + convert(n % 10);
+    if (n < 200) return 'Seratus ' + convert(n - 100);
+    if (n < 1000) return convert(Math.floor(n / 100)) + ' Ratus ' + convert(n % 100);
+    if (n < 2000) return 'Seribu ' + convert(n - 1000);
+    if (n < 1000000) return convert(Math.floor(n / 1000)) + ' Ribu ' + convert(n % 1000);
+    if (n < 1000000000) return convert(Math.floor(n / 1000000)) + ' Juta ' + convert(n % 1000000);
+    if (n < 1000000000000) return convert(Math.floor(n / 1000000000)) + ' Miliar ' + convert(n % 1000000000);
+    return convert(Math.floor(n / 1000000000000)) + ' Triliun ' + convert(n % 1000000000000);
+  }
+  const clean = Math.floor(Math.abs(num));
+  if (clean === 0) return 'Nol Rupiah';
+  return convert(clean).replace(/\s+/g, ' ').trim() + ' Rupiah';
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 4. EXPORT PAYMENT VOUCHER / BUKTI KAS KELUAR PDF
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+export async function exportPaymentVoucherPdf(order: MaterialRequest) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 14;
+  const contentW = pageW - margin * 2;
+  let y = 8;
+
+  // 1. Kop Surat
+  try {
+    const kopData = await loadImageAsBase64('/Kop Surat Aplikasi.webp');
+    const kopH = contentW * 0.13;
+    doc.addImage(kopData, 'PNG', margin, y, contentW, kopH);
+    y += kopH + 3;
+  } catch {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('PT MEGA TAMA ENERCO', margin, y + 6);
+    y += 14;
+  }
+
+  const pc = order.paymentConfirmation;
+  const isPaylater = pc?.schemeApplied === 'PAYLATER' || order.selectedSupplier?.schemeType === 'PAYLATER';
+
+  // 2. Title Banner
+  doc.setFillColor(5, 150, 105); // Emerald 600
+  doc.rect(margin, y, contentW, 7, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text(
+    `BUKTI PENGELUARAN KAS & PELUNASAN / PAYMENT VOUCHER ${isPaylater ? '[PAYLATER 0%]' : ''}`,
+    margin + contentW / 2,
+    y + 4.8,
+    { align: 'center' }
+  );
+  y += 11;
+
+  // 3. Metadata Table
+  const projName = typeof order.projectId === 'object' ? order.projectId?.nama : 'Proyek Umum';
+  const vendor = order.selectedSupplier;
+  const payerName = typeof pc?.confirmedBy === 'object' ? pc?.confirmedBy?.fullName : 'Divisi Keuangan';
+  const payDateStr = fmtDateStr(pc?.paymentDate || pc?.confirmedAt || order.updatedAt);
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    theme: 'plain',
+    styles: {
+      fontSize: 8,
+      cellPadding: { top: 1.2, bottom: 1.2, left: 1, right: 1 },
+      textColor: [30, 41, 59],
+      overflow: 'linebreak',
+    },
+    columnStyles: {
+      0: { cellWidth: 28, fontStyle: 'bold', textColor: [71, 85, 105] },
+      1: { cellWidth: 65 },
+      2: { cellWidth: 28, fontStyle: 'bold', textColor: [71, 85, 105] },
+      3: { cellWidth: 61 },
+    },
+    body: [
+      [
+        { content: 'No. Voucher / BKK' },
+        { content: `: ${pc?.referenceNumber || `BKK-${order.poNumber || order.prNumber}`}`, styles: { fontStyle: 'bold' } },
+        { content: 'Tanggal Pelunasan' },
+        { content: `: ${payDateStr}`, styles: { fontStyle: 'bold' } },
+      ],
+      [
+        { content: 'Ref. Nomor PO' },
+        { content: `: ${order.poNumber || '-'}` },
+        { content: 'Ref. Nomor PR' },
+        { content: `: ${order.prNumber || '-'}` },
+      ],
+      [
+        { content: 'Penerima / Vendor' },
+        { content: `: ${vendor?.supplierName || '-'}` },
+        { content: 'Skema Pembayaran' },
+        { content: `: ${isPaylater ? 'Paylater (Bunga 0%)' : (pc?.paymentType || 'Lunas')}` },
+      ],
+      [
+        { content: 'Metode Bayar' },
+        { content: `: ${pc?.paymentMethod || 'Bank Transfer'}` },
+        { content: 'Rekening Sumber' },
+        { content: `: ${pc?.sourceAccount || '-'}` },
+      ],
+      [
+        { content: 'Proyek Tujuan' },
+        {
+          content: `: ${projName || 'General'}`,
+          colSpan: 3,
+          styles: { fontStyle: 'bold', textColor: [15, 23, 42] },
+        },
+      ],
+    ],
+  });
+
+  y = ((doc as any).lastAutoTable?.finalY || (y + 30)) + 4;
+
+  // 4. Financial Breakdown Table
+  const principal = pc?.principalAmount || pc?.amountPaid || order.poTotalAmount || 0;
+  const interest = pc?.interestAmount || 0;
+  const totalPaid = pc?.amountPaid || principal;
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    theme: 'grid',
+    headStyles: {
+      fillColor: [15, 23, 42],
+      textColor: [255, 255, 255],
+      fontSize: 8,
+      fontStyle: 'bold',
+      halign: 'center',
+    },
+    styles: {
+      fontSize: 8,
+      cellPadding: 2,
+      textColor: [15, 23, 42],
+    },
+    head: [['No', 'Keterangan Pengeluaran & Rincian Tagihan', 'Status Skema', 'Nominal']],
+    body: [
+      [
+        '1',
+        `Pelunasan Tagihan Material PO: ${order.poNumber || order.prNumber} (${order.item || `${order.items?.length || 1} Baris Item`})`,
+        isPaylater ? 'Skema Paylater (0% Bunga)' : 'Standar SCM',
+        formatRupiah(principal),
+      ],
+      [
+        '2',
+        'Beban Bunga / Denda / Biaya Tambahan',
+        '0% Bunga',
+        formatRupiah(interest),
+      ],
+    ],
+    foot: [
+      [
+        { content: 'TOTAL KAS DIKELUARKAN (LUNAS):', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } },
+        { content: formatRupiah(totalPaid), styles: { fontStyle: 'bold', textColor: [5, 150, 105] } },
+      ],
+    ],
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 95 },
+      2: { cellWidth: 40, halign: 'center' },
+      3: { cellWidth: 37, halign: 'right', fontStyle: 'bold' },
+    },
+  });
+
+  y = ((doc as any).lastAutoTable?.finalY || (y + 25)) + 4;
+
+  // Terbilang box
+  doc.setFillColor(241, 245, 249);
+  doc.rect(margin, y, contentW, 6, 'F');
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(8);
+  doc.setTextColor(51, 65, 85);
+  doc.text(`Terbilang: # ${terbilangRupiah(totalPaid)} #`, margin + 2, y + 4.2);
+  y += 10;
+
+  // 5. Signatures (Payer / Kasir vs Vendor / Penerima)
+  const sigW = contentW / 2;
+  const curY = y;
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+
+  doc.text('Dikeluarkan & Dikonfirmasi oleh:', margin + 2, curY);
+  doc.text('Telah Diterima oleh (Supplier/Toko):', margin + sigW + 2, curY);
+
+  if (pc?.payerSignature) {
+    try {
+      const sigData = await getSignatureDataUrl(pc.payerSignature);
+      if (sigData) {
+        doc.addImage(sigData, 'PNG', margin + 4, curY + 2, 40, 16);
+      }
+    } catch (e) {
+      console.warn('Failed to embed payer signature:', e);
+    }
+  }
+
+  doc.line(margin + 2, curY + 20, margin + sigW - 10, curY + 20);
+  doc.line(margin + sigW + 2, curY + 20, margin + contentW - 2, curY + 20);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(payerName, margin + 2, curY + 24);
+  doc.text(vendor?.supplierName || 'Pihak Supplier', margin + sigW + 2, curY + 24);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Finance & Cashier PT Mega Tama Enerco', margin + 2, curY + 27.5);
+  doc.text(vendor?.contact || 'Penerima Pembayaran', margin + sigW + 2, curY + 27.5);
+
+  // Footer
+  doc.setFontSize(7);
+  doc.setTextColor(148, 163, 184);
+  doc.text(
+    `Bukti Pengeluaran Kas Resmi • PT Mega Tama Enerco — Dicetak pada: ${new Date().toLocaleString('id-ID')} WIB`,
+    margin,
+    pageH - 7
+  );
+
+  const filename = `${order.poNumber || order.prNumber || 'PO'}_PaymentVoucher.pdf`;
   doc.save(filename);
 }

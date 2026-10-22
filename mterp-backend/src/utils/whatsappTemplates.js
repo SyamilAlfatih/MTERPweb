@@ -419,6 +419,37 @@ function formatAuthorizerAssigned(request, roleLabel, assignedUser, assignedBy) 
   ].filter(Boolean).join('\n');
 }
 
+/**
+ * Payment Settled & Confirmed (Post-GRN Settlement)
+ */
+function formatMaterialPaymentSettled(request) {
+  const isPaylater = request.selectedSupplier?.schemeType === 'PAYLATER' || request.selectedSupplier?.isPaylater || request.paymentConfirmation?.schemeApplied === 'PAYLATER';
+  const schemeTag = isPaylater ? ' [SKEMA PAYLATER (BUNGA 0%)]' : '';
+  const projectName = typeof request.projectId === 'object' ? request.projectId?.nama : 'Proyek';
+  const payer = request.paymentConfirmation?.confirmedBy?.fullName || 'Divisi Keuangan';
+  const amount = Number(request.paymentConfirmation?.amountPaid || 0).toLocaleString('id-ID');
+  const method = request.paymentConfirmation?.paymentMethod || 'Bank Transfer';
+
+  return [
+    `💰 *PEMBAYARAN PENGADAAN MATERIAL LUNAS (SETTLED)*${schemeTag}`,
+    'PT MEGA TAMA ENERCO — MTERP FINANCE',
+    '',
+    `Nomor PO: *${request.poNumber || request.prNumber}*`,
+    `Proyek: *${projectName}*`,
+    `Supplier / Toko: *${request.selectedSupplier?.supplierName || '-'}*`,
+    `Nominal Terbayar: *Rp ${amount}*`,
+    `Beban Bunga: *Rp 0 (0% Bunga)*`,
+    `Metode: *${method}*`,
+    `Dikonfirmasi Oleh: *${payer}*`,
+    `Tanggal Bayar: *${new Date(request.paymentConfirmation?.paymentDate || Date.now()).toLocaleDateString('id-ID')}*`,
+    '',
+    '✅ *Status Berkas:* Bukti Bon Pembayaran dan Bukti Transfer Bank telah diverifikasi dan tersimpan dalam arsip MTERP.',
+    `🔗 *Lihat Bukti Bayar & Voucher:* ${APP_URL}/materials`,
+    '',
+    `_Notifikasi Otomatis MTERP Web — ${new Date().toLocaleString('id-ID')} WIB_`,
+  ].filter(Boolean).join('\n');
+}
+
 module.exports = {
   formatRupiah,
   formatDate,
@@ -430,6 +461,7 @@ module.exports = {
   formatPoApproved,
   formatPoDispatched,
   formatMaterialDelivered,
+  formatMaterialPaymentSettled,
   formatMaterialRequestStatus,
   formatSpklFinalApproved,
   formatKasbonAlert,

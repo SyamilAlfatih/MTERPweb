@@ -8,7 +8,7 @@ export interface SignaturePadProps {
   signerRole?: string;
   height?: number;
   initialSignature?: string | null;
-  onSave: (dataUrl: string | null) => void;
+  onSave?: (dataUrl: string | null) => void;
   onClear?: () => void;
   className?: string;
 }
@@ -47,7 +47,7 @@ export default function SignaturePad({
 
     if (allStrokes.length === 0) {
       setHasSignature(false);
-      onSave(null);
+      onSave?.(null);
       return;
     }
 
@@ -81,7 +81,7 @@ export default function SignaturePad({
     }
 
     setHasSignature(true);
-    onSave(canvas.toDataURL('image/png'));
+    onSave?.(canvas.toDataURL('image/png'));
   }, [onSave]);
 
   // Handle Canvas Resizing for High-DPI screens
@@ -121,7 +121,7 @@ export default function SignaturePad({
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         setHasSignature(true);
-        onSave(initialSignature);
+        onSave?.(initialSignature);
       };
       img.src = initialSignature;
     }
@@ -176,7 +176,7 @@ export default function SignaturePad({
       if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
     setHasSignature(false);
-    onSave(null);
+    onSave?.(null);
     onClear?.();
   };
 

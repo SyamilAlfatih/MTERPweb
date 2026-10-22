@@ -20,6 +20,7 @@ import {
   ChevronUp,
   Download,
   Camera,
+  Receipt,
   Layers,
   ShoppingBag,
   ExternalLink,
@@ -38,6 +39,8 @@ import {
   LayoutGrid,
   ArrowUpDown,
   ChevronRight,
+  CreditCard,
+  Loader2,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api, {
@@ -59,6 +62,8 @@ import {
   MaterialOrderReceiveModal,
   MaterialBulkActionModal,
   BulkActionType,
+  MaterialPaymentConfirmationModal,
+  PaymentEvidenceViewerModal,
 } from '../components/materials';
 import {
   MaterialRequest,
@@ -74,10 +79,11 @@ import {
   exportPurchaseRequestPdf,
   exportPurchaseOrderPdf,
   exportGoodsReceiptPdf,
+  exportPaymentVoucherPdf,
 } from '../utils/exportProcurementPdf';
 import { getImageUrl } from '../utils/image';
 
-type PipelineTab = 'PR' | 'PO_SOURCING' | 'MUST_PURCHASE' | 'ON_THE_WAY' | 'DELIVERED' | 'ALL';
+type PipelineTab = 'PR' | 'PO_SOURCING' | 'MUST_PURCHASE' | 'ON_THE_WAY' | 'DELIVERED' | 'PAID' | 'ALL';
 
 const fmtDateStr = (d?: string) => {
   if (!d) return '-';
@@ -155,6 +161,10 @@ export default function Materials() {
   // Goods Receipt / Site Reception Modal State
   const [receiveOrder, setReceiveOrder] = useState<MaterialRequest | null>(null);
 
+  // Post-GRN Payment Confirmation & Evidence Modal State
+  const [paymentOrder, setPaymentOrder] = useState<MaterialRequest | null>(null);
+  const [viewEvidenceOrder, setViewEvidenceOrder] = useState<MaterialRequest | null>(null);
+
   // Expanded items in list view
   const [expandedOrders, setExpandedOrders] = useState<string[]>([]);
 
@@ -178,6 +188,7 @@ export default function Materials() {
   const canFinanceApprove = ['owner', 'president_director', 'director'].includes(userRole);
   const canSourcing = ['owner', 'director', 'operational_director', 'asset_admin', 'admin_project', 'supervisor'].includes(userRole);
   const canReceive = ['owner', 'director', 'operational_director', 'site_manager', 'supervisor', 'foreman', 'asset_admin'].includes(userRole);
+  const canPay = ['owner', 'president_director', 'director', 'operational_director', 'admin_project', 'asset_admin'].includes(userRole);
 
   useEffect(() => {
     fetchData();
@@ -335,6 +346,8 @@ export default function Materials() {
         if (st !== 'ON_THE_WAY') return false;
       } else if (activeTab === 'DELIVERED') {
         if (!['DELIVERED', 'Delivered'].includes(st)) return false;
+      } else if (activeTab === 'PAID') {
+        if (st !== 'PAID') return false;
       }
 
       // Search filter
@@ -348,7 +361,9 @@ export default function Materials() {
         const itemsText = (r.items || []).map((i) => `${i.item} ${i.specifications || ''} ${i.wbsCode || ''}`).join(' ').toLowerCase();
         const hasRab = (r.items || []).some((i) => i.isRabBased || i.wbsCode);
         const rabKeyword = hasRab ? 'rab based rab' : 'non-rab non rab';
-        return prNo.includes(q) || poNo.includes(q) || itm.includes(q) || itemsText.includes(q) || vendor.includes(q) || proj.includes(q) || rabKeyword.includes(q);
+        const isPl = r.selectedSupplier?.schemeType === 'PAYLATER' || r.selectedSupplier?.isPaylater || r.paymentConfirmation?.schemeApplied === 'PAYLATER';
+        const plKeyword = isPl ? 'paylater ambil dulu 0% tanpa bunga' : '';
+        return prNo.includes(q) || poNo.includes(q) || itm.includes(q) || itemsText.includes(q) || vendor.includes(q) || proj.includes(q) || rabKeyword.includes(q) || plKeyword.includes(q);
       }
 
       return true;
@@ -363,6 +378,7 @@ export default function Materials() {
       MUST_PURCHASE: requests.filter((r) => r.status === 'MUST_PURCHASE').length,
       ON_THE_WAY: requests.filter((r) => r.status === 'ON_THE_WAY').length,
       DELIVERED: requests.filter((r) => ['DELIVERED', 'Delivered'].includes(r.status)).length,
+      PAID: requests.filter((r) => r.status === 'PAID').length,
       ALL: requests.length,
     };
   }, [requests]);
@@ -412,12 +428,19 @@ export default function Materials() {
             <span>Dalam Pengiriman</span>
           </span>
         );
+      case 'PAID':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-emerald-100 text-emerald-950 border border-emerald-400">
+            <CheckCircle2 size={11} className="text-emerald-800 shrink-0" />
+            <span>Selesai (Lunas)</span>
+          </span>
+        );
       case 'DELIVERED':
       case 'Delivered':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-black bg-teal-100 text-teal-950 border border-teal-400">
             <CheckCircle2 size={11} className="text-teal-800 shrink-0" />
-            <span>Selesai (Diterima)</span>
+            <span>Diterima (GRN)</span>
           </span>
         );
       case 'PR_REJECTED':
@@ -526,7 +549,7 @@ export default function Materials() {
     return requests.filter((r) => r._id && selectedOrderIds.includes(r._id));
   }, [requests, selectedOrderIds]);
 
-  // Approvable partitions among selected orders
+  // Selection Partitions by Lifecycle Stage
   const pendingReviewSelected = useMemo(() => {
     return selectedOrders.filter((r) => ['PR_PENDING', 'Pending'].includes(r.status));
   }, [selectedOrders]);
@@ -538,6 +561,103 @@ export default function Materials() {
   const pendingFinanceSelected = useMemo(() => {
     return selectedOrders.filter((r) => r.status === 'PO_PENDING_FINANCE');
   }, [selectedOrders]);
+
+  const pendingReceiveSelected = useMemo(() => {
+    return selectedOrders.filter((r) => r.status === 'ON_THE_WAY');
+  }, [selectedOrders]);
+
+  const pendingPaymentSelected = useMemo(() => {
+    return selectedOrders.filter((r) => ['DELIVERED', 'Delivered'].includes(r.status));
+  }, [selectedOrders]);
+
+  const deletableSelected = useMemo(() => {
+    return selectedOrders.filter((r) => {
+      const isDeletableStatus = ['PR_PENDING', 'Pending', 'PR_REJECTED', 'Rejected'].includes(r.status);
+      const reqUserId = typeof r.requestedBy === 'object' ? r.requestedBy?._id : r.requestedBy;
+      const isCreator = user?._id && String(reqUserId) === String(user._id);
+      return isDeletableStatus && (isOwner || isCreator);
+    });
+  }, [selectedOrders, isOwner, user?._id]);
+
+  const exportablePoSelected = useMemo(() => {
+    return selectedOrders.filter((r) =>
+      Boolean(r.poNumber || ['MUST_PURCHASE', 'ON_THE_WAY', 'DELIVERED', 'Delivered', 'PAID'].includes(r.status))
+    );
+  }, [selectedOrders]);
+
+  const exportableGrnSelected = useMemo(() => {
+    return selectedOrders.filter((r) =>
+      ['DELIVERED', 'Delivered', 'PAID'].includes(r.status) || Boolean(r.deliveryProof)
+    );
+  }, [selectedOrders]);
+
+  const exportablePaymentSelected = useMemo(() => {
+    return selectedOrders.filter((r) => r.status === 'PAID' || Boolean(r.paymentConfirmation));
+  }, [selectedOrders]);
+
+  // Batch PDF Export Menu & State
+  const [isExportingBulk, setIsExportingBulk] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    if (showExportMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showExportMenu]);
+
+  const handleBulkExportPdf = async (type: 'PR' | 'PO' | 'GRN' | 'PAYMENT') => {
+    setIsExportingBulk(true);
+    setShowExportMenu(false);
+    try {
+      if (type === 'PO') {
+        if (exportablePoSelected.length === 0) {
+          alert('Tidak ada Purchase Order (PO) yang dapat diunduh pada item terpilih.');
+          return;
+        }
+        for (const ord of exportablePoSelected) {
+          await exportPurchaseOrderPdf(ord);
+          await new Promise((res) => setTimeout(res, 250));
+        }
+      } else if (type === 'GRN') {
+        if (exportableGrnSelected.length === 0) {
+          alert('Tidak ada Surat Penerimaan Barang (GRN) pada item terpilih.');
+          return;
+        }
+        for (const ord of exportableGrnSelected) {
+          await exportGoodsReceiptPdf(ord);
+          await new Promise((res) => setTimeout(res, 250));
+        }
+      } else if (type === 'PAYMENT') {
+        if (exportablePaymentSelected.length === 0) {
+          alert('Tidak ada Bukti Pembayaran / Voucher Kas pada item terpilih.');
+          return;
+        }
+        for (const ord of exportablePaymentSelected) {
+          await exportPaymentVoucherPdf(ord);
+          await new Promise((res) => setTimeout(res, 250));
+        }
+      } else if (type === 'PR') {
+        for (const ord of selectedOrders) {
+          await exportPurchaseRequestPdf(ord);
+          await new Promise((res) => setTimeout(res, 250));
+        }
+      }
+    } catch (err) {
+      console.error('Bulk PDF export error', err);
+      alert('Terjadi kesalahan saat mengunduh dokumen batch PDF.');
+    } finally {
+      setIsExportingBulk(false);
+    }
+  };
 
   // Master checkbox states for current visible list
   const visibleIds = useMemo(() => {
@@ -687,7 +807,8 @@ export default function Materials() {
           { id: 'PO_SOURCING', label: '2. Komparasi PO', count: tabCounts.PO_SOURCING },
           { id: 'MUST_PURCHASE', label: '3. Siap Beli (PO)', count: tabCounts.MUST_PURCHASE },
           { id: 'ON_THE_WAY', label: '4. Dalam Pengiriman', count: tabCounts.ON_THE_WAY },
-          { id: 'DELIVERED', label: '5. Selesai (Diterima)', count: tabCounts.DELIVERED },
+          { id: 'DELIVERED', label: '5. Diterima (GRN)', count: tabCounts.DELIVERED },
+          { id: 'PAID', label: '6. Selesai (Lunas)', count: tabCounts.PAID },
           { id: 'ALL', label: 'Semua Riwayat', count: tabCounts.ALL },
         ].map((tab) => {
           const isActive = activeTab === tab.id;
@@ -932,6 +1053,13 @@ export default function Materials() {
                         {/* 6. Status & Tahapan (Left-aligned badge) */}
                         <td className="py-3 px-3 text-left whitespace-nowrap">
                           {getStatusBadge(order.status)}
+                          {(order.selectedSupplier?.schemeType === 'PAYLATER' || order.selectedSupplier?.isPaylater) && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-950 border border-emerald-300">
+                                Paylater 0%
+                              </span>
+                            </div>
+                          )}
                         </td>
 
                         {/* 7. Penanggung Jawab (Left-aligned) */}
@@ -1044,6 +1172,22 @@ export default function Materials() {
                               </button>
                             )}
 
+                            {['DELIVERED', 'Delivered'].includes(order.status) && canPay && (
+                              <button
+                                type="button"
+                                onClick={() => setPaymentOrder(order)}
+                                title="Konfirmasi Pelunasan & Upload Bukti Pembayaran"
+                                className={`px-2.5 py-1 rounded-lg text-white font-black text-[11px] transition-all cursor-pointer shadow-2xs whitespace-nowrap flex items-center gap-1 ${
+                                  order.selectedSupplier?.schemeType === 'PAYLATER' || order.selectedSupplier?.isPaylater
+                                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                                    : 'bg-indigo-600 hover:bg-indigo-700'
+                                }`}
+                              >
+                                <Receipt size={12} />
+                                <span>{order.selectedSupplier?.schemeType === 'PAYLATER' || order.selectedSupplier?.isPaylater ? 'Lunasi Paylater' : 'Bayar'}</span>
+                              </button>
+                            )}
+
                             {/* PDF Downloads */}
                             <button
                               type="button"
@@ -1065,7 +1209,7 @@ export default function Materials() {
                                 <span>PO</span>
                               </button>
                             )}
-                            {['DELIVERED', 'Delivered'].includes(order.status) && (
+                            {['DELIVERED', 'Delivered', 'PAID'].includes(order.status) && (
                               <button
                                 type="button"
                                 onClick={() => exportGoodsReceiptPdf(order)}
@@ -1075,6 +1219,28 @@ export default function Materials() {
                                 <FileCheck size={12} className="text-teal-800" />
                                 <span>GRN</span>
                               </button>
+                            )}
+                            {(order.status === 'PAID' || order.paymentConfirmation?.bonPembayaranUrl) && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setViewEvidenceOrder(order)}
+                                  title="Lihat Bukti Bon Pembayaran & Transfer Bank"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-100 text-emerald-950 hover:bg-emerald-200 border border-emerald-400 font-extrabold text-[11px] shadow-2xs cursor-pointer transition-colors"
+                                >
+                                  <Receipt size={12} className="text-emerald-800" />
+                                  <span>Bukti Bayar</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => exportPaymentVoucherPdf(order)}
+                                  title="Unduh Voucher Pelunasan Kas PDF"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-teal-100 text-teal-950 hover:bg-teal-200 border border-teal-400 font-extrabold text-[11px] shadow-2xs cursor-pointer transition-colors"
+                                >
+                                  <Download size={12} className="text-teal-800" />
+                                  <span>Voucher</span>
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>
@@ -1301,6 +1467,44 @@ export default function Materials() {
                                         <span className="text-[10px] text-teal-800 font-semibold">Tercantum di Dokumen GRN</span>
                                       </div>
                                     )}
+                                  </div>
+                                )}
+
+                                {order.paymentConfirmation && (
+                                  <div className="p-3.5 rounded-xl bg-emerald-50/70 border-2 border-emerald-300 space-y-2 shadow-2xs">
+                                    <div className="flex items-center justify-between border-b border-emerald-200 pb-1">
+                                      <span className="text-[11px] font-black uppercase text-emerald-950">
+                                        Pelunasan & Bukti Kas (Lunas)
+                                      </span>
+                                      {order.paymentConfirmation.schemeApplied === 'PAYLATER' && (
+                                        <span className="text-[10px] font-black bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded">
+                                          Paylater 0%
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="font-black text-emerald-950 text-xs flex items-center justify-between">
+                                      <span>Nominal: {formatRupiah(order.paymentConfirmation.amountPaid)}</span>
+                                      <span className="text-[10px] font-bold text-emerald-800">{order.paymentConfirmation.paymentMethod}</span>
+                                    </div>
+                                    <div className="text-[11px] font-semibold text-emerald-900">
+                                      Dikonfirmasi: {typeof order.paymentConfirmation.confirmedBy === 'object' ? order.paymentConfirmation.confirmedBy?.fullName : 'Kasir/Finance'} • {fmtDateStr(order.paymentConfirmation.paymentDate)}
+                                    </div>
+                                    <div className="pt-2 border-t border-emerald-200 flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewEvidenceOrder(order)}
+                                        className="text-xs font-black text-emerald-950 bg-emerald-200/90 hover:bg-emerald-300 px-2.5 py-1 rounded border border-emerald-400 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                                      >
+                                        <Receipt size={12} /> <span>Lihat Bukti Bayar & Transfer</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => exportPaymentVoucherPdf(order)}
+                                        className="text-xs font-black text-slate-900 bg-white hover:bg-slate-100 px-2.5 py-1 rounded border border-slate-300 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                                      >
+                                        <Download size={12} /> <span>Voucher PDF</span>
+                                      </button>
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -1665,6 +1869,43 @@ export default function Materials() {
                         <Camera size={14} />
                         <span>Terima Barang di Proyek</span>
                       </button>
+                    )}
+
+                    {/* Stage 7 -> Post-GRN Payment Confirmation */}
+                    {['DELIVERED', 'Delivered'].includes(order.status) && canPay && (
+                      <button
+                        type="button"
+                        onClick={() => setPaymentOrder(order)}
+                        className={`px-3 py-1.5 rounded-lg text-white font-bold text-xs transition-all cursor-pointer shadow-xs flex items-center gap-1.5 ${
+                          order.selectedSupplier?.schemeType === 'PAYLATER' || order.selectedSupplier?.isPaylater
+                            ? 'bg-emerald-600 hover:bg-emerald-700'
+                            : 'bg-indigo-600 hover:bg-indigo-700'
+                        }`}
+                      >
+                        <Receipt size={14} />
+                        <span>{order.selectedSupplier?.schemeType === 'PAYLATER' || order.selectedSupplier?.isPaylater ? 'Lunasi Paylater (0% Bunga)' : 'Konfirmasi Pembayaran'}</span>
+                      </button>
+                    )}
+
+                    {(order.status === 'PAID' || order.paymentConfirmation?.bonPembayaranUrl) && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setViewEvidenceOrder(order)}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-950 font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Receipt size={14} className="text-emerald-800" />
+                          <span>Bukti Bayar</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => exportPaymentVoucherPdf(order)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          <Download size={13} />
+                          <span>Voucher</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -2043,27 +2284,135 @@ export default function Materials() {
               <button
                 type="button"
                 onClick={() => handleOpenBulkModal('finance', pendingFinanceSelected)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-all shadow-xs cursor-pointer active:scale-95"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs transition-all shadow-xs cursor-pointer active:scale-95"
               >
                 <DollarSign size={14} />
                 <span>Approve Finance ({pendingFinanceSelected.length})</span>
               </button>
             )}
 
-            {/* Hint message if none are eligible for current role */}
-            {!canReview && !canOpsApprove && !canFinanceApprove && (
-              <span className="text-xs text-slate-400 font-medium px-2">
-                Hanya peninjau/approver berwenang yang dapat melakukan otorisasi.
-              </span>
+            {canReceive && pendingReceiveSelected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleOpenBulkModal('receive', pendingReceiveSelected)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-black text-xs transition-all shadow-xs cursor-pointer active:scale-95"
+              >
+                <Truck size={14} />
+                <span>Terima Barang ({pendingReceiveSelected.length})</span>
+              </button>
             )}
-            {((canReview && pendingReviewSelected.length === 0) || !canReview) &&
-              ((canOpsApprove && pendingOpsSelected.length === 0) || !canOpsApprove) &&
-              ((canFinanceApprove && pendingFinanceSelected.length === 0) || !canFinanceApprove) &&
-              (canReview || canOpsApprove || canFinanceApprove) && (
-                <span className="text-xs text-slate-400 font-medium px-2">
-                  Tidak ada item terpilih yang siap diotorisasi sesuai hak akses Anda.
-                </span>
+
+            {canPay && pendingPaymentSelected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleOpenBulkModal('payment', pendingPaymentSelected)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-all shadow-xs cursor-pointer active:scale-95"
+              >
+                <CreditCard size={14} />
+                <span>Konfirmasi Bayar ({pendingPaymentSelected.length})</span>
+              </button>
+            )}
+
+            {/* Batch PDF Export Dropdown */}
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                type="button"
+                disabled={isExportingBulk}
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs transition-all shadow-xs border border-slate-700 cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                {isExportingBulk ? (
+                  <Loader2 size={14} className="animate-spin text-amber-400" />
+                ) : (
+                  <Download size={14} className="text-amber-400" />
+                )}
+                <span>{isExportingBulk ? 'Mengunduh PDF...' : 'Unduh Dokumen'}</span>
+                <ChevronDown size={12} className={`transition-transform duration-150 ${showExportMenu ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showExportMenu && (
+                <div className="absolute bottom-full mb-2 left-0 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 space-y-1 z-50 text-xs animate-in fade-in zoom-in-95">
+                  <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                    Pilihan Ekspor Dokumen
+                  </div>
+
+                  {exportablePoSelected.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleBulkExportPdf('PO')}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-white flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <FileText size={13} className="text-blue-400" />
+                        <span>Purchase Order (PO)</span>
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-900/60 text-blue-300">
+                        {exportablePoSelected.length}
+                      </span>
+                    </button>
+                  )}
+
+                  {exportableGrnSelected.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleBulkExportPdf('GRN')}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-white flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <FileCheck size={13} className="text-teal-400" />
+                        <span>Penerimaan Barang (GRN)</span>
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-900/60 text-teal-300">
+                        {exportableGrnSelected.length}
+                      </span>
+                    </button>
+                  )}
+
+                  {exportablePaymentSelected.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleBulkExportPdf('PAYMENT')}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-white flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Receipt size={13} className="text-emerald-400" />
+                        <span>Voucher Bukti Bayar / Kas</span>
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-900/60 text-emerald-300">
+                        {exportablePaymentSelected.length}
+                      </span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleBulkExportPdf('PR')}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-white flex items-center justify-between cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FileText size={13} className="text-slate-400" />
+                      <span>Purchase Request (PR)</span>
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
+                      {selectedOrders.length}
+                    </span>
+                  </button>
+                </div>
               )}
+            </div>
+
+            {/* Bulk Delete */}
+            {deletableSelected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleOpenBulkModal('delete', deletableSelected)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs transition-all shadow-xs cursor-pointer active:scale-95"
+                title="Hapus permanen draft PR atau pengajuan ditolak"
+              >
+                <Trash2 size={14} />
+                <span>Hapus ({deletableSelected.length})</span>
+              </button>
+            )}
           </div>
 
           {/* Reset / Deselect Button */}
@@ -2088,6 +2437,22 @@ export default function Materials() {
           await fetchData();
           setSelectedOrderIds([]);
         }}
+      />
+
+      {/* ── MODAL 10: KONFIRMASI PEMBAYARAN & BUKTI BON (POST-GRN) ── */}
+      <MaterialPaymentConfirmationModal
+        order={paymentOrder}
+        onClose={() => setPaymentOrder(null)}
+        onSuccess={async () => {
+          await fetchData();
+          setPaymentOrder(null);
+        }}
+      />
+
+      {/* ── MODAL 11: VIEWER BUKTI BON & TRANSFER BANK ── */}
+      <PaymentEvidenceViewerModal
+        order={viewEvidenceOrder}
+        onClose={() => setViewEvidenceOrder(null)}
       />
     </div>
   );

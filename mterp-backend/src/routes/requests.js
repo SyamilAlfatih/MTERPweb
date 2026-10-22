@@ -24,6 +24,7 @@ function populateProcurement(query) {
     .populate('assignedOpsApproverId', 'fullName role phone email')
     .populate('assignedFinanceApproverId', 'fullName role phone email')
     .populate('deliveryProof.receivedBy', 'fullName role')
+    .populate('paymentConfirmation.confirmedBy', 'fullName role')
     .populate('items.rabItemId', 'wbsCode description unitRate unitOfMeasure budgetedQuantity committedQuantity realizedQuantity');
 }
 
@@ -820,6 +821,10 @@ router.put('/:id/compare-suppliers', auth, authorize('owner', 'director', 'opera
         paymentTerms: comp.paymentTerms || 'Tempo 14 Hari',
         notes: comp.notes || '',
         isRecommended: Boolean(comp.isRecommended),
+        isPaylater: Boolean(comp.isPaylater || comp.schemeType === 'PAYLATER'),
+        schemeType: comp.schemeType === 'PAYLATER' || comp.isPaylater ? 'PAYLATER' : 'STANDARD',
+        interestRate: 0,
+        settlementTerms: comp.settlementTerms || (comp.isPaylater ? 'Tempo Setelah GRN Tanpa Bunga' : ''),
       };
     });
 
@@ -840,6 +845,10 @@ router.put('/:id/compare-suppliers', auth, authorize('owner', 'director', 'opera
       totalLandedCost: recommended.totalLandedCost,
       leadTimeDays: recommended.leadTimeDays,
       paymentTerms: recommended.paymentTerms,
+      isPaylater: Boolean(recommended.isPaylater),
+      schemeType: recommended.schemeType || 'STANDARD',
+      interestRate: 0,
+      settlementTerms: recommended.settlementTerms || '',
     };
 
     // Update item-level fixed PO prices from recommended supplier's itemRates
@@ -1230,6 +1239,120 @@ router.put(
       }
     } catch (error) {
       console.error('Receive goods error:', error);
+      res.status(500).json({ msg: error.message || 'Server error' });
+    }
+  }
+);
+
+// PUT /api/requests/:id/confirm-payment - Post-GRN Payment Confirmation & Evidence Upload ➔ PAID
+router.put(
+  '/:id/confirm-payment',
+  auth,
+  authorize('owner', 'director', 'operational_director', 'admin_project', 'asset_admin'),
+  upload.fields([
+    { name: 'bonPembayaran', maxCount: 1 },
+    { name: 'transferReceipt', maxCount: 1 },
+    { name: 'invoiceDoc', maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const request = await Request.findById(req.params.id);
+      if (!request) {
+        return res.status(404).json({ msg: 'Request not found' });
+      }
+
+      if (!['DELIVERED', 'Delivered'].includes(request.status)) {
+        return res.status(400).json({ msg: 'Konfirmasi pembayaran hanya dapat dilakukan setelah barang diterima di lokasi (GRN)' });
+      }
+
+      const {
+        paymentDate,
+        paymentType,
+        paymentMethod,
+        amountPaid,
+        sourceAccount,
+        targetAccount,
+        targetAccountName,
+        referenceNumber,
+        notes,
+        payerSignature,
+        schemeApplied,
+      } = req.body;
+
+      let bonPembayaranUrl = req.body.bonPembayaranUrl || request.paymentConfirmation?.bonPembayaranUrl || '';
+      if (req.files?.bonPembayaran?.[0]) {
+        bonPembayaranUrl = `/uploads/documents/${req.files.bonPembayaran[0].filename}`;
+      }
+
+      let transferReceiptUrl = req.body.transferReceiptUrl || request.paymentConfirmation?.transferReceiptUrl || '';
+      if (req.files?.transferReceipt?.[0]) {
+        transferReceiptUrl = `/uploads/documents/${req.files.transferReceipt[0].filename}`;
+      }
+
+      let invoiceDocUrl = req.body.invoiceDocUrl || request.paymentConfirmation?.invoiceDocUrl || '';
+      if (req.files?.invoiceDoc?.[0]) {
+        invoiceDocUrl = `/uploads/documents/${req.files.invoiceDoc[0].filename}`;
+      }
+
+      if (!bonPembayaranUrl && !request.paymentConfirmation?.bonPembayaranUrl) {
+        return res.status(400).json({ msg: 'Foto bukti bon pembayaran / kuitansi fisik wajib diunggah' });
+      }
+
+      const parsedAmount = Number(amountPaid) > 0 ? Number(amountPaid) : (request.poTotalAmount || request.totalEstimatedBudget || 0);
+      const isPaylater = request.selectedSupplier?.schemeType === 'PAYLATER' || request.selectedSupplier?.isPaylater || schemeApplied === 'PAYLATER';
+
+      request.paymentConfirmation = {
+        paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+        paymentType: paymentType || (isPaylater ? 'Pelunasan Paylater (Bunga 0%)' : 'Full Payment (Lunas)'),
+        paymentMethod: paymentMethod || 'Bank Transfer',
+        amountPaid: parsedAmount,
+        principalAmount: parsedAmount,
+        interestRate: 0,
+        interestAmount: 0,
+        sourceAccount: sourceAccount || '',
+        targetAccount: targetAccount || '',
+        targetAccountName: targetAccountName || '',
+        referenceNumber: referenceNumber || '',
+        notes: notes || '',
+        bonPembayaranUrl,
+        transferReceiptUrl,
+        invoiceDocUrl,
+        additionalEvidences: request.paymentConfirmation?.additionalEvidences || [],
+        confirmedBy: req.user._id,
+        confirmedAt: new Date(),
+        payerSignature: payerSignature || request.paymentConfirmation?.payerSignature || '',
+        schemeApplied: isPaylater ? 'PAYLATER' : 'STANDARD',
+      };
+
+      request.status = 'PAID';
+      await request.save();
+
+      const populated = await populateProcurement(Request.findById(request._id));
+      res.json(populated);
+
+      // In-app notification to management & project team
+      notifyByRole(
+        ['owner', 'director', 'operational_director', 'site_manager'],
+        {
+          type: 'general',
+          title: `Procurement Payment Settled: ${populated.poNumber || populated.prNumber}`,
+          message: `Pembayaran ${isPaylater ? '[Skema Paylater] ' : ''}dikonfirmasi oleh ${req.user.fullName} sebesar Rp ${parsedAmount.toLocaleString('id-ID')}. Status: LUNAS.`,
+          data: { requestId: populated._id },
+        },
+        req.user._id.toString()
+      ).catch(console.error);
+
+      // WhatsApp notification
+      try {
+        const waMemo = whatsappTemplates.formatMaterialPaymentSettled(populated);
+        whatsappGateway.sendToDepartment(['Finance', 'Procurement', 'Operations'], waMemo, {
+          metadata: { requestId: populated._id.toString(), poNumber: populated.poNumber, event: 'material_payment_settled' },
+        }).catch(console.warn);
+      } catch (waErr) {
+        console.warn('[WA Dispatch Error]:', waErr.message);
+      }
+    } catch (error) {
+      console.error('Confirm payment error:', error);
       res.status(500).json({ msg: error.message || 'Server error' });
     }
   }

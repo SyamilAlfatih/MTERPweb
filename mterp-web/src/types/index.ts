@@ -208,7 +208,8 @@ export type ProcurementStatus =
   | 'MUST_PURCHASE'
   | 'ON_THE_WAY'
   | 'Delivered'
-  | 'DELIVERED';
+  | 'DELIVERED'
+  | 'PAID';
 
 export interface CreateMaterialRequestDTO {
   projectId?: string;
@@ -318,6 +319,10 @@ export interface ISupplierComparison {
   paymentTerms?: string;
   notes?: string;
   isRecommended?: boolean;
+  isPaylater?: boolean;
+  schemeType?: 'STANDARD' | 'PAYLATER';
+  interestRate?: number;
+  settlementTerms?: string;
 }
 
 export interface IDispatchInfo {
@@ -339,6 +344,29 @@ export interface IDeliveryProof {
   notes?: string;
   receiverSignature?: string;
   driverSignature?: string;
+}
+
+export interface IPaymentConfirmation {
+  paymentDate: string;
+  paymentType: string;
+  paymentMethod: string;
+  amountPaid: number;
+  principalAmount?: number;
+  interestRate?: number;
+  interestAmount?: number;
+  sourceAccount?: string;
+  targetAccount?: string;
+  targetAccountName?: string;
+  referenceNumber?: string;
+  notes?: string;
+  bonPembayaranUrl: string;
+  transferReceiptUrl: string;
+  invoiceDocUrl?: string;
+  additionalEvidences?: Array<{ fileUrl: string; fileName: string }>;
+  confirmedBy?: { _id: string; fullName: string; role?: string };
+  confirmedAt?: string;
+  payerSignature?: string;
+  schemeApplied?: 'STANDARD' | 'PAYLATER';
 }
 
 export interface MaterialRequest {
@@ -383,6 +411,7 @@ export interface MaterialRequest {
   // Delivery & Proof
   dispatchInfo?: IDispatchInfo;
   deliveryProof?: IDeliveryProof;
+  paymentConfirmation?: IPaymentConfirmation;
   createdAt?: string;
   updatedAt?: string;
 }

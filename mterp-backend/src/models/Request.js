@@ -126,6 +126,7 @@ const requestSchema = new mongoose.Schema({
       'ON_THE_WAY',
       'Delivered',          // Legacy DELIVERED
       'DELIVERED',
+      'PAID',
     ],
     default: 'PR_PENDING',
   },
@@ -182,6 +183,14 @@ const requestSchema = new mongoose.Schema({
     paymentTerms: String,
     notes: String,
     isRecommended: { type: Boolean, default: false },
+    isPaylater: { type: Boolean, default: false },
+    schemeType: {
+      type: String,
+      enum: ['STANDARD', 'PAYLATER'],
+      default: 'STANDARD',
+    },
+    interestRate: { type: Number, default: 0 },
+    settlementTerms: { type: String, default: 'Tempo Setelah GRN Tanpa Bunga' },
   }],
   selectedSupplier: {
     supplierName: String,
@@ -192,6 +201,14 @@ const requestSchema = new mongoose.Schema({
     totalLandedCost: Number,
     leadTimeDays: Number,
     paymentTerms: String,
+    isPaylater: { type: Boolean, default: false },
+    schemeType: {
+      type: String,
+      enum: ['STANDARD', 'PAYLATER'],
+      default: 'STANDARD',
+    },
+    interestRate: { type: Number, default: 0 },
+    settlementTerms: String,
   },
   poSubtotal: { type: Number, default: 0 },
   poShippingCost: { type: Number, default: 0 },
@@ -239,6 +256,103 @@ const requestSchema = new mongoose.Schema({
     notes: String,
     receiverSignature: String,
     driverSignature: String,
+  },
+
+  // Post-GRN Payment Confirmation & Settlement Evidence
+  paymentConfirmation: {
+    paymentDate: {
+      type: Date,
+      default: Date.now,
+    },
+    paymentType: {
+      type: String,
+      enum: [
+        'Full Payment (Lunas)',
+        'Down Payment (DP)',
+        'Pelunasan Akhir',
+        'Termin Proyek',
+        'Pelunasan Paylater (Bunga 0%)',
+      ],
+      default: 'Full Payment (Lunas)',
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['Bank Transfer', 'Kas Tunai Proyek', 'Giro / Cek', 'Kasbon Settlement', 'Lainnya'],
+      default: 'Bank Transfer',
+    },
+    amountPaid: {
+      type: Number,
+      default: 0,
+    },
+    principalAmount: {
+      type: Number,
+      default: 0,
+    },
+    interestRate: {
+      type: Number,
+      default: 0,
+    },
+    interestAmount: {
+      type: Number,
+      default: 0,
+    },
+    sourceAccount: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    targetAccount: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    targetAccountName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    referenceNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    notes: {
+      type: String,
+      default: '',
+    },
+    bonPembayaranUrl: {
+      type: String,
+      default: '',
+    },
+    transferReceiptUrl: {
+      type: String,
+      default: '',
+    },
+    invoiceDocUrl: {
+      type: String,
+      default: '',
+    },
+    additionalEvidences: [{
+      fileUrl: String,
+      fileName: String,
+    }],
+    confirmedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    confirmedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    payerSignature: {
+      type: String,
+      default: '',
+    },
+    schemeApplied: {
+      type: String,
+      enum: ['STANDARD', 'PAYLATER'],
+      default: 'STANDARD',
+    },
   },
 
   createdAt: {

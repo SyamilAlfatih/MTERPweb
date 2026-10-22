@@ -155,6 +155,13 @@ export const receiveMaterialOrder = async (id: string, formData: FormData) => {
   return response.data;
 };
 
+export const confirmMaterialPayment = async (id: string, formData: FormData) => {
+  const response = await api.put(`/requests/${id}/confirm-payment`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
 export const deleteMaterialRequest = async (id: string) => {
   const response = await api.delete(`/requests/${id}`);
   return response.data;

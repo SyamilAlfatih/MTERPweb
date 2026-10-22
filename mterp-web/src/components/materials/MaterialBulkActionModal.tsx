@@ -12,17 +12,30 @@ import {
   Loader2,
   X,
   Layers,
+  Truck,
+  CreditCard,
+  Trash2,
+  Upload,
+  Camera,
+  Receipt,
+  AlertTriangle,
+  Calendar,
+  Building2,
+  FileCheck,
 } from 'lucide-react';
 import { MaterialRequest } from '../../types';
 import {
   reviewMaterialRequest,
   opsApproveMaterialRequest,
   financeApproveMaterialRequest,
+  receiveMaterialOrder,
+  confirmMaterialPayment,
+  deleteMaterialRequest,
 } from '../../api/api';
 import { formatRupiah } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
 
-export type BulkActionType = 'review' | 'ops' | 'finance';
+export type BulkActionType = 'review' | 'ops' | 'finance' | 'receive' | 'payment' | 'delete';
 
 export interface MaterialBulkActionModalProps {
   isOpen: boolean;
@@ -53,6 +66,20 @@ export function MaterialBulkActionModal({
   const [processing, setProcessing] = useState(false);
   const [currentProgress, setCurrentProgress] = useState(0);
   const [results, setResults] = useState<ItemResult[] | null>(null);
+
+  // States specific to Bulk Receive (GRN)
+  const [overallCondition, setOverallCondition] = useState<'Good' | 'Damaged' | 'Partial'>('Good');
+  const [sitePhotoFile, setSitePhotoFile] = useState<File | null>(null);
+  const [sitePhotoPreview, setSitePhotoPreview] = useState<string | null>(null);
+
+  // States specific to Bulk Payment Confirmation
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentMethod, setPaymentMethod] = useState('Bank Transfer');
+  const [sourceAccount, setSourceAccount] = useState('BCA Operasional PT MTE');
+  const [bonFile, setBonFile] = useState<File | null>(null);
+  const [bonPreview, setBonPreview] = useState<string | null>(null);
+  const [transferFile, setTransferFile] = useState<File | null>(null);
+  const [transferPreview, setTransferPreview] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -103,11 +130,58 @@ export function MaterialBulkActionModal({
           buttonLabel: 'Otorisasi & Terbitkan PO',
           confirmMsg: 'Anggaran PO akan disahkan dan vendor terpilih akan dikonfirmasi untuk pengadaan.',
         };
+      case 'receive':
+        return {
+          title: 'Penerimaan Fisik Barang Proyek Massal (GRN)',
+          subtitle: `Pencatatan penerimaan fisik & update stok untuk ${orders.length} pesanan terkirim`,
+          icon: Truck,
+          accentColor: 'teal',
+          buttonLabel: 'Terima Seluruh Barang (GRN)',
+          confirmMsg: 'Seluruh material terpilih akan ditandai Diterima (GRN) dan diintegrasikan ke stok proyek.',
+        };
+      case 'payment':
+        return {
+          title: 'Konfirmasi Pelunasan & Kasir Massal (Lunas)',
+          subtitle: `Penyelesaian pembayaran untuk ${orders.length} pesanan (${formatRupiah(totalAmount)})`,
+          icon: CreditCard,
+          accentColor: 'emerald',
+          buttonLabel: 'Konfirmasi & Lunaskan Semua',
+          confirmMsg: 'Seluruh pesanan terpilih akan ditandai Lunas (PAID) dan bukti kas resmi dicatat.',
+        };
+      case 'delete':
+        return {
+          title: 'Hapus Draft / Pengajuan PR Massal',
+          subtitle: `Penghapusan permanen untuk ${orders.length} transaksi pengadaan terpilih`,
+          icon: Trash2,
+          accentColor: 'rose',
+          buttonLabel: 'Hapus Permanen Terpilih',
+          confirmMsg: 'Transaksi draft atau ditolak yang dipilih akan dihapus permanen dari sistem.',
+        };
     }
   };
 
   const config = getActionConfig();
   const IconComponent = config.icon;
+
+  const handleFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setFile: React.Dispatch<React.SetStateAction<File | null>>,
+    setPreview: React.Dispatch<React.SetStateAction<string | null>>
+  ) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setFile(file);
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setPreview(null);
+      }
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,6 +191,14 @@ export function MaterialBulkActionModal({
     }
     if (actionType === 'review' && reviewDecision === 'reject' && !notes.trim()) {
       alert('Mohon cantumkan alasan penolakan pada kolom catatan.');
+      return;
+    }
+    if (actionType === 'receive' && !sitePhotoFile) {
+      alert('Foto bukti fisik material di lokasi proyek wajib diunggah.');
+      return;
+    }
+    if (actionType === 'payment' && !bonFile) {
+      alert('Foto bukti bon pembayaran / kuitansi kasir wajib diunggah.');
       return;
     }
 
@@ -145,11 +227,53 @@ export function MaterialBulkActionModal({
             passphrase,
             notes: notes.trim(),
           });
+        } else if (actionType === 'receive') {
+          const formData = new FormData();
+          formData.append('sitePhoto', sitePhotoFile!);
+          formData.append('overallCondition', overallCondition);
+          formData.append('notes', notes.trim());
+          const receivingItems = (ord.items && ord.items.length > 0 ? ord.items : [{ item: ord.item, qty: Number(ord.qty) || 1 }]).map((itm: any, idx: number) => ({
+            itemIndex: idx,
+            item: itm.item,
+            specifications: itm.specifications || '',
+            qty: itm.qty,
+            receivedQty: itm.qty,
+            unit: itm.unit,
+            receivedCondition: overallCondition,
+          }));
+          formData.append('receivedItems', JSON.stringify(receivingItems));
+          await receiveMaterialOrder(ord._id!, formData);
+        } else if (actionType === 'payment') {
+          const formData = new FormData();
+          formData.append('paymentDate', paymentDate);
+          formData.append('paymentMethod', paymentMethod);
+          formData.append('sourceAccount', sourceAccount);
+          const amt = ord.poTotalAmount || ord.totalEstimatedBudget || 0;
+          formData.append('amountPaid', String(amt));
+          const isOrderPaylater = Boolean(
+            ord.selectedSupplier?.schemeType === 'PAYLATER' || ord.selectedSupplier?.isPaylater
+          );
+          formData.append(
+            'paymentType',
+            isOrderPaylater ? 'Pelunasan Paylater (Bunga 0%)' : 'Full Payment (Lunas)'
+          );
+          formData.append('schemeApplied', isOrderPaylater ? 'PAYLATER' : 'STANDARD');
+          formData.append('notes', notes.trim());
+          if (bonFile) {
+            formData.append('bonPembayaran', bonFile);
+          }
+          if (transferFile) {
+            formData.append('transferReceipt', transferFile);
+          }
+          await confirmMaterialPayment(ord._id!, formData);
+        } else if (actionType === 'delete') {
+          await deleteMaterialRequest(ord._id!);
         }
+
         itemResults.push({ orderId: ord._id!, prNumber: prNo, success: true });
       } catch (err: any) {
         const errMsg =
-          err.response?.data?.msg || err.message || 'Gagal memproses otorisasi transaksi';
+          err.response?.data?.msg || err.message || 'Gagal memproses transaksi';
         itemResults.push({
           orderId: ord._id!,
           prNumber: prNo,
@@ -171,6 +295,12 @@ export function MaterialBulkActionModal({
     setNotes('');
     setResults(null);
     setCurrentProgress(0);
+    setSitePhotoFile(null);
+    setSitePhotoPreview(null);
+    setBonFile(null);
+    setBonPreview(null);
+    setTransferFile(null);
+    setTransferPreview(null);
     onClose();
   };
 
@@ -184,9 +314,9 @@ export function MaterialBulkActionModal({
       aria-labelledby="bulk-action-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto"
     >
-      <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
         {/* Header */}
-        <div className="p-5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+        <div className="p-5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0 border border-white/20">
               <IconComponent size={20} className="text-amber-400" />
@@ -210,7 +340,7 @@ export function MaterialBulkActionModal({
 
         {results ? (
           /* Execution Results Summary View */
-          <div className="p-6 space-y-5">
+          <div className="p-6 space-y-5 overflow-y-auto">
             <div
               className={`p-4 rounded-xl border flex items-center gap-3 ${
                 failureCount === 0
@@ -280,7 +410,7 @@ export function MaterialBulkActionModal({
           </div>
         ) : (
           /* Execution Form */
-          <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
             {/* Decision selector for Review tab */}
             {actionType === 'review' && (
               <div className="flex items-center gap-3 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
@@ -311,6 +441,19 @@ export function MaterialBulkActionModal({
               </div>
             )}
 
+            {/* Warning Banner for Bulk Delete */}
+            {actionType === 'delete' && (
+              <div className="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-950 flex items-start gap-3">
+                <AlertTriangle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+                <div className="text-xs space-y-1">
+                  <p className="font-black text-sm">Peringatan: Penghapusan Permanen</p>
+                  <p className="text-slate-700">
+                    Sebanyak <strong>{orders.length} draft/pengajuan PR</strong> yang terpilih akan dihapus permanen dari sistem dan alur proyek. Tindakan ini tidak dapat dibatalkan.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Selected Orders Summary Banner */}
             <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
               <div className="flex items-center justify-between text-xs mb-2">
@@ -324,7 +467,7 @@ export function MaterialBulkActionModal({
               </div>
 
               {/* Scrollable Mini List */}
-              <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+              <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
                 {orders.map((ord) => {
                   const projName =
                     typeof ord.projectId === 'object' && ord.projectId?.nama
@@ -338,7 +481,7 @@ export function MaterialBulkActionModal({
                     >
                       <div className="flex items-center gap-2 truncate max-w-[65%]">
                         <span className="font-mono font-bold text-slate-900">
-                          {ord.prNumber || 'DRAFT-PR'}
+                          {ord.poNumber || ord.prNumber || 'DRAFT-PR'}
                         </span>
                         <span className="text-slate-500 truncate" title={projName}>
                           • {projName}
@@ -361,13 +504,167 @@ export function MaterialBulkActionModal({
               </div>
             </div>
 
+            {/* Custom Inputs for Bulk Receive (GRN) */}
+            {actionType === 'receive' && (
+              <div className="space-y-3.5 p-4 rounded-xl bg-teal-50/50 border border-teal-200">
+                <span className="text-xs font-black text-teal-950 flex items-center gap-1.5">
+                  <Truck size={14} className="text-teal-700" />
+                  <span>Detail Penerimaan Fisik di Proyek</span>
+                </span>
+
+                <div>
+                  <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700 mb-1.5">
+                    Kondisi Fisik Material Tiba <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { val: 'Good', label: 'Baik & Lengkap', color: 'border-emerald-400 bg-emerald-50 text-emerald-950' },
+                      { val: 'Damaged', label: 'Ada Kerusakan', color: 'border-rose-400 bg-rose-50 text-rose-950' },
+                      { val: 'Partial', label: 'Sebagian Kurang', color: 'border-amber-400 bg-amber-50 text-amber-950' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.val}
+                        type="button"
+                        onClick={() => setOverallCondition(opt.val as any)}
+                        className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all cursor-pointer text-center ${
+                          overallCondition === opt.val
+                            ? `${opt.color} ring-2 ring-primary font-black shadow-2xs`
+                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700 mb-1.5">
+                    Foto Bukti Material Tiba di Lokasi Proyek <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <label className="flex-1 flex flex-col items-center justify-center p-3 rounded-xl border-2 border-dashed border-teal-300 bg-white hover:bg-teal-50/30 transition-colors cursor-pointer text-center">
+                      <Camera size={20} className="text-teal-600 mb-1" />
+                      <span className="text-xs font-bold text-teal-950">
+                        {sitePhotoFile ? sitePhotoFile.name : 'Pilih / Ambil Foto Material'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">JPG / PNG maks 5MB</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleFileChange(e, setSitePhotoFile, setSitePhotoPreview)}
+                        className="hidden"
+                      />
+                    </label>
+                    {sitePhotoPreview && (
+                      <div className="w-16 h-16 rounded-xl overflow-hidden border border-teal-300 shrink-0 shadow-2xs">
+                        <img src={sitePhotoPreview} alt="Preview" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Custom Inputs for Bulk Payment Confirmation */}
+            {actionType === 'payment' && (
+              <div className="space-y-3.5 p-4 rounded-xl bg-emerald-50/50 border border-emerald-200">
+                <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                  <CreditCard size={14} className="text-emerald-700" />
+                  <span>Detail Pembayaran & Pelunasan Vendor</span>
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700 mb-1">
+                      Tanggal Pelunasan <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700 mb-1">
+                      Metode Pembayaran <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    >
+                      <option value="Bank Transfer">Bank Transfer (Rekening)</option>
+                      <option value="Kas Kecil (Petty Cash)">Kas Kecil / Operasional</option>
+                      <option value="Tunai Langsung">Tunai / Cash</option>
+                      <option value="Cek / Bilyet Giro">Cek / Bilyet Giro</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700 mb-1">
+                    Rekening / Kas Sumber Dana
+                  </label>
+                  <input
+                    type="text"
+                    value={sourceAccount}
+                    onChange={(e) => setSourceAccount(e.target.value)}
+                    placeholder="Contoh: BCA Operasional PT Mega Tama Enerco"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700 mb-1">
+                      Foto Bon / Kuitansi Fisik <span className="text-rose-500">*</span>
+                    </label>
+                    <label className="flex flex-col items-center justify-center p-3 rounded-xl border-2 border-dashed border-emerald-300 bg-white hover:bg-emerald-50/30 transition-colors cursor-pointer text-center">
+                      <Receipt size={18} className="text-emerald-600 mb-1" />
+                      <span className="text-xs font-bold text-emerald-950 truncate max-w-[180px]">
+                        {bonFile ? bonFile.name : 'Unggah Bon Kasir'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => handleFileChange(e, setBonFile, setBonPreview)}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700 mb-1">
+                      Bukti Transfer Bank (Opsional)
+                    </label>
+                    <label className="flex flex-col items-center justify-center p-3 rounded-xl border-2 border-dashed border-slate-300 bg-white hover:bg-slate-50 transition-colors cursor-pointer text-center">
+                      <Upload size={18} className="text-slate-500 mb-1" />
+                      <span className="text-xs font-bold text-slate-800 truncate max-w-[180px]">
+                        {transferFile ? transferFile.name : 'Unggah Bukti Transfer'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => handleFileChange(e, setTransferFile, setTransferPreview)}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Passphrase Input */}
             <div className="space-y-1.5">
               <label
                 htmlFor="bulk-passphrase"
                 className="block text-xs font-black uppercase tracking-wider text-slate-800"
               >
-                Passphrase Akun (Tanda Tangan Otorisasi Digital) <span className="text-rose-500">*</span>
+                Passphrase Akun (Otorisasi Digital) <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -402,7 +699,7 @@ export function MaterialBulkActionModal({
               >
                 {actionType === 'review' && reviewDecision === 'reject'
                   ? 'Alasan Penolakan (Wajib Diisi)'
-                  : 'Catatan Otorisasi (Opsional)'}
+                  : 'Catatan Transaksi (Opsional)'}
                 {actionType === 'review' && reviewDecision === 'reject' && (
                   <span className="text-rose-500"> *</span>
                 )}
@@ -415,7 +712,7 @@ export function MaterialBulkActionModal({
                 placeholder={
                   actionType === 'review' && reviewDecision === 'reject'
                     ? 'Tuliskan alasan penolakan secara spesifik...'
-                    : 'Catatan pertimbangan persetujuan (opsional)...'
+                    : 'Catatan pertimbangan persetujuan / penerimaan / pelunasan...'
                 }
                 disabled={processing}
                 className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:bg-slate-100"
@@ -428,7 +725,7 @@ export function MaterialBulkActionModal({
                 <div className="flex items-center justify-between text-xs font-bold text-blue-950">
                   <span className="flex items-center gap-1.5">
                     <Loader2 size={14} className="animate-spin text-blue-600" />
-                    <span>Memproses otorisasi digital...</span>
+                    <span>Memproses transaksi massal...</span>
                   </span>
                   <span>
                     {currentProgress} dari {orders.length}
@@ -459,8 +756,12 @@ export function MaterialBulkActionModal({
                 type="submit"
                 disabled={processing || !passphrase || passphrase.length < 4}
                 className={`px-5 py-2.5 rounded-xl font-black text-xs text-white shadow-sm flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                  actionType === 'review' && reviewDecision === 'reject'
+                  actionType === 'delete' || (actionType === 'review' && reviewDecision === 'reject')
                     ? 'bg-rose-600 hover:bg-rose-700'
+                    : actionType === 'receive'
+                    ? 'bg-teal-600 hover:bg-teal-700'
+                    : actionType === 'payment'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
                     : 'bg-primary hover:bg-primary-hover'
                 }`}
               >
