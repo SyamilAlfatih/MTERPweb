@@ -75,6 +75,37 @@ export const exportToolsExcel = async (params?: {
   window.URL.revokeObjectURL(url);
 };
 
+export const downloadToolImportTemplate = async (): Promise<void> => {
+  const response = await api.get('/tools/template-excel', {
+    responseType: 'blob',
+  });
+  const blob = new Blob([response.data], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', 'MTERP_Template_Import_Alat.xlsx');
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const parseToolsExcel = async (file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/tools/parse-excel', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const commitToolsImport = async (rows: any[], mode: 'skip' | 'update' | 'insert') => {
+  const response = await api.post('/tools/import-excel', { rows, mode });
+  return response.data;
+};
+
 // === MATERIAL REQUESTS API ===
 
 export const createMaterialRequest = async (data: CreateMaterialRequestDTO) => {

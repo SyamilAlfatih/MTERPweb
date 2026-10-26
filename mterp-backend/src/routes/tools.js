@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const ExcelJS = require('exceljs');
 const { Tool } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
@@ -367,6 +369,373 @@ router.get('/export-excel', auth, async (req, res) => {
   } catch (error) {
     console.error('Export Tools Excel error:', error);
     res.status(500).json({ msg: 'Gagal mengekspor file Excel' });
+  }
+});
+
+// GET /api/tools/template-excel - Download pre-styled template for bulk tool import
+router.get('/template-excel', auth, async (req, res) => {
+  try {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'MTERP Construction ERP';
+    workbook.created = new Date();
+
+    // Sheet 1: Template
+    const sheet = workbook.addWorksheet('Template Import Alat', {
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+
+    sheet.columns = [
+      { header: 'No', key: 'no', width: 6 },
+      { header: 'Nama Alat / Mesin *', key: 'nama', width: 32 },
+      { header: 'Kategori', key: 'kategori', width: 22 },
+      { header: 'Stok', key: 'stok', width: 10 },
+      { header: 'Satuan', key: 'satuan', width: 12 },
+      { header: 'Kondisi (Baik/Maintenance/Rusak)', key: 'kondisi', width: 30 },
+      { header: 'Lokasi Penyimpanan', key: 'lokasi', width: 28 },
+      { header: 'Catatan / Spesifikasi', key: 'notes', width: 32 },
+    ];
+
+    // Style Header Row
+    const headerRow = sheet.getRow(1);
+    headerRow.height = 28;
+    headerRow.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1E293B' }, // Slate 800
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Sample data rows
+    const sampleRows = [
+      {
+        no: 1,
+        nama: 'Genset Silent 5 kVA Loncin',
+        kategori: 'Mesin & Genset',
+        stok: 1,
+        satuan: 'unit',
+        kondisi: 'Baik',
+        lokasi: 'Head Office PT Mega Tama Enerco',
+        notes: 'Nomor Seri: GEN-2026-081, Starter elektrik',
+      },
+      {
+        no: 2,
+        nama: 'Mesin Las Inverter 200A Daiden',
+        kategori: 'Mesin & Genset',
+        stok: 2,
+        satuan: 'unit',
+        kondisi: 'Baik',
+        lokasi: 'Head Office PT Mega Tama Enerco',
+        notes: 'Lengkap tang las & tang massa',
+      },
+      {
+        no: 3,
+        nama: 'Helm Proyek Putih MSA Standard',
+        kategori: 'K3 / Safety',
+        stok: 25,
+        satuan: 'unit',
+        kondisi: 'Baik',
+        lokasi: 'Head Office PT Mega Tama Enerco',
+        notes: 'Tali dagu lengkap, stok safety baru',
+      },
+      {
+        no: 4,
+        nama: 'Bor Rotary Hammer SDS-Plus Makita',
+        kategori: 'Perkakas Listrik',
+        stok: 1,
+        satuan: 'unit',
+        kondisi: 'Maintenance',
+        lokasi: 'Head Office PT Mega Tama Enerco',
+        notes: 'Perlu servis carbon brush',
+      },
+    ];
+
+    sampleRows.forEach((row, idx) => {
+      const addedRow = sheet.addRow(row);
+      addedRow.height = 22;
+      addedRow.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF334155' } };
+      addedRow.alignment = { vertical: 'middle', horizontal: 'left' };
+      addedRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+      addedRow.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
+      addedRow.getCell(5).alignment = { vertical: 'middle', horizontal: 'center' };
+      addedRow.getCell(6).alignment = { vertical: 'middle', horizontal: 'center' };
+
+      // Border
+      for (let i = 1; i <= 8; i++) {
+        addedRow.getCell(i).border = {
+          top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        };
+      }
+    });
+
+    // Sheet 2: Panduan
+    const guideSheet = workbook.addWorksheet('Petunjuk & Nilai Valid');
+    guideSheet.columns = [
+      { header: 'Kolom', key: 'col', width: 25 },
+      { header: 'Wajib/Opsional', key: 'req', width: 16 },
+      { header: 'Contoh / Nilai Valid', key: 'ex', width: 35 },
+      { header: 'Penjelasan Teknis', key: 'desc', width: 45 },
+    ];
+    const guideHeader = guideSheet.getRow(1);
+    guideHeader.height = 26;
+    guideHeader.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+    guideHeader.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF0F766E' }, // Teal 700
+    };
+
+    const guideRules = [
+      { col: 'Nama Alat / Mesin', req: 'Wajib', ex: 'Genset Silent 5 kVA', desc: 'Nama identifikasi unik alat atau perkakas' },
+      { col: 'Kategori', req: 'Opsional', ex: 'Mesin & Genset, K3, Alat Ukur', desc: 'Kategori klasifikasi inventaris' },
+      { col: 'Stok', req: 'Opsional', ex: '1, 5, 20', desc: 'Jumlah fisik alat (default: 1 jika kosong)' },
+      { col: 'Satuan', req: 'Opsional', ex: 'unit, set, pcs, roll, buah', desc: 'Satuan hitung jumlah alat (default: unit)' },
+      { col: 'Kondisi', req: 'Opsional', ex: 'Baik, Maintenance, Rusak', desc: 'Wajib salah satu nilai tersebut (default: Baik)' },
+      { col: 'Lokasi Penyimpanan', req: 'Opsional', ex: 'Head Office PT Mega Tama Enerco', desc: 'Lokasi awal alat saat didaftarkan' },
+      { col: 'Catatan', req: 'Opsional', ex: 'Nomor seri, kelengkapan, dll.', desc: 'Keterangan tambahan atau spesifikasi alat' },
+    ];
+    guideRules.forEach(r => guideSheet.addRow(r));
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="MTERP_Template_Import_Alat.xlsx"');
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('Download template Excel error:', error);
+    res.status(500).json({ msg: 'Gagal membuat template Excel' });
+  }
+});
+
+// POST /api/tools/parse-excel - Upload & pre-validate Excel/CSV for preview modal
+router.post('/parse-excel', auth, authorize('owner', 'director', 'asset_admin'), upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ msg: 'File Excel (.xlsx) atau CSV tidak ditemukan' });
+    }
+
+    const filePath = req.file.path;
+    const originalName = (req.file.originalname || '').toLowerCase();
+    const workbook = new ExcelJS.Workbook();
+
+    try {
+      if (originalName.endsWith('.csv')) {
+        const { Readable } = require('stream');
+        const stream = new Readable();
+        stream.push(fs.readFileSync(filePath));
+        stream.push(null);
+        await workbook.csv.read(stream);
+      } else {
+        await workbook.xlsx.readFile(filePath);
+      }
+    } finally {
+      // Remove temporary uploaded file
+      try {
+        fs.unlinkSync(filePath);
+      } catch (err) {
+        // ignore deletion failure
+      }
+    }
+
+    const sheet = workbook.worksheets[0];
+    if (!sheet || sheet.rowCount < 2) {
+      return res.status(400).json({ msg: 'File tidak memiliki baris data (hanya judul atau kosong)' });
+    }
+
+    // Header alias matching helpers
+    const rawHeaders = [];
+    sheet.getRow(1).eachCell((cell, colNum) => {
+      rawHeaders[colNum] = String(cell.value || '').trim().toLowerCase();
+    });
+
+    const findCol = (aliases) => {
+      for (let i = 1; i < rawHeaders.length; i++) {
+        const header = rawHeaders[i];
+        if (header && aliases.some(alias => header.includes(alias))) {
+          return i;
+        }
+      }
+      return -1;
+    };
+
+    const colNama = findCol(['nama', 'alat', 'tool', 'barang', 'item']);
+    const colKategori = findCol(['kategori', 'category', 'jenis', 'tipe']);
+    const colStok = findCol(['stok', 'stock', 'qty', 'jumlah', 'kuantitas']);
+    const colSatuan = findCol(['satuan', 'unit', 'uom']);
+    const colKondisi = findCol(['kondisi', 'condition', 'keadaan', 'status']);
+    const colLokasi = findCol(['lokasi', 'location', 'gudang', 'warehouse', 'posisi']);
+    const colNotes = findCol(['catatan', 'notes', 'keterangan', 'deskripsi', 'spesifikasi']);
+
+    if (colNama === -1) {
+      return res.status(400).json({
+        msg: 'Kolom "Nama Alat" tidak terdeteksi. Pastikan file memiliki kolom Nama Alat atau Nama.',
+      });
+    }
+
+    // Retrieve existing tools to identify duplicates
+    const existingTools = await Tool.find().select('nama stok kondisi lokasi').lean();
+    const existingMap = new Map();
+    existingTools.forEach(t => {
+      if (t.nama) {
+        existingMap.set(t.nama.trim().toLowerCase(), t);
+      }
+    });
+
+    const parsedRows = [];
+    let validCount = 0;
+    let duplicateCount = 0;
+
+    for (let r = 2; r <= sheet.rowCount; r++) {
+      const row = sheet.getRow(r);
+      const rawNama = row.getCell(colNama).value;
+      if (!rawNama && rawNama !== 0) continue; // skip totally empty rows
+
+      const nama = String(rawNama).trim();
+      if (!nama) continue;
+
+      const rawKategori = colKategori !== -1 ? row.getCell(colKategori).value : '';
+      const rawStok = colStok !== -1 ? row.getCell(colStok).value : 1;
+      const rawSatuan = colSatuan !== -1 ? row.getCell(colSatuan).value : 'unit';
+      const rawKondisi = colKondisi !== -1 ? row.getCell(colKondisi).value : 'Baik';
+      const rawLokasi = colLokasi !== -1 ? row.getCell(colLokasi).value : 'Head Office PT Mega Tama Enerco';
+      const rawNotes = colNotes !== -1 ? row.getCell(colNotes).value : '';
+
+      // Normalize Kondisi
+      let kondisi = 'Baik';
+      const kLower = String(rawKondisi || '').toLowerCase();
+      if (kLower.includes('rusak') || kLower.includes('broken')) {
+        kondisi = 'Rusak';
+      } else if (kLower.includes('maint') || kLower.includes('servis') || kLower.includes('perbaikan')) {
+        kondisi = 'Maintenance';
+      }
+
+      // Normalize Stok
+      let stok = Number(rawStok);
+      if (isNaN(stok) || stok < 0) {
+        stok = 1;
+      }
+
+      const kategori = String(rawKategori || '').trim() || 'Umum';
+      const satuan = String(rawSatuan || '').trim() || 'unit';
+      const lokasi = String(rawLokasi || '').trim() || 'Head Office PT Mega Tama Enerco';
+      const notes = String(rawNotes || '').trim();
+
+      // Check existing tool by name
+      const existing = existingMap.get(nama.toLowerCase());
+      const isDuplicate = Boolean(existing);
+      if (isDuplicate) duplicateCount++;
+
+      const errors = [];
+      if (!nama) errors.push('Nama alat tidak boleh kosong');
+
+      const isValid = errors.length === 0;
+      if (isValid) validCount++;
+
+      parsedRows.push({
+        rowNumber: r,
+        nama,
+        kategori,
+        stok,
+        satuan,
+        kondisi,
+        lokasi,
+        notes,
+        isDuplicate,
+        existingId: existing?._id || null,
+        existingStok: existing?.stok ?? null,
+        existingKondisi: existing?.kondisi ?? null,
+        isValid,
+        errors,
+      });
+    }
+
+    res.json({
+      summary: {
+        total: parsedRows.length,
+        valid: validCount,
+        invalid: parsedRows.length - validCount,
+        duplicates: duplicateCount,
+      },
+      rows: parsedRows,
+    });
+  } catch (error) {
+    console.error('Parse Tools Excel error:', error);
+    res.status(500).json({ msg: 'Gagal memproses file Excel: ' + (error.message || 'Format tidak valid') });
+  }
+});
+
+// POST /api/tools/import-excel - Commit parsed rows to database
+router.post('/import-excel', auth, authorize('owner', 'director', 'asset_admin'), async (req, res) => {
+  try {
+    const { rows, mode = 'skip' } = req.body;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ msg: 'Tidak ada baris data untuk diimpor' });
+    }
+
+    let insertedCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+
+    for (const item of rows) {
+      if (!item.nama || !item.isValid) {
+        failedCount++;
+        continue;
+      }
+
+      const namaTrimmed = String(item.nama).trim();
+      const existing = await Tool.findOne({ nama: new RegExp(`^${namaTrimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
+
+      if (existing) {
+        if (mode === 'skip') {
+          skippedCount++;
+          continue;
+        } else if (mode === 'update') {
+          existing.stok = Number(item.stok) || existing.stok;
+          if (item.kategori) existing.kategori = item.kategori;
+          if (item.satuan) existing.satuan = item.satuan;
+          if (item.kondisi) existing.kondisi = item.kondisi;
+          if (item.lokasi) existing.lokasi = item.lokasi;
+          if (item.notes) existing.notes = item.notes;
+          existing.updatedAt = nowWIB();
+          await existing.save();
+          updatedCount++;
+          continue;
+        }
+      }
+
+      // Mode is 'insert' or tool didn't exist
+      const newTool = new Tool({
+        nama: namaTrimmed,
+        kategori: item.kategori || 'Umum',
+        stok: Number(item.stok) || 1,
+        satuan: item.satuan || 'unit',
+        kondisi: item.kondisi || 'Baik',
+        lokasi: item.lokasi || 'Head Office PT Mega Tama Enerco',
+        notes: item.notes || '',
+        createdAt: nowWIB(),
+        updatedAt: nowWIB(),
+      });
+      await newTool.save();
+      insertedCount++;
+    }
+
+    res.json({
+      success: true,
+      message: `Impor berhasil: ${insertedCount} ditambahkan, ${updatedCount} diperbarui, ${skippedCount} dilewati, ${failedCount} gagal.`,
+      count: {
+        inserted: insertedCount,
+        updated: updatedCount,
+        skipped: skippedCount,
+        failed: failedCount,
+      },
+    });
+  } catch (error) {
+    console.error('Commit Tools Excel error:', error);
+    res.status(500).json({ msg: 'Gagal menyimpan data impor: ' + error.message });
   }
 });
 

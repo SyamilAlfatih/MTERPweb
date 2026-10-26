@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import {
   Search, Wrench, Plus, Package, MapPin, User,
-  Calendar, Edit3, Trash2, X, ChevronDown, AlertTriangle,
+  Calendar, Edit3, Trash2, X, ChevronDown, ChevronRight, AlertTriangle,
   CheckCircle2, Settings, Archive, Camera, UserX, Warehouse,
-  LayoutGrid, List, FileSpreadsheet, Download
+  LayoutGrid, List, FileSpreadsheet, Download, UploadCloud, Layers, Filter, Check
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -15,6 +15,7 @@ import { Tool } from '../types';
 import { getImageUrl } from '../utils/image';
 import { formatDate as formatWIBDate } from '../utils/date';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import ToolsExcelImportModal from '../components/tools/ToolsExcelImportModal';
 
 const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
 
@@ -72,6 +73,16 @@ const DENSITY_CONFIG = {
   },
 };
 
+type GroupByOption = 'none' | 'lokasi' | 'kategori' | 'kondisi' | 'project' | 'status';
+
+interface ToolGroup {
+  key: string;
+  label: string;
+  tools: Tool[];
+  totalStock: number;
+  kondisiCount: { baik: number; maintenance: number; rusak: number };
+}
+
 export default function Tools() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -80,6 +91,9 @@ export default function Tools() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [groupBy, setGroupBy] = useState<GroupByOption>('none');
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<'card' | 'table'>(() => {
     return (localStorage.getItem('tools_view_mode') as 'card' | 'table') || 'table';
   });
@@ -87,11 +101,21 @@ export default function Tools() {
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [editingTool, setEditingTool] = useState<Tool | null>(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
 
   // Export states
   const [showExportModal, setShowExportModal] = useState(false);
@@ -138,12 +162,101 @@ export default function Tools() {
     return () => clearTimeout(debounce);
   }, [search]);
 
+  // Extract unique categories for filter
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    tools.forEach((t) => {
+      if (t.kategori && t.kategori.trim()) set.add(t.kategori.trim());
+    });
+    return Array.from(set).sort();
+  }, [tools]);
+
   // Filtered tools
-  const filteredTools = tools.filter(tool => {
-    if (filter === 'all') return true;
-    if (filter === 'inUse') return !!tool.assignedTo;
-    return tool.kondisi === filter;
-  });
+  const filteredTools = useMemo(() => {
+    return tools.filter((tool) => {
+      if (filter === 'inUse' && !tool.assignedTo) return false;
+      if (filter === 'Baik' && (tool.kondisi !== 'Baik' || tool.assignedTo)) return false;
+      if (['Maintenance', 'Rusak'].includes(filter) && tool.kondisi !== filter) return false;
+      if (categoryFilter !== 'all' && tool.kategori !== categoryFilter) return false;
+      return true;
+    });
+  }, [tools, filter, categoryFilter]);
+
+  // Grouped tools structure
+  const groupedTools = useMemo((): ToolGroup[] => {
+    if (groupBy === 'none') {
+      return [{
+        key: 'all',
+        label: 'Semua Alat',
+        tools: filteredTools,
+        totalStock: filteredTools.reduce((acc, t) => acc + (Number(t.stok) || 0), 0),
+        kondisiCount: {
+          baik: filteredTools.filter((t) => t.kondisi === 'Baik').length,
+          maintenance: filteredTools.filter((t) => t.kondisi === 'Maintenance').length,
+          rusak: filteredTools.filter((t) => t.kondisi === 'Rusak').length,
+        },
+      }];
+    }
+
+    const map = new Map<string, ToolGroup>();
+
+    filteredTools.forEach((tool) => {
+      let key = 'Tanpa Data';
+      let label = 'Tanpa Data';
+
+      if (groupBy === 'lokasi') {
+        key = tool.lokasi?.trim() || 'Tanpa Lokasi (Gudang Belum Disetel)';
+        label = key;
+      } else if (groupBy === 'kategori') {
+        key = tool.kategori?.trim() || 'Tanpa Kategori';
+        label = key;
+      } else if (groupBy === 'kondisi') {
+        key = tool.kondisi || 'Baik';
+        label = `Kondisi: ${key}`;
+      } else if (groupBy === 'project') {
+        key = tool.projectId?.nama || (tool.assignedTo ? 'Ditugaskan ke Personel' : 'Di Gudang (Belum di Proyek)');
+        label = key;
+      } else if (groupBy === 'status') {
+        key = tool.assignedTo ? 'Sedang Digunakan' : 'Tersedia di Gudang';
+        label = key;
+      }
+
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          label,
+          tools: [],
+          totalStock: 0,
+          kondisiCount: { baik: 0, maintenance: 0, rusak: 0 },
+        });
+      }
+
+      const group = map.get(key)!;
+      group.tools.push(tool);
+      group.totalStock += Number(tool.stok) || 0;
+      if (tool.kondisi === 'Baik') group.kondisiCount.baik++;
+      else if (tool.kondisi === 'Maintenance') group.kondisiCount.maintenance++;
+      else if (tool.kondisi === 'Rusak') group.kondisiCount.rusak++;
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.tools.length - a.tools.length);
+  }, [filteredTools, groupBy]);
+
+  const toggleGroupCollapse = (key: string) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const expandAllGroups = () => setCollapsedGroups({});
+  const collapseAllGroups = () => {
+    const allCollapsed: Record<string, boolean> = {};
+    groupedTools.forEach((g) => {
+      allCollapsed[g.key] = true;
+    });
+    setCollapsedGroups(allCollapsed);
+  };
 
   const pieData = stats ? [
     { name: t('tools.filter.available'), value: stats.available || 0 },
@@ -264,6 +377,22 @@ export default function Tools() {
     <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5">
       <LoadingOverlay visible={loading} />
 
+      {/* Global Toast Alert */}
+      {toastMessage && (
+        <div className="p-3 rounded-xl border flex items-center justify-between gap-3 text-xs font-semibold shadow-xs bg-emerald-50 text-emerald-900 border-emerald-200 animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <span>{toastMessage.text}</span>
+          </div>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="text-text-muted hover:text-text-primary p-0.5 cursor-pointer bg-transparent border-none"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-center max-sm:flex-col max-sm:items-start max-sm:gap-3">
         <div className="flex items-center gap-3">
@@ -275,7 +404,20 @@ export default function Tools() {
             <p className="text-xs text-text-muted m-0">{t('tools.subtitle')}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setShowImportModal(true)}
+              className="flex items-center gap-1.5 py-1.5 px-3 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white rounded-lg text-xs font-semibold transition-all shadow-2xs active:scale-95 cursor-pointer"
+              title="Impor Alat dari Excel (.xlsx / .csv)"
+            >
+              <UploadCloud size={15} />
+              <span className="max-sm:hidden">Impor Excel</span>
+              <span className="hidden max-sm:inline">Impor</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {
@@ -283,13 +425,13 @@ export default function Tools() {
               setShowExportModal(true);
             }}
             disabled={tools.length === 0 || isExporting}
-            className="flex items-center gap-2 py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-md text-sm font-semibold transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="flex items-center gap-1.5 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-semibold transition-all shadow-2xs active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             title={t('tools.actions.exportExcel')}
           >
             {isExporting ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
-              <FileSpreadsheet size={16} />
+              <FileSpreadsheet size={15} />
             )}
             <span className="max-sm:hidden">{t('tools.actions.exportExcel')}</span>
             <span className="hidden max-sm:inline">.xlsx</span>
@@ -351,17 +493,89 @@ export default function Tools() {
         </div>
       )}
 
-      {/* Search + Filters Row */}
-      <div className="flex flex-col gap-3 mb-5">
-        <Input
-          placeholder={t('tools.searchPlaceholder')}
-          value={search}
-          onChangeText={setSearch}
-          icon={Search}
-          style={{ flex: 1 }}
-        />
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar max-sm:gap-1">
+      {/* Search + Filters + ERP Grouping Toolbar */}
+      <div className="flex flex-col gap-2.5 mb-3.5 bg-bg-white dark:bg-slate-900 p-3 rounded-xl border border-border-light shadow-2xs">
+        {/* Top Control Bar: Search + Category + Group By */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <div className="flex-1 min-w-[200px]">
+            <Input
+              placeholder={t('tools.searchPlaceholder')}
+              value={search}
+              onChangeText={setSearch}
+              icon={Search}
+              style={{ flex: 1 }}
+            />
+          </div>
+
+          {/* Category Dropdown */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-xs text-text-muted flex items-center gap-1">
+              <Filter size={13} />
+              <span className="hidden sm:inline">Kategori:</span>
+            </span>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="py-2 px-2.5 text-xs font-semibold rounded-lg border border-border-light bg-bg-secondary text-text-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            >
+              <option value="all">Semua Kategori ({tools.length})</option>
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat} ({tools.filter((t) => t.kategori === cat).length})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Group By Selector */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-xs text-text-muted flex items-center gap-1">
+              <Layers size={13} />
+              <span className="hidden sm:inline">Pengelompokan:</span>
+            </span>
+            <select
+              value={groupBy}
+              onChange={(e) => {
+                setGroupBy(e.target.value as GroupByOption);
+                setCollapsedGroups({});
+              }}
+              className="py-2 px-2.5 text-xs font-semibold rounded-lg border border-primary/30 bg-primary/[0.04] text-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            >
+              <option value="none">Tanpa Pengelompokan (Flat)</option>
+              <option value="lokasi">Grup: Lokasi Penyimpanan</option>
+              <option value="kategori">Grup: Kategori Alat</option>
+              <option value="kondisi">Grup: Kondisi Fisik</option>
+              <option value="project">Grup: Proyek / Pengguna</option>
+              <option value="status">Grup: Status Penggunaan</option>
+            </select>
+          </div>
+
+          {/* Expand / Collapse All (When Grouped) */}
+          {groupBy !== 'none' && (
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={expandAllGroups}
+                className="py-1 px-2 text-[11px] font-semibold rounded border border-border-light bg-bg-secondary text-text-secondary hover:text-text-primary cursor-pointer"
+                title="Buka semua grup"
+              >
+                Buka Semua
+              </button>
+              <button
+                type="button"
+                onClick={collapseAllGroups}
+                className="py-1 px-2 text-[11px] font-semibold rounded border border-border-light bg-bg-secondary text-text-secondary hover:text-text-primary cursor-pointer"
+                title="Tutup semua grup"
+              >
+                Tutup Semua
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Control Bar: Status Filter Pills & View Mode */}
+        <div className="flex items-center justify-between gap-3 flex-wrap pt-2 border-t border-border-light/60">
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar max-sm:gap-1">
             {FILTERS.map(f => {
               const Icon = f.icon;
               const filterLabelMapping: Record<string, string> = {
@@ -374,12 +588,12 @@ export default function Tools() {
               return (
                 <button
                   key={f.key}
-                  className={`flex items-center gap-[6px] py-2 px-3.5 border border-border rounded-full bg-bg-white text-text-secondary text-sm font-semibold cursor-pointer whitespace-nowrap transition-all duration-150 hover:border-primary-light hover:text-primary hover:bg-primary-bg max-sm:py-1.5 max-sm:px-2.5 max-sm:text-xs ${filter === f.key ? '!bg-primary !text-white !border-primary hover:!bg-primary-light hover:!border-primary-light' : ''}`}
+                  className={`flex items-center gap-1.5 py-1.5 px-3 border border-border-light rounded-lg bg-bg-secondary/60 text-text-secondary text-xs font-semibold cursor-pointer whitespace-nowrap transition-all duration-150 hover:border-primary-light hover:text-primary ${filter === f.key ? '!bg-primary !text-white !border-primary shadow-xs' : ''}`}
                   onClick={() => setFilter(f.key)}
                 >
-                  <Icon size={14} />
+                  <Icon size={13} />
                   <span>{filterLabelMapping[f.label]}</span>
-                  <span className={`py-[1px] px-[7px] rounded-full text-xs font-bold ${filter === f.key ? 'bg-white/25' : 'bg-black/10'}`}>{filterCounts[f.key]}</span>
+                  <span className={`py-[0.5px] px-1.5 rounded-full text-[10px] font-mono font-bold ${filter === f.key ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-text-primary'}`}>{filterCounts[f.key]}</span>
                 </button>
               );
             })}
@@ -509,100 +723,154 @@ export default function Tools() {
                       </tr>
                     </thead>
                     <tbody className="divide-y border-border-light">
-                      {filteredTools.map((tool, index) => {
-                        const condStyle = getConditionStyle(tool.kondisi);
-                        const CondIcon = condStyle.icon;
+                      {groupedTools.map((group) => {
+                        const isCollapsed = Boolean(collapsedGroups[group.key]);
+
                         return (
-                          <tr role="row" aria-rowindex={index + 1} key={tool._id} className="hover:bg-slate-50/80 transition-colors group">
-                            {/* Sticky # */}
-                            <td className={`${DENSITY_CONFIG[tableDensity].td} sticky left-0 z-10 bg-white group-hover:bg-slate-50 text-center text-text-muted font-mono tabular-nums border-r border-border-light`}>
-                              {index + 1}
-                            </td>
-                            {/* Sticky Photo + Name + Category */}
-                            <td className={`${DENSITY_CONFIG[tableDensity].td} sticky left-12 z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-9 h-9 rounded-md overflow-hidden shrink-0 border border-border-light bg-bg-secondary flex items-center justify-center">
-                                  {tool.photo ? (
-                                    <PhotoView src={getImageUrl(tool.photo)}>
-                                      <img src={getImageUrl(tool.photo)} alt={tool.nama} className="w-full h-full object-cover cursor-pointer" />
-                                    </PhotoView>
-                                  ) : (
-                                    <Wrench size={16} className="text-text-muted" />
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="font-semibold text-text-primary truncate">{tool.nama}</div>
-                                  {tool.kategori && (
-                                    <span className="text-[11px] text-text-muted">{tool.kategori}</span>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            {/* Kondisi Badge */}
-                            <td className={DENSITY_CONFIG[tableDensity].td}>
-                              <span
-                                className="text-xs font-bold py-[2px] px-2 rounded-full inline-flex items-center gap-1"
-                                style={{ backgroundColor: condStyle.bg, color: condStyle.color }}
+                          <Fragment key={group.key}>
+                            {/* Group Banner Row (Only if groupBy !== 'none') */}
+                            {groupBy !== 'none' && (
+                              <tr
+                                onClick={() => toggleGroupCollapse(group.key)}
+                                className="bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors cursor-pointer select-none border-y border-border-light font-medium"
                               >
-                                <CondIcon size={12} />
-                                {condStyle.label}
-                              </span>
-                            </td>
-                            {/* Stok (Right-Aligned, font-mono tabular-nums) */}
-                            <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums font-semibold text-text-primary`}>
-                              {tool.stok} <span className="font-sans text-xs font-normal text-text-muted">{tool.satuan}</span>
-                            </td>
-                            {/* Lokasi */}
-                            <td className={`${DENSITY_CONFIG[tableDensity].td} text-text-secondary`}>
-                              {tool.lokasi ? (
-                                <span className="inline-flex items-center gap-1 truncate">
-                                  <MapPin size={12} className="text-text-muted shrink-0" />
-                                  {tool.lokasi}
-                                </span>
-                              ) : '-'}
-                            </td>
-                            {/* Assigned User / Project */}
-                            <td className={DENSITY_CONFIG[tableDensity].td}>
-                              {tool.assignedTo ? (
-                                <span className="inline-flex items-center gap-1 text-primary font-medium text-xs truncate">
-                                  <User size={12} className="shrink-0" />
-                                  {tool.assignedTo.fullName}
-                                </span>
-                              ) : tool.projectId ? (
-                                <span className="inline-flex items-center gap-1 text-info font-medium text-xs truncate">
-                                  <Package size={12} className="shrink-0" />
-                                  {tool.projectId.nama}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-text-muted">Tersedia</span>
-                              )}
-                            </td>
-                            {/* Pengecekan */}
-                            <td className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-text-muted whitespace-nowrap`}>
-                              {tool.lastChecked ? formatDateDisplay(tool.lastChecked) : '-'}
-                            </td>
-                            {/* Sticky Aksi */}
-                            {canManage && (
-                              <td className={`${DENSITY_CONFIG[tableDensity].td} sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
-                                <div className="flex items-center justify-end gap-1">
-                                  <button
-                                    onClick={() => openEditModal(tool)}
-                                    className="p-1.5 rounded hover:bg-primary-bg hover:text-primary text-text-muted transition-colors"
-                                    title={t('tools.actions.edit')}
-                                  >
-                                    <Edit3 size={15} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDelete(tool)}
-                                    className="p-1.5 rounded hover:bg-danger-bg hover:text-danger text-text-muted transition-colors"
-                                    title={t('tools.actions.delete')}
-                                  >
-                                    <Trash2 size={15} />
-                                  </button>
-                                </div>
-                              </td>
+                                <td colSpan={canManage ? 8 : 7} className="py-2 px-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-5 h-5 rounded-md bg-white/80 dark:bg-slate-700 flex items-center justify-center text-text-muted shadow-2xs">
+                                        {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                                      </span>
+                                      <span className="font-bold text-xs text-text-primary tracking-tight">
+                                        {group.label}
+                                      </span>
+                                      <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
+                                        {group.tools.length} Alat
+                                      </span>
+                                      <span className="px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-700 text-text-secondary font-mono font-bold text-[10px]">
+                                        Total Stok: {group.totalStock}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[10px]">
+                                      {group.kondisiCount.baik > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
+                                          {group.kondisiCount.baik} Baik
+                                        </span>
+                                      )}
+                                      {group.kondisiCount.maintenance > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">
+                                          {group.kondisiCount.maintenance} Servis
+                                        </span>
+                                      )}
+                                      {group.kondisiCount.rusak > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-semibold">
+                                          {group.kondisiCount.rusak} Rusak
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
                             )}
-                          </tr>
+
+                            {/* Group Tool Rows (if not collapsed) */}
+                            {(!isCollapsed || groupBy === 'none') &&
+                              group.tools.map((tool, index) => {
+                                const condStyle = getConditionStyle(tool.kondisi);
+                                const CondIcon = condStyle.icon;
+                                return (
+                                  <tr role="row" aria-rowindex={index + 1} key={tool._id} className="hover:bg-slate-50/80 transition-colors group">
+                                    {/* Sticky # */}
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sticky left-0 z-10 bg-white group-hover:bg-slate-50 text-center text-text-muted font-mono tabular-nums border-r border-border-light`}>
+                                      {index + 1}
+                                    </td>
+                                    {/* Sticky Photo + Name + Category */}
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sticky left-12 z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="w-9 h-9 rounded-md overflow-hidden shrink-0 border border-border-light bg-bg-secondary flex items-center justify-center">
+                                          {tool.photo ? (
+                                            <PhotoView src={getImageUrl(tool.photo)}>
+                                              <img src={getImageUrl(tool.photo)} alt={tool.nama} className="w-full h-full object-cover cursor-pointer" />
+                                            </PhotoView>
+                                          ) : (
+                                            <Wrench size={16} className="text-text-muted" />
+                                          )}
+                                        </div>
+                                        <div className="min-w-0">
+                                          <div className="font-semibold text-text-primary truncate">{tool.nama}</div>
+                                          {tool.kategori && (
+                                            <span className="text-[11px] text-text-muted">{tool.kategori}</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                    {/* Kondisi Badge */}
+                                    <td className={DENSITY_CONFIG[tableDensity].td}>
+                                      <span
+                                        className="text-xs font-bold py-[2px] px-2 rounded-full inline-flex items-center gap-1"
+                                        style={{ backgroundColor: condStyle.bg, color: condStyle.color }}
+                                      >
+                                        <CondIcon size={12} />
+                                        {condStyle.label}
+                                      </span>
+                                    </td>
+                                    {/* Stok */}
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums font-semibold text-text-primary`}>
+                                      {tool.stok} <span className="font-sans text-xs font-normal text-text-muted">{tool.satuan}</span>
+                                    </td>
+                                    {/* Lokasi */}
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-text-secondary`}>
+                                      {tool.lokasi ? (
+                                        <span className="inline-flex items-center gap-1 truncate">
+                                          <MapPin size={12} className="text-text-muted shrink-0" />
+                                          {tool.lokasi}
+                                        </span>
+                                      ) : '-'}
+                                    </td>
+                                    {/* Assigned User / Project */}
+                                    <td className={DENSITY_CONFIG[tableDensity].td}>
+                                      {tool.assignedTo ? (
+                                        <span className="inline-flex items-center gap-1 text-primary font-medium text-xs truncate">
+                                          <User size={12} className="shrink-0" />
+                                          {tool.assignedTo.fullName}
+                                        </span>
+                                      ) : tool.projectId ? (
+                                        <span className="inline-flex items-center gap-1 text-info font-medium text-xs truncate">
+                                          <Package size={12} className="shrink-0" />
+                                          {tool.projectId.nama}
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs text-text-muted">Tersedia</span>
+                                      )}
+                                    </td>
+                                    {/* Pengecekan */}
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-text-muted whitespace-nowrap`}>
+                                      {tool.lastChecked ? formatDateDisplay(tool.lastChecked) : '-'}
+                                    </td>
+                                    {/* Sticky Aksi */}
+                                    {canManage && (
+                                      <td className={`${DENSITY_CONFIG[tableDensity].td} sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
+                                        <div className="flex items-center justify-end gap-1">
+                                          <button
+                                            onClick={() => openEditModal(tool)}
+                                            className="p-1.5 rounded hover:bg-primary-bg hover:text-primary text-text-muted transition-colors cursor-pointer"
+                                            title={t('tools.actions.edit')}
+                                          >
+                                            <Edit3 size={15} />
+                                          </button>
+                                          <button
+                                            onClick={() => handleDelete(tool)}
+                                            className="p-1.5 rounded hover:bg-danger-bg hover:text-danger text-text-muted transition-colors cursor-pointer"
+                                            title={t('tools.actions.delete')}
+                                          >
+                                            <Trash2 size={15} />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                          </Fragment>
                         );
                       })}
                     </tbody>
@@ -610,97 +878,133 @@ export default function Tools() {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-3">
-                {filteredTools.map((tool, index) => {
-                  const condStyle = getConditionStyle(tool.kondisi);
-                  const CondIcon = condStyle.icon;
+              <div className="flex flex-col gap-4">
+                {groupedTools.map((group) => {
+                  const isCollapsed = Boolean(collapsedGroups[group.key]);
+
                   return (
-                    <Card
-                      key={tool._id}
-                      className="group p-4 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-lg animate-[fade-in-up_0.35s_ease_both]"
-                      style={{
-                        borderLeft: `4px solid ${condStyle.color}`,
-                        animationDelay: `${index * 0.04}s`,
-                      }}
-                    >
-                      <div className="flex items-start gap-4 max-sm:flex-col">
-                        <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 border border-border-light max-sm:w-full max-sm:h-40">
-                          {tool.photo ? (
-                            <PhotoView src={getImageUrl(tool.photo)}>
-                              <img 
-                                src={getImageUrl(tool.photo)} 
-                                alt={tool.nama} 
-                                className="w-full h-full object-cover cursor-pointer"
-                              />
-                            </PhotoView>
-                          ) : (
-                            <div className="w-full h-full bg-bg-secondary flex items-center justify-center">
-                              <Wrench size={24} className="text-text-muted" />
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <h3 className="text-base font-bold text-text-primary m-0">{tool.nama}</h3>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {tool.kategori && (
-                                <span className="text-xs font-semibold text-text-secondary bg-bg-secondary py-[2px] px-2 rounded-full">{tool.kategori}</span>
-                              )}
-                              <span
-                                className="text-xs font-bold py-[2px] px-2 rounded-full flex items-center gap-1"
-                                style={{ backgroundColor: condStyle.bg, color: condStyle.color }}
-                              >
-                                <CondIcon size={12} />
-                                {condStyle.label}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-wrap gap-3">
-                            <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
-                              <Archive size={13} />
-                              {tool.stok} {tool.satuan}
+                    <div key={group.key} className="space-y-2">
+                      {groupBy !== 'none' && (
+                        <div
+                          onClick={() => toggleGroupCollapse(group.key)}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/70 border border-border-light cursor-pointer select-none transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded bg-white dark:bg-slate-700 flex items-center justify-center text-text-muted shadow-2xs">
+                              {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
                             </span>
-                            {tool.lokasi && (
-                              <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
-                                <MapPin size={13} />
-                                {tool.lokasi}
-                              </span>
-                            )}
-                            {tool.assignedTo && (
-                              <span className="flex items-center gap-1 text-sm whitespace-nowrap !text-primary font-medium">
-                                <User size={13} />
-                                {tool.assignedTo.fullName}
-                              </span>
-                            )}
-                            {tool.projectId && (
-                              <span className="flex items-center gap-1 text-sm whitespace-nowrap !text-info font-medium">
-                                <Package size={13} />
-                                {tool.projectId.nama}
-                              </span>
-                            )}
-                            {tool.lastChecked && (
-                              <span className="flex items-center gap-1 text-sm text-text-muted whitespace-nowrap">
-                                <Calendar size={13} />
-                                {formatDateDisplay(tool.lastChecked)}
-                              </span>
-                            )}
+                            <span className="font-bold text-xs text-text-primary">{group.label}</span>
+                            <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
+                              {group.tools.length} Alat
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-text-secondary font-mono font-bold text-[10px]">
+                              Total Stok: {group.totalStock}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[10px]">
+                            {group.kondisiCount.baik > 0 && <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">{group.kondisiCount.baik} Baik</span>}
+                            {group.kondisiCount.maintenance > 0 && <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">{group.kondisiCount.maintenance} Servis</span>}
+                            {group.kondisiCount.rusak > 0 && <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-semibold">{group.kondisiCount.rusak} Rusak</span>}
                           </div>
                         </div>
+                      )}
 
-                        {canManage && (
-                          <div className="flex gap-2 opacity-0 transition-opacity duration-150 shrink-0 group-hover:opacity-100 max-sm:opacity-100 max-sm:flex-row max-sm:w-full [&>button]:max-sm:flex-1">
-                            <button className="w-[34px] h-[34px] rounded-sm border border-border bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-primary hover:!border-primary hover:!bg-primary-bg" onClick={() => openEditModal(tool)} title={t('tools.actions.edit')}>
-                              <Edit3 size={16} />
-                            </button>
-                            <button className="w-[34px] h-[34px] rounded-sm border border-border bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-danger hover:!border-danger hover:!bg-danger-bg" onClick={() => handleDelete(tool)} title={t('tools.actions.delete')}>
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </Card>
+                      {(!isCollapsed || groupBy === 'none') && (
+                        <div className="flex flex-col gap-2.5">
+                          {group.tools.map((tool, index) => {
+                            const condStyle = getConditionStyle(tool.kondisi);
+                            const CondIcon = condStyle.icon;
+                            return (
+                              <Card
+                                key={tool._id}
+                                className="group p-3 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-xs"
+                                style={{
+                                  borderLeft: `4px solid ${condStyle.color}`,
+                                }}
+                              >
+                                <div className="flex items-start gap-3.5 max-sm:flex-col">
+                                  <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 border border-border-light max-sm:w-full max-sm:h-36">
+                                    {tool.photo ? (
+                                      <PhotoView src={getImageUrl(tool.photo)}>
+                                        <img 
+                                          src={getImageUrl(tool.photo)} 
+                                          alt={tool.nama} 
+                                          className="w-full h-full object-cover cursor-pointer"
+                                        />
+                                      </PhotoView>
+                                    ) : (
+                                      <div className="w-full h-full bg-bg-secondary flex items-center justify-center">
+                                        <Wrench size={20} className="text-text-muted" />
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                      <h3 className="text-sm font-bold text-text-primary m-0">{tool.nama}</h3>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        {tool.kategori && (
+                                          <span className="text-[10px] font-semibold text-text-secondary bg-bg-secondary py-[1px] px-2 rounded-full">{tool.kategori}</span>
+                                        )}
+                                        <span
+                                          className="text-[10px] font-bold py-[1px] px-2 rounded-full flex items-center gap-1"
+                                          style={{ backgroundColor: condStyle.bg, color: condStyle.color }}
+                                        >
+                                          <CondIcon size={11} />
+                                          {condStyle.label}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2.5 text-xs">
+                                      <span className="flex items-center gap-1 text-text-muted whitespace-nowrap">
+                                        <Archive size={12} />
+                                        {tool.stok} {tool.satuan}
+                                      </span>
+                                      {tool.lokasi && (
+                                        <span className="flex items-center gap-1 text-text-muted whitespace-nowrap">
+                                          <MapPin size={12} />
+                                          {tool.lokasi}
+                                        </span>
+                                      )}
+                                      {tool.assignedTo && (
+                                        <span className="flex items-center gap-1 whitespace-nowrap !text-primary font-medium">
+                                          <User size={12} />
+                                          {tool.assignedTo.fullName}
+                                        </span>
+                                      )}
+                                      {tool.projectId && (
+                                        <span className="flex items-center gap-1 whitespace-nowrap !text-info font-medium">
+                                          <Package size={12} />
+                                          {tool.projectId.nama}
+                                        </span>
+                                      )}
+                                      {tool.lastChecked && (
+                                        <span className="flex items-center gap-1 text-text-muted whitespace-nowrap">
+                                          <Calendar size={12} />
+                                          {formatDateDisplay(tool.lastChecked)}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {canManage && (
+                                    <div className="flex gap-1.5 shrink-0">
+                                      <button className="w-7 h-7 rounded border border-border-light bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-primary hover:!border-primary hover:!bg-primary-bg" onClick={() => openEditModal(tool)} title={t('tools.actions.edit')}>
+                                        <Edit3 size={14} />
+                                      </button>
+                                      <button className="w-7 h-7 rounded border border-border-light bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-danger hover:!border-danger hover:!bg-danger-bg" onClick={() => handleDelete(tool)} title={t('tools.actions.delete')}>
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -1093,8 +1397,36 @@ export default function Tools() {
         </div>
       )}
 
-      {/* Floating Toast Notification on Success */}
-      {exportSuccess && (
+      {/* Excel Import Modal */}
+      <ToolsExcelImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={(msg) => {
+          fetchData();
+          setToastMessage({ type: 'success', text: msg });
+        }}
+      />
+
+      {/* Floating Toast Notification on Success / Error */}
+      {toastMessage && (
+        <div
+          className={`fixed bottom-6 right-6 z-[1100] flex items-center gap-2.5 py-3 px-4 rounded-xl shadow-2xl border animate-[fade-in-up_0.2s_ease_both] ${
+            toastMessage.type === 'success'
+              ? 'bg-slate-900 text-white border-emerald-500/50'
+              : 'bg-rose-900 text-white border-rose-500/50'
+          }`}
+        >
+          {toastMessage.type === 'success' ? (
+            <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+          ) : (
+            <AlertTriangle size={18} className="text-rose-400 shrink-0" />
+          )}
+          <span className="text-xs font-bold">{toastMessage.text}</span>
+        </div>
+      )}
+
+      {/* Floating Toast Notification on Export Success */}
+      {exportSuccess && !toastMessage && (
         <div className="fixed bottom-6 right-6 z-[1100] flex items-center gap-2.5 bg-slate-900 text-white py-3 px-4 rounded-xl shadow-2xl border border-slate-700 animate-[fade-in-up_0.2s_ease_both]">
           <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
           <span className="text-xs font-bold">{t('tools.export.successMsg')}</span>
@@ -1103,3 +1435,4 @@ export default function Tools() {
     </div>
   );
 }
+
