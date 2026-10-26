@@ -517,7 +517,8 @@
       "unassign": "Lepas Pengguna",
       "cancel": "Batal",
       "addToProject": "Tambah ke Proyek",
-      "saveAssignment": "Simpan Penugasan"
+      "saveAssignment": "Simpan Penugasan",
+      "confirmReturn": "Konfirmasi Kembali"
     },
     "modal": {
       "addTitle": "Tambah Alat dari Gudang",
@@ -525,7 +526,10 @@
       "selectTool": "Pilih Alat",
       "chooseTool": "Pilih alat...",
       "assignTo": "Tugaskan Kepada",
-      "unassigned": "Belum Ditugaskan (Penggunaan Tim)"
+      "unassigned": "Belum Ditugaskan (Penggunaan Tim)",
+      "returnTitle": "Kembalikan ke Gudang",
+      "conditionPhoto": "Foto Kondisi",
+      "returnCondition": "Perbarui Kondisi"
     },
     "messages": {
       "fetchFailed": "Gagal memuat data",
@@ -535,14 +539,6 @@
       "returnFailed": "Gagal mengembalikan alat",
       "unassignConfirm": "Lepaskan \"{{name}}\" dari {{user}}?",
       "unassignFailed": "Gagal melepas pengguna dari alat"
-    },
-    "modal": {
-      "returnTitle": "Kembalikan ke Gudang",
-      "conditionPhoto": "Foto Kondisi",
-      "returnCondition": "Perbarui Kondisi"
-    },
-    "actions": {
-      "confirmReturn": "Konfirmasi Kembali"
     }
   },
   "projectMaterials": {

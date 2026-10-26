@@ -18,6 +18,16 @@ export default function ToolsMapView({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
 
+  // Clean up map instance on component unmount
+  useEffect(() => {
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -40,12 +50,25 @@ export default function ToolsMapView({
         scrollWheelZoom: true,
       });
 
-      // CartoDB Positron / OSM Tiles
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
+      // Free OpenStreetMap Standard Tiles (100% Free, No API Key Required)
+      const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
         maxZoom: 19,
-      }).addTo(map);
+      });
+
+      // Free Esri Satellite Imagery (100% Free, No API Key Required)
+      const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, USGS, NOAA',
+        maxZoom: 19,
+      });
+
+      osmLayer.addTo(map);
+
+      // Layer switcher between Street and Satellite
+      L.control.layers({
+        'Peta Jalan (OSM)': osmLayer,
+        'Satelit (Esri)': satelliteLayer,
+      }, undefined, { position: 'topright' }).addTo(map);
 
       mapInstanceRef.current = map;
     }
