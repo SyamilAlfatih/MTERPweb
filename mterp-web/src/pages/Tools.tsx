@@ -1180,16 +1180,16 @@ export default function Tools() {
             />
           ) : (
             viewMode === 'table' ? (
-              <div className="w-full max-w-full bg-bg-white dark:bg-slate-900 rounded-xl border border-border-light overflow-hidden shadow-2xs">
+              <div className="w-full max-w-full bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
                 {/* 1. Mobile Dense Table (sm:hidden) - ZERO Horizontal Scrolling */}
-                <div className="sm:hidden divide-y divide-border-light">
+                <div className="sm:hidden divide-y divide-slate-200">
                   {/* Mobile Select-All Bar */}
-                  <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between border-b border-border-light">
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-text-primary select-none">
+                  <div className="p-2.5 bg-slate-100 flex items-center justify-between border-b border-slate-300">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-black text-slate-900 select-none">
                       <input
                         type="checkbox"
                         aria-label="Pilih semua alat"
-                        className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer"
+                        className="w-4 h-4 rounded border-slate-400 text-primary accent-primary cursor-pointer"
                         checked={isAllSelected}
                         ref={(el) => {
                           if (el) el.indeterminate = isSomeSelected;
@@ -1199,7 +1199,7 @@ export default function Tools() {
                       <span>Pilih Semua ({filteredTools.length})</span>
                     </label>
                     {selectedToolIds.length > 0 && (
-                      <span className="text-[11px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10">
+                      <span className="text-[11px] font-black text-blue-900 px-2 py-0.5 rounded-full bg-blue-100 border border-blue-200">
                         {selectedToolIds.length} terpilih
                       </span>
                     )}
@@ -1214,17 +1214,19 @@ export default function Tools() {
                         {groupBy !== 'none' && (
                           <div
                             onClick={() => toggleGroupCollapse(group.key)}
-                            className="bg-slate-100/90 dark:bg-slate-800/80 px-3 py-2.5 flex items-center justify-between border-b border-border-light cursor-pointer select-none"
+                            className="bg-slate-100 hover:bg-slate-200/80 px-3 py-2.5 flex items-center justify-between border-b-2 border-slate-300 cursor-pointer select-none transition-colors"
                           >
-                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                              {isCollapsed ? <ChevronRight size={14} className="text-text-muted shrink-0" /> : <ChevronDown size={14} className="text-text-muted shrink-0" />}
-                              <span className="font-bold text-xs text-text-primary truncate">{group.label}</span>
-                              <span className="px-1.5 py-0.2 rounded-full bg-primary/10 text-primary font-bold text-[10px] shrink-0">
-                                {group.tools.length}
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <span className="w-5 h-5 rounded bg-white border border-slate-300 text-slate-700 flex items-center justify-center shadow-2xs shrink-0">
+                                {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                              </span>
+                              <span className="font-black text-xs text-slate-900 truncate">{group.label}</span>
+                              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 border border-blue-200 font-black text-[10px] shrink-0">
+                                {group.tools.length} Alat
                               </span>
                             </div>
-                            <span className="text-[10px] text-text-muted font-mono shrink-0">
-                              Stok: <strong className="text-text-primary">{group.totalStock}</strong>
+                            <span className="text-[10px] text-slate-600 font-mono shrink-0">
+                              Stok: <strong className="text-slate-900 font-black">{group.totalStock}</strong>
                             </span>
                           </div>
                         )}
@@ -1238,10 +1240,10 @@ export default function Tools() {
                             return (
                               <div
                                 key={tool._id}
-                                className={`p-3 transition-colors flex flex-col gap-2 ${
+                                className={`p-3 transition-colors flex flex-col gap-2 border-b border-slate-200 ${
                                   selectedToolIds.includes(tool._id)
-                                    ? 'bg-blue-50/70 dark:bg-blue-950/20 border-l-4 border-l-primary'
-                                    : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                                    ? 'bg-blue-50/90 border-l-4 border-l-primary'
+                                    : 'bg-white hover:bg-slate-50'
                                 }`}
                               >
                                 {/* Row Top: Checkbox + Index + Photo + Title & Category + Condition Badge + Stock */}
@@ -1251,33 +1253,33 @@ export default function Tools() {
                                       <input
                                         type="checkbox"
                                         aria-label={`Pilih ${tool.nama}`}
-                                        className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer shrink-0"
+                                        className="w-4 h-4 rounded border-slate-400 text-primary accent-primary cursor-pointer shrink-0"
                                         checked={selectedToolIds.includes(tool._id)}
                                         onChange={(e) => handleToggleSelectTool(tool._id, e)}
                                       />
-                                      <span className="text-[10px] font-mono text-text-muted w-3.5 text-center">
+                                      <span className="text-[10px] font-mono text-slate-500 font-bold w-3.5 text-center">
                                         {index + 1}
                                       </span>
                                     </div>
-                                    <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-border-light bg-bg-secondary flex items-center justify-center">
+                                    <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-slate-200 bg-slate-100 flex items-center justify-center">
                                       {tool.photo ? (
                                         <PhotoView src={getImageUrl(tool.photo)}>
                                           <img src={getImageUrl(tool.photo)} alt={tool.nama} className="w-full h-full object-cover cursor-pointer" />
                                         </PhotoView>
                                       ) : (
-                                        <Wrench size={16} className="text-text-muted" />
+                                        <Wrench size={16} className="text-slate-400" />
                                       )}
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                      <div className="font-bold text-xs text-text-primary truncate">{tool.nama}</div>
+                                      <div className="font-bold text-xs text-slate-900 truncate">{tool.nama}</div>
                                       <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                                         {tool.kategori && (
-                                          <span className="text-[10px] text-text-muted">{tool.kategori}</span>
+                                          <span className="text-[10px] text-slate-600 font-semibold">{tool.kategori}</span>
                                         )}
-                                        {tool.kategori && <span className="text-[10px] text-text-muted">•</span>}
+                                        {tool.kategori && <span className="text-[10px] text-slate-400">•</span>}
                                         <span
-                                          className="text-[9px] font-bold py-0.2 px-1.5 rounded-full inline-flex items-center gap-1"
-                                          style={{ backgroundColor: condStyle.bg, color: condStyle.color }}
+                                          className="text-[9px] font-black py-0.5 px-2 rounded-full inline-flex items-center gap-1 border"
+                                          style={{ backgroundColor: condStyle.bg, color: condStyle.color, borderColor: `${condStyle.color}40` }}
                                         >
                                           <CondIcon size={9} />
                                           {condStyle.label}
@@ -1287,50 +1289,50 @@ export default function Tools() {
                                   </div>
 
                                   <div className="shrink-0 text-right">
-                                    <span className="text-xs font-mono font-bold text-text-primary bg-bg-secondary py-0.5 px-1.5 rounded">
-                                      {tool.stok} <span className="font-sans text-[10px] font-normal text-text-muted">{tool.satuan}</span>
+                                    <span className="text-xs font-mono font-black text-slate-900 bg-slate-100 border border-slate-200 py-0.5 px-1.5 rounded">
+                                      {tool.stok} <span className="font-sans text-[10px] font-semibold text-slate-500">{tool.satuan}</span>
                                     </span>
                                   </div>
                                 </div>
 
                                 {/* Row Middle: Warehouse/Bin Location & Holder/Project */}
-                                <div className="flex items-center justify-between gap-2 text-xs pl-6 text-text-secondary flex-wrap">
+                                <div className="flex items-center justify-between gap-2 text-xs pl-6 text-slate-700 flex-wrap">
                                   <div className="flex items-center gap-1 truncate max-w-[200px]">
                                     {tool.warehouseId && typeof tool.warehouseId === 'object' ? (
-                                      <span className="inline-flex items-center gap-1 font-semibold text-cyan-700 dark:text-cyan-400 truncate text-[11px]">
+                                      <span className="inline-flex items-center gap-1 font-bold text-cyan-800 truncate text-[11px]">
                                         <WarehouseIcon size={12} className="shrink-0" />
                                         {tool.warehouseId.name} {tool.binRef ? `(${tool.binRef})` : ''}
                                       </span>
                                     ) : tool.lokasi ? (
-                                      <span className="inline-flex items-center gap-1 text-text-muted truncate text-[11px]">
-                                        <MapPin size={12} className="shrink-0" />
+                                      <span className="inline-flex items-center gap-1 text-slate-700 font-medium truncate text-[11px]">
+                                        <MapPin size={12} className="shrink-0 text-slate-500" />
                                         {tool.lokasi} {tool.binRef ? `(${tool.binRef})` : ''}
                                       </span>
                                     ) : (
-                                      <span className="text-text-muted italic text-[11px]">Lokasi belum disetel</span>
+                                      <span className="text-slate-400 italic text-[11px]">Lokasi belum disetel</span>
                                     )}
                                   </div>
 
                                   <div className="text-[11px]">
                                     {tool.assignedTo ? (
-                                      <span className="inline-flex items-center gap-1 text-primary font-semibold">
+                                      <span className="inline-flex items-center gap-1 text-blue-900 font-bold">
                                         <User size={11} />
                                         {tool.assignedTo.fullName}
                                       </span>
                                     ) : tool.projectId ? (
-                                      <span className="inline-flex items-center gap-1 text-info font-semibold">
+                                      <span className="inline-flex items-center gap-1 text-cyan-900 font-bold">
                                         <Package size={11} />
                                         {tool.projectId.nama}
                                       </span>
                                     ) : (
-                                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">Tersedia</span>
+                                      <span className="text-emerald-700 font-bold">Tersedia</span>
                                     )}
                                   </div>
                                 </div>
 
                                 {/* Row Bottom: Last Checked Date + Compact Touch Action Buttons */}
-                                <div className="flex items-center justify-between gap-2 pl-6 pt-1.5 border-t border-border-light/50">
-                                  <span className="text-[10px] text-text-muted">
+                                <div className="flex items-center justify-between gap-2 pl-6 pt-1.5 border-t border-slate-200">
+                                  <span className="text-[10px] text-slate-500 font-medium">
                                     {tool.lastChecked ? `Cek: ${formatDateDisplay(tool.lastChecked)}` : '-'}
                                   </span>
 
@@ -1338,7 +1340,7 @@ export default function Tools() {
                                     <button
                                       type="button"
                                       onClick={() => openMovementModal(tool)}
-                                      className="py-1 px-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-[11px] font-bold flex items-center gap-1 min-h-[30px] active:scale-95 cursor-pointer shadow-2xs"
+                                      className="py-1 px-2.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 active:bg-cyan-800 text-white text-[11px] font-bold flex items-center gap-1 min-h-[30px] active:scale-95 cursor-pointer shadow-2xs"
                                       title="Gerakkan / Pindahkan Alat"
                                     >
                                       <Camera size={12} />
@@ -1347,7 +1349,7 @@ export default function Tools() {
                                     <button
                                       type="button"
                                       onClick={() => openHistoryDrawer(tool)}
-                                      className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg border border-border-light bg-bg-secondary text-text-secondary hover:text-text-primary active:scale-95 cursor-pointer flex items-center justify-center"
+                                      className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-95 cursor-pointer flex items-center justify-center font-bold"
                                       title="Riwayat Audit"
                                     >
                                       <History size={13} />
@@ -1356,14 +1358,14 @@ export default function Tools() {
                                       <>
                                         <button
                                           onClick={() => openEditModal(tool)}
-                                          className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg border border-border-light bg-bg-secondary text-text-secondary hover:text-primary active:scale-95 cursor-pointer flex items-center justify-center"
+                                          className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg border border-slate-200 bg-blue-50 text-blue-800 hover:bg-blue-100 active:scale-95 cursor-pointer flex items-center justify-center font-bold"
                                           title="Edit"
                                         >
                                           <Edit3 size={13} />
                                         </button>
                                         <button
                                           onClick={() => handleDelete(tool)}
-                                          className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg border border-border-light bg-bg-secondary text-text-secondary hover:text-danger active:scale-95 cursor-pointer flex items-center justify-center"
+                                          className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg border border-slate-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-95 cursor-pointer flex items-center justify-center font-bold"
                                           title="Hapus"
                                         >
                                           <Trash2 size={13} />
@@ -1384,13 +1386,13 @@ export default function Tools() {
                 <div className="hidden sm:block overflow-x-auto w-full">
                   <table role="grid" aria-rowcount={filteredTools.length} className="w-full border-collapse text-left">
                     <thead>
-                      <tr role="row" className="bg-slate-50/80 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold">
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-0 z-30 bg-slate-50 w-11 text-center border-r border-border-light`}>
+                      <tr role="row" className="bg-slate-900 text-white border-b-2 border-slate-950 text-[11px] font-black uppercase tracking-wider select-none">
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-0 z-30 bg-slate-900 text-white w-11 text-center border-r border-slate-800`}>
                           <div className="flex items-center justify-center">
                             <input
                               type="checkbox"
                               aria-label="Pilih semua alat"
-                              className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer transition-colors"
+                              className="w-4 h-4 rounded border-slate-500 text-primary accent-primary cursor-pointer transition-colors"
                               checked={isAllSelected}
                               ref={(el) => {
                                 if (el) el.indeterminate = isSomeSelected;
@@ -1399,17 +1401,17 @@ export default function Tools() {
                             />
                           </div>
                         </th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-11 z-20 bg-slate-50 w-12 text-center border-r border-border-light`}>#</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-[92px] z-20 bg-slate-50 min-w-[180px] sm:min-w-[200px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Alat / Mesin</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px]`}>Kondisi</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[110px] text-right`}>Stok</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px]`}>Lokasi</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[150px]`}>Pengguna / Proyek</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px]`}>Pengecekan</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:right-0 z-20 bg-slate-50 text-right w-28 border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Aksi</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-11 z-20 bg-slate-900 text-slate-300 w-12 text-center border-r border-slate-800`}>#</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-[92px] z-20 bg-slate-900 text-white min-w-[180px] sm:min-w-[200px] border-r border-slate-800 shadow-[4px_0_8px_-3px_rgba(0,0,0,0.3)]`}>Alat / Mesin</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px] text-white`}>Kondisi</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[110px] text-right text-white`}>Stok</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-white`}>Lokasi</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[150px] text-white`}>Pengguna / Proyek</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-white`}>Pengecekan</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:right-0 z-20 bg-slate-900 text-white text-right w-28 border-l border-slate-800 shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.3)]`}>Aksi</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y border-border-light">
+                    <tbody className="divide-y border-slate-200">
                       {groupedTools.map((group) => {
                         const isCollapsed = Boolean(collapsedGroups[group.key]);
 
@@ -1419,37 +1421,37 @@ export default function Tools() {
                             {groupBy !== 'none' && (
                               <tr
                                 onClick={() => toggleGroupCollapse(group.key)}
-                                className="bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors cursor-pointer select-none border-y border-border-light font-medium"
+                                className="bg-slate-100 hover:bg-slate-200/80 transition-colors cursor-pointer select-none border-y-2 border-slate-300 font-medium"
                               >
-                                <td colSpan={9} className="py-2 px-3">
+                                <td colSpan={9} className="py-2.5 px-3.5">
                                   <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                      <span className="w-5 h-5 rounded-md bg-white/80 dark:bg-slate-700 flex items-center justify-center text-text-muted shadow-2xs">
+                                    <div className="flex items-center gap-2.5">
+                                      <span className="w-5 h-5 rounded-md bg-white border border-slate-300 text-slate-700 flex items-center justify-center shadow-2xs">
                                         {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
                                       </span>
-                                      <span className="font-bold text-xs text-text-primary tracking-tight">
+                                      <span className="font-black text-xs text-slate-900 tracking-tight">
                                         {group.label}
                                       </span>
-                                      <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
+                                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 border border-blue-300 font-black text-[10px]">
                                         {group.tools.length} Alat
                                       </span>
-                                      <span className="px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-700 text-text-secondary font-mono font-bold text-[10px]">
+                                      <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-900 border border-slate-300 font-mono font-black text-[10px]">
                                         Total Stok: {group.totalStock}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-1.5 text-[10px]">
                                       {group.kondisiCount.baik > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
+                                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300 font-black">
                                           {group.kondisiCount.baik} Baik
                                         </span>
                                       )}
                                       {group.kondisiCount.maintenance > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">
+                                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black">
                                           {group.kondisiCount.maintenance} Servis
                                         </span>
                                       )}
                                       {group.kondisiCount.rusak > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-semibold">
+                                        <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-900 border border-rose-300 font-black">
                                           {group.kondisiCount.rusak} Rusak
                                         </span>
                                       )}
@@ -1469,44 +1471,44 @@ export default function Tools() {
                                     role="row"
                                     aria-rowindex={index + 1}
                                     key={tool._id}
-                                    className={`transition-colors group ${
+                                    className={`transition-colors group border-b border-slate-200 ${
                                       selectedToolIds.includes(tool._id)
-                                        ? 'bg-blue-50/70 hover:bg-blue-50/90 dark:bg-blue-950/20'
-                                        : 'hover:bg-slate-50/80'
+                                        ? 'bg-blue-50/90 hover:bg-blue-100/80 !border-blue-200'
+                                        : 'bg-white hover:bg-slate-50/90'
                                     }`}
                                   >
                                     {/* Sticky Checkbox */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-0 z-20 bg-white group-hover:bg-slate-50 text-center border-r border-border-light ${selectedToolIds.includes(tool._id) ? '!bg-blue-50/80' : ''}`}>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-0 z-20 text-center border-r border-slate-200 ${selectedToolIds.includes(tool._id) ? '!bg-blue-50 group-hover:!bg-blue-100/80' : 'bg-white group-hover:bg-slate-50'}`}>
                                       <div className="flex items-center justify-center">
                                         <input
                                           type="checkbox"
                                           aria-label={`Pilih ${tool.nama}`}
-                                          className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer"
+                                          className="w-4 h-4 rounded border-slate-400 text-primary accent-primary cursor-pointer"
                                           checked={selectedToolIds.includes(tool._id)}
                                           onChange={(e) => handleToggleSelectTool(tool._id, e)}
                                         />
                                       </div>
                                     </td>
                                     {/* Sticky # */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-11 z-10 bg-white group-hover:bg-slate-50 text-center text-text-muted font-mono tabular-nums border-r border-border-light ${selectedToolIds.includes(tool._id) ? '!bg-blue-50/80' : ''}`}>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-11 z-10 text-center text-slate-500 font-mono tabular-nums font-bold border-r border-slate-200 ${selectedToolIds.includes(tool._id) ? '!bg-blue-50 group-hover:!bg-blue-100/80' : 'bg-white group-hover:bg-slate-50'}`}>
                                       {index + 1}
                                     </td>
                                     {/* Sticky Photo + Name + Category */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-[92px] z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] ${selectedToolIds.includes(tool._id) ? '!bg-blue-50/80' : ''}`}>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-[92px] z-10 border-r border-slate-200 shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] ${selectedToolIds.includes(tool._id) ? '!bg-blue-50 group-hover:!bg-blue-100/80' : 'bg-white group-hover:bg-slate-50'}`}>
                                       <div className="flex items-center gap-2.5">
-                                        <div className="w-9 h-9 rounded-md overflow-hidden shrink-0 border border-border-light bg-bg-secondary flex items-center justify-center">
+                                        <div className="w-9 h-9 rounded-md overflow-hidden shrink-0 border border-slate-200 bg-slate-100 flex items-center justify-center">
                                           {tool.photo ? (
                                             <PhotoView src={getImageUrl(tool.photo)}>
                                               <img src={getImageUrl(tool.photo)} alt={tool.nama} className="w-full h-full object-cover cursor-pointer" />
                                             </PhotoView>
                                           ) : (
-                                            <Wrench size={16} className="text-text-muted" />
+                                            <Wrench size={16} className="text-slate-400" />
                                           )}
                                         </div>
                                         <div className="min-w-0">
-                                          <div className="font-semibold text-text-primary truncate">{tool.nama}</div>
+                                          <div className="font-bold text-slate-900 truncate text-xs sm:text-sm">{tool.nama}</div>
                                           {tool.kategori && (
-                                            <span className="text-[11px] text-text-muted">{tool.kategori}</span>
+                                            <span className="text-[11px] text-slate-600 font-medium">{tool.kategori}</span>
                                           )}
                                         </div>
                                       </div>
@@ -1514,39 +1516,39 @@ export default function Tools() {
                                     {/* Kondisi Badge */}
                                     <td className={DENSITY_CONFIG[tableDensity].td}>
                                       <span
-                                        className="text-xs font-bold py-[2px] px-2 rounded-full inline-flex items-center gap-1"
-                                        style={{ backgroundColor: condStyle.bg, color: condStyle.color }}
+                                        className="text-xs font-black py-0.5 px-2.5 rounded-full inline-flex items-center gap-1 border"
+                                        style={{ backgroundColor: condStyle.bg, color: condStyle.color, borderColor: `${condStyle.color}40` }}
                                       >
                                         <CondIcon size={12} />
                                         {condStyle.label}
                                       </span>
                                     </td>
                                     {/* Stok */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums font-semibold text-text-primary`}>
-                                      {tool.stok} <span className="font-sans text-xs font-normal text-text-muted">{tool.satuan}</span>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums font-black text-slate-900`}>
+                                      {tool.stok} <span className="font-sans text-xs font-semibold text-slate-500">{tool.satuan}</span>
                                     </td>
                                     {/* Lokasi & Bin */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-text-secondary`}>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-slate-700 font-medium`}>
                                       {tool.warehouseId && typeof tool.warehouseId === 'object' ? (
                                         <div className="flex flex-col min-w-0">
-                                          <span className="inline-flex items-center gap-1 font-semibold text-xs text-cyan-700 dark:text-cyan-400 truncate">
+                                          <span className="inline-flex items-center gap-1 font-bold text-xs text-cyan-800 truncate">
                                             <WarehouseIcon size={12} className="shrink-0" />
                                             {tool.warehouseId.name}
                                           </span>
                                           {tool.binRef && (
-                                            <span className="text-[10px] font-mono text-text-muted truncate">
+                                            <span className="text-[10px] font-mono text-slate-600 font-semibold truncate">
                                               {tool.binRef}
                                             </span>
                                           )}
                                         </div>
                                       ) : tool.lokasi ? (
                                         <div className="flex flex-col min-w-0">
-                                          <span className="inline-flex items-center gap-1 truncate text-xs">
-                                            <MapPin size={12} className="text-text-muted shrink-0" />
+                                          <span className="inline-flex items-center gap-1 truncate text-xs font-semibold text-slate-800">
+                                            <MapPin size={12} className="text-slate-500 shrink-0" />
                                             {tool.lokasi}
                                           </span>
                                           {tool.binRef && (
-                                            <span className="text-[10px] font-mono text-text-muted truncate">
+                                            <span className="text-[10px] font-mono text-slate-600 font-semibold truncate">
                                               {tool.binRef}
                                             </span>
                                           )}
@@ -1556,30 +1558,30 @@ export default function Tools() {
                                     {/* Assigned User / Project */}
                                     <td className={DENSITY_CONFIG[tableDensity].td}>
                                       {tool.assignedTo ? (
-                                        <span className="inline-flex items-center gap-1 text-primary font-medium text-xs truncate">
+                                        <span className="inline-flex items-center gap-1 text-blue-900 font-bold text-xs truncate">
                                           <User size={12} className="shrink-0" />
                                           {tool.assignedTo.fullName}
                                         </span>
                                       ) : tool.projectId ? (
-                                        <span className="inline-flex items-center gap-1 text-info font-medium text-xs truncate">
+                                        <span className="inline-flex items-center gap-1 text-cyan-900 font-bold text-xs truncate">
                                           <Package size={12} className="shrink-0" />
                                           {tool.projectId.nama}
                                         </span>
                                       ) : (
-                                        <span className="text-xs text-text-muted">Tersedia</span>
+                                        <span className="text-xs text-slate-500 font-medium">Tersedia</span>
                                       )}
                                     </td>
-                                    {/* Pengecekan */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-text-muted whitespace-nowrap`}>
+                                    {/* Pengecekan Terakhir */}
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-slate-700 font-medium whitespace-nowrap`}>
                                       {tool.lastChecked ? formatDateDisplay(tool.lastChecked) : '-'}
                                     </td>
                                     {/* Sticky Aksi */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:right-0 z-10 text-right border-l border-slate-200 shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] ${selectedToolIds.includes(tool._id) ? '!bg-blue-50 group-hover:!bg-blue-100/80' : 'bg-white group-hover:bg-slate-50'}`}>
                                       <div className="flex items-center justify-end gap-1">
                                         <button
                                           type="button"
                                           onClick={() => openMovementModal(tool)}
-                                          className="p-2 min-w-[32px] min-h-[32px] rounded-lg hover:bg-cyan-50 dark:hover:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400 transition-colors active:scale-95 cursor-pointer flex items-center justify-center"
+                                          className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg hover:bg-cyan-100 text-cyan-800 transition-colors active:scale-95 cursor-pointer flex items-center justify-center border border-transparent hover:border-cyan-300"
                                           title="Gerakkan / Pindahkan Alat (Watermark Foto)"
                                         >
                                           <Camera size={14} />
@@ -1587,7 +1589,7 @@ export default function Tools() {
                                         <button
                                           type="button"
                                           onClick={() => openHistoryDrawer(tool)}
-                                          className="p-2 min-w-[32px] min-h-[32px] rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors active:scale-95 cursor-pointer flex items-center justify-center"
+                                          className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg hover:bg-slate-200 text-slate-700 transition-colors active:scale-95 cursor-pointer flex items-center justify-center border border-transparent hover:border-slate-300"
                                           title="Lihat Riwayat Pergerakan & Bukti Foto"
                                         >
                                           <History size={14} />
@@ -1596,14 +1598,14 @@ export default function Tools() {
                                           <>
                                             <button
                                               onClick={() => openEditModal(tool)}
-                                              className="p-2 min-w-[32px] min-h-[32px] rounded-lg hover:bg-primary-bg hover:text-primary text-text-muted transition-colors active:scale-95 cursor-pointer flex items-center justify-center"
+                                              className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg hover:bg-blue-100 text-blue-800 transition-colors active:scale-95 cursor-pointer flex items-center justify-center border border-transparent hover:border-blue-300"
                                               title={t('tools.actions.edit')}
                                             >
                                               <Edit3 size={14} />
                                             </button>
                                             <button
                                               onClick={() => handleDelete(tool)}
-                                              className="p-2 min-w-[32px] min-h-[32px] rounded-lg hover:bg-danger-bg hover:text-danger text-text-muted transition-colors active:scale-95 cursor-pointer flex items-center justify-center"
+                                              className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg hover:bg-rose-100 text-rose-700 transition-colors active:scale-95 cursor-pointer flex items-center justify-center border border-transparent hover:border-rose-300"
                                               title={t('tools.actions.delete')}
                                             >
                                               <Trash2 size={14} />
@@ -1632,24 +1634,24 @@ export default function Tools() {
                       {groupBy !== 'none' && (
                         <div
                           onClick={() => toggleGroupCollapse(group.key)}
-                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/70 border border-border-light cursor-pointer select-none transition-colors"
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-300 cursor-pointer select-none transition-colors shadow-2xs"
                         >
                           <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded bg-white dark:bg-slate-700 flex items-center justify-center text-text-muted shadow-2xs">
+                            <span className="w-5 h-5 rounded bg-white flex items-center justify-center text-slate-700 shadow-2xs border border-slate-300">
                               {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
                             </span>
-                            <span className="font-bold text-xs text-text-primary">{group.label}</span>
-                            <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
+                            <span className="font-black text-xs text-slate-900 tracking-tight">{group.label}</span>
+                            <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 font-bold text-[10px] border border-blue-200">
                               {group.tools.length} Alat
                             </span>
-                            <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-text-secondary font-mono font-bold text-[10px]">
+                            <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-900 font-mono font-bold text-[10px] border border-slate-300">
                               Total Stok: {group.totalStock}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 text-[10px]">
-                            {group.kondisiCount.baik > 0 && <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">{group.kondisiCount.baik} Baik</span>}
-                            {group.kondisiCount.maintenance > 0 && <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">{group.kondisiCount.maintenance} Servis</span>}
-                            {group.kondisiCount.rusak > 0 && <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-semibold">{group.kondisiCount.rusak} Rusak</span>}
+                            {group.kondisiCount.baik > 0 && <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold">{group.kondisiCount.baik} Baik</span>}
+                            {group.kondisiCount.maintenance > 0 && <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold">{group.kondisiCount.maintenance} Servis</span>}
+                            {group.kondisiCount.rusak > 0 && <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-900 border border-rose-300 font-bold">{group.kondisiCount.rusak} Rusak</span>}
                           </div>
                         </div>
                       )}
