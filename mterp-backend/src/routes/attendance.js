@@ -814,8 +814,9 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
     };
     if (projectId) attendanceQuery.projectId = projectId;
 
-    // 2. Fetch all attendance records in range
+    // 2. Fetch all attendance records in range with projection (excluding heavy checkIn/checkOut photos)
     let allRecords = (await Attendance.find(attendanceQuery)
+      .select('userId date status dailyRate hourlyRate overtimeHours overtimePay projectId overtimeProjectId checkIn.time checkOut.time notes workType officeLocation workSummary permit.reason paymentStatus category')
       .populate('userId', 'fullName role position')
       .populate('projectId', 'nama')
       .populate('overtimeProjectId', 'nama lokasi')
@@ -841,14 +842,28 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
     const deduplicatedRecords = deduplicateAttendanceRecords(allRecords);
     const workerMap = {};
     deduplicatedRecords.forEach(record => {
-      const uid = record.userId._id.toString();
+      const userObj = record.userId && typeof record.userId === 'object' ? record.userId : null;
+      const uid = (userObj?._id || record.userId || '').toString();
+      if (!uid) return;
+
+      const fullName = (userObj?.fullName || 'Tanpa Nama').trim();
+      const initials = (fullName || 'U')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(n => n[0])
+        .join('')
+        .substring(0, 2)
+        .toUpperCase() || 'U';
+      const role = userObj?.role || 'worker';
+      const position = userObj?.position || role;
+
       if (!workerMap[uid]) {
         workerMap[uid] = {
           userId: uid,
-          fullName: record.userId.fullName,
-          initials: record.userId.fullName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(),
-          role: record.userId.role,
-          position: record.userId.position || record.userId.role,
+          fullName,
+          initials,
+          role,
+          position,
           dailyRate: record.dailyRate || 0,
           days: {},
           totalScore: 0,
@@ -911,13 +926,13 @@ router.get('/recap-table', auth, authorize('owner', 'president_director', 'opera
     if (search) {
       const searchLower = search.toLowerCase();
       workers = workers.filter(w =>
-        w.fullName.toLowerCase().includes(searchLower) ||
+        (w.fullName && w.fullName.toLowerCase().includes(searchLower)) ||
         (w.position && w.position.toLowerCase().includes(searchLower))
       );
     }
 
     // 7. Sort by fullName
-    workers.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    workers.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
 
     // 8. Calculate summary BEFORE pagination with accurate status weighting
     const totalWorkforce = workers.length;
@@ -985,6 +1000,7 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'president_dire
     if (projectId) attendanceQuery.projectId = projectId;
 
     let allRecords = (await Attendance.find(attendanceQuery)
+      .select('userId date status dailyRate hourlyRate overtimeHours overtimePay projectId overtimeProjectId checkIn.time checkOut.time notes workType officeLocation workSummary permit.reason paymentStatus category')
       .populate('userId', 'fullName role position')
       .populate('projectId', 'nama')
       .lean())
@@ -1007,11 +1023,18 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'president_dire
     const deduplicatedRecords = deduplicateAttendanceRecords(allRecords);
     const workerMap = {};
     deduplicatedRecords.forEach(record => {
-      const uid = record.userId._id.toString();
+      const userObj = record.userId && typeof record.userId === 'object' ? record.userId : null;
+      const uid = (userObj?._id || record.userId || '').toString();
+      if (!uid) return;
+
+      const fullName = (userObj?.fullName || 'Tanpa Nama').trim();
+      const role = userObj?.role || 'worker';
+      const position = userObj?.position || role;
+
       if (!workerMap[uid]) {
         workerMap[uid] = {
-          fullName: record.userId.fullName,
-          position: record.userId.position || record.userId.role,
+          fullName,
+          position,
           dailyRate: record.dailyRate || 0,
           days: {},
           totalScore: 0,
@@ -1031,11 +1054,11 @@ router.get('/recap-table/export-excel', auth, authorize('owner', 'president_dire
     if (search) {
       const searchLower = search.toLowerCase();
       workers = workers.filter(w =>
-        w.fullName.toLowerCase().includes(searchLower) ||
+        (w.fullName && w.fullName.toLowerCase().includes(searchLower)) ||
         (w.position && w.position.toLowerCase().includes(searchLower))
       );
     }
-    workers.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    workers.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Attendance Recap');

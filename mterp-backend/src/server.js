@@ -4,7 +4,12 @@ const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const http = require('http');
 const express = require('express');
-const compression = require('compression');
+let compression = null;
+try {
+  compression = require('compression');
+} catch (err) {
+  console.warn('⚠️ [server] compression package not found; running without compression middleware until npm install is executed');
+}
 const mongoose = require('mongoose');
 const cors = require('cors');
 const { Server } = require('socket.io');
@@ -94,7 +99,9 @@ const isAllowedOrigin = (origin) => {
   return false;
 };
 
-app.use(compression());
+if (compression) {
+  app.use(compression());
+}
 
 app.use(cors({
   origin: (origin, callback) => {
