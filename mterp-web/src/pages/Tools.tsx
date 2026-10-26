@@ -1033,21 +1033,174 @@ export default function Tools() {
             />
           ) : (
             viewMode === 'table' ? (
-              <div className="w-full max-w-full bg-bg-white rounded-xl border border-border-light overflow-hidden shadow-sm">
-                {/* Mobile Table Notice with Quick Switcher */}
-                <div className="sm:hidden px-3.5 py-2 bg-slate-100 dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between border-b border-border-light">
-                  <span className="text-[11px]">Tabel lebar • Geser horizontal</span>
-                  <button
-                    type="button"
-                    onClick={() => handleSetViewMode('card')}
-                    className="text-primary font-bold hover:underline cursor-pointer flex items-center gap-1 active:scale-95 text-xs"
-                  >
-                    <LayoutGrid size={13} />
-                    <span>Tampilan Kartu</span>
-                  </button>
+              <div className="w-full max-w-full bg-bg-white dark:bg-slate-900 rounded-xl border border-border-light overflow-hidden shadow-2xs">
+                {/* 1. Mobile Dense Table (sm:hidden) - ZERO Horizontal Scrolling */}
+                <div className="sm:hidden divide-y divide-border-light">
+                  {groupedTools.map((group) => {
+                    const isCollapsed = Boolean(collapsedGroups[group.key]);
+
+                    return (
+                      <Fragment key={group.key}>
+                        {/* Group Header */}
+                        {groupBy !== 'none' && (
+                          <div
+                            onClick={() => toggleGroupCollapse(group.key)}
+                            className="bg-slate-100/90 dark:bg-slate-800/80 px-3 py-2.5 flex items-center justify-between border-b border-border-light cursor-pointer select-none"
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              {isCollapsed ? <ChevronRight size={14} className="text-text-muted shrink-0" /> : <ChevronDown size={14} className="text-text-muted shrink-0" />}
+                              <span className="font-bold text-xs text-text-primary truncate">{group.label}</span>
+                              <span className="px-1.5 py-0.2 rounded-full bg-primary/10 text-primary font-bold text-[10px] shrink-0">
+                                {group.tools.length}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-text-muted font-mono shrink-0">
+                              Stok: <strong className="text-text-primary">{group.totalStock}</strong>
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Dense Mobile Rows */}
+                        {(!isCollapsed || groupBy === 'none') &&
+                          group.tools.map((tool, index) => {
+                            const condStyle = getConditionStyle(tool.kondisi);
+                            const CondIcon = condStyle.icon;
+
+                            return (
+                              <div
+                                key={tool._id}
+                                className="p-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors flex flex-col gap-2"
+                              >
+                                {/* Row Top: Index + Photo + Title & Category + Condition Badge + Stock */}
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                    <span className="text-[10px] font-mono text-text-muted w-3.5 pt-0.5 shrink-0 text-center">
+                                      {index + 1}
+                                    </span>
+                                    <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-border-light bg-bg-secondary flex items-center justify-center">
+                                      {tool.photo ? (
+                                        <PhotoView src={getImageUrl(tool.photo)}>
+                                          <img src={getImageUrl(tool.photo)} alt={tool.nama} className="w-full h-full object-cover cursor-pointer" />
+                                        </PhotoView>
+                                      ) : (
+                                        <Wrench size={16} className="text-text-muted" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="font-bold text-xs text-text-primary truncate">{tool.nama}</div>
+                                      <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                        {tool.kategori && (
+                                          <span className="text-[10px] text-text-muted">{tool.kategori}</span>
+                                        )}
+                                        {tool.kategori && <span className="text-[10px] text-text-muted">•</span>}
+                                        <span
+                                          className="text-[9px] font-bold py-0.2 px-1.5 rounded-full inline-flex items-center gap-1"
+                                          style={{ backgroundColor: condStyle.bg, color: condStyle.color }}
+                                        >
+                                          <CondIcon size={9} />
+                                          {condStyle.label}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="shrink-0 text-right">
+                                    <span className="text-xs font-mono font-bold text-text-primary bg-bg-secondary py-0.5 px-1.5 rounded">
+                                      {tool.stok} <span className="font-sans text-[10px] font-normal text-text-muted">{tool.satuan}</span>
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Row Middle: Warehouse/Bin Location & Holder/Project */}
+                                <div className="flex items-center justify-between gap-2 text-xs pl-6 text-text-secondary flex-wrap">
+                                  <div className="flex items-center gap-1 truncate max-w-[200px]">
+                                    {tool.warehouseId && typeof tool.warehouseId === 'object' ? (
+                                      <span className="inline-flex items-center gap-1 font-semibold text-cyan-700 dark:text-cyan-400 truncate text-[11px]">
+                                        <WarehouseIcon size={12} className="shrink-0" />
+                                        {tool.warehouseId.name} {tool.binRef ? `(${tool.binRef})` : ''}
+                                      </span>
+                                    ) : tool.lokasi ? (
+                                      <span className="inline-flex items-center gap-1 text-text-muted truncate text-[11px]">
+                                        <MapPin size={12} className="shrink-0" />
+                                        {tool.lokasi} {tool.binRef ? `(${tool.binRef})` : ''}
+                                      </span>
+                                    ) : (
+                                      <span className="text-text-muted italic text-[11px]">Lokasi belum disetel</span>
+                                    )}
+                                  </div>
+
+                                  <div className="text-[11px]">
+                                    {tool.assignedTo ? (
+                                      <span className="inline-flex items-center gap-1 text-primary font-semibold">
+                                        <User size={11} />
+                                        {tool.assignedTo.fullName}
+                                      </span>
+                                    ) : tool.projectId ? (
+                                      <span className="inline-flex items-center gap-1 text-info font-semibold">
+                                        <Package size={11} />
+                                        {tool.projectId.nama}
+                                      </span>
+                                    ) : (
+                                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">Tersedia</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Row Bottom: Last Checked Date + Compact Touch Action Buttons */}
+                                <div className="flex items-center justify-between gap-2 pl-6 pt-1.5 border-t border-border-light/50">
+                                  <span className="text-[10px] text-text-muted">
+                                    {tool.lastChecked ? `Cek: ${formatDateDisplay(tool.lastChecked)}` : '-'}
+                                  </span>
+
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => openMovementModal(tool)}
+                                      className="py-1 px-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-[11px] font-bold flex items-center gap-1 min-h-[30px] active:scale-95 cursor-pointer shadow-2xs"
+                                      title="Gerakkan / Pindahkan Alat"
+                                    >
+                                      <Camera size={12} />
+                                      <span>Gerakkan</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openHistoryDrawer(tool)}
+                                      className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg border border-border-light bg-bg-secondary text-text-secondary hover:text-text-primary active:scale-95 cursor-pointer flex items-center justify-center"
+                                      title="Riwayat Audit"
+                                    >
+                                      <History size={13} />
+                                    </button>
+                                    {canManage && (
+                                      <>
+                                        <button
+                                          onClick={() => openEditModal(tool)}
+                                          className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg border border-border-light bg-bg-secondary text-text-secondary hover:text-primary active:scale-95 cursor-pointer flex items-center justify-center"
+                                          title="Edit"
+                                        >
+                                          <Edit3 size={13} />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDelete(tool)}
+                                          className="p-1.5 min-w-[30px] min-h-[30px] rounded-lg border border-border-light bg-bg-secondary text-text-secondary hover:text-danger active:scale-95 cursor-pointer flex items-center justify-center"
+                                          title="Hapus"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </Fragment>
+                    );
+                  })}
                 </div>
-                <div className="overflow-x-auto max-w-full w-full touch-pan-x">
-                  <table role="grid" aria-rowcount={filteredTools.length} className="w-full border-collapse text-left min-w-[720px] sm:min-w-full">
+
+                {/* 2. Desktop & Tablet Multi-Column Table (hidden sm:block) */}
+                <div className="hidden sm:block overflow-x-auto w-full">
+                  <table role="grid" aria-rowcount={filteredTools.length} className="w-full border-collapse text-left">
                     <thead>
                       <tr role="row" className="bg-slate-50/80 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold">
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-0 z-20 bg-slate-50 w-12 text-center border-r border-border-light`}>#</th>
