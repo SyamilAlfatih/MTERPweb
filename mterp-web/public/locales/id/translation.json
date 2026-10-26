@@ -20,8 +20,59 @@
     }
   },
   "header": {
-    "search": "Cari proyek, alat...",
+    "search": "Cari proyek, menu, aksi...",
     "language": "ID"
+  },
+  "commandPalette": {
+    "placeholder": "Ketik menu, proyek, atau aksi cepat...",
+    "tooltip": "Cari menu, proyek, atau aksi (Ctrl+K)",
+    "ariaLabel": "Buka Command Palette",
+    "sidebarSearch": "Cari (Ctrl+K)...",
+    "noResults": "Tidak ada hasil untuk",
+    "noResultsHint": "Coba cari dengan kata kunci lain seperti nama proyek, surat lembur, presensi, atau menu.",
+    "quickAttendance": "Presensi & Kehadiran",
+    "quickAttendanceSub": "Buka pencatatan kehadiran",
+    "quickSpkl": "Buat Surat Lembur (SPKL)",
+    "quickSpklSub": "Pengajuan lembur pekerjaan",
+    "quickReport": "Isi Laporan Harian",
+    "quickReportSub": "Laporan progres lapangan & cuaca",
+    "quickApprovals": "Periksa Persetujuan & Kasbon",
+    "quickApprovalsSub": "Permintaan material, kasbon & cuti",
+    "copyUrl": "Salin Tautan Halaman Ini",
+    "urlCopied": "Tautan Berhasil Disalin!",
+    "currentLanguage": "Bahasa aktif: {{lang}}",
+    "open": "Buka",
+    "navigate": "Pilih",
+    "select": "Eksekusi",
+    "close": "Tutup",
+    "groups": {
+      "recent": "Terkini",
+      "navigation": "Navigasi Menu",
+      "projects": "Proyek Aktif",
+      "actions": "Aksi Cepat",
+      "system": "Sistem & Preferensi"
+    }
+  },
+  "tabs": {
+    "close": "Tutup",
+    "closeOthers": "Tutup Tab Lainnya",
+    "closeOthersShort": "Tutup Lainnya",
+    "closeRight": "Tutup Tab di Sebelah Kanan",
+    "pin": "Sematkan Tab",
+    "unpin": "Lepas Sematan",
+    "duplicate": "Duplikat Tab",
+    "newTab": "Buka Tab Baru (+)",
+    "newTabTooltip": "Buka tab baru (Ctrl+Alt+T atau Ctrl+K)",
+    "unsavedConfirm": "Ada perubahan yang belum disimpan di tab ini. Tetap tutup?",
+    "unsavedDot": "Ada perubahan belum disimpan",
+    "switcherTitle": "Daftar Tab Terbuka",
+    "activeTabsCount": "tab aktif",
+    "contextClose": "Tutup Tab",
+    "contextCloseOthers": "Tutup Tab Lainnya",
+    "contextCloseRight": "Tutup Tab di Sebelah Kanan",
+    "contextPin": "Sematkan Tab (Pin)",
+    "contextUnpin": "Lepas Sematan (Unpin)",
+    "contextDuplicate": "Duplikat Tab"
   },
   "nav": {
     "home": "Beranda"

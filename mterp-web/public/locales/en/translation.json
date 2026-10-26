@@ -20,8 +20,59 @@
     }
   },
   "header": {
-    "search": "Search projects, tools...",
+    "search": "Search projects, menus, actions...",
     "language": "EN"
+  },
+  "commandPalette": {
+    "placeholder": "Type a command, project, or quick action...",
+    "tooltip": "Search menus, projects, or actions (Ctrl+K)",
+    "ariaLabel": "Open Command Palette",
+    "sidebarSearch": "Search (Ctrl+K)...",
+    "noResults": "No results found for",
+    "noResultsHint": "Try searching with other keywords like project name, overtime, attendance, or menu.",
+    "quickAttendance": "Attendance & Clock In/Out",
+    "quickAttendanceSub": "Open attendance recording",
+    "quickSpkl": "Create Overtime Order (SPKL)",
+    "quickSpklSub": "Submit overtime work request",
+    "quickReport": "Submit Daily Report",
+    "quickReportSub": "Daily site progress & weather report",
+    "quickApprovals": "Review Approvals & Cash Advances",
+    "quickApprovalsSub": "Material requests, cash advances & leaves",
+    "copyUrl": "Copy Current Page Link",
+    "urlCopied": "Link Copied to Clipboard!",
+    "currentLanguage": "Active language: {{lang}}",
+    "open": "Open",
+    "navigate": "Navigate",
+    "select": "Execute",
+    "close": "Close",
+    "groups": {
+      "recent": "Recent",
+      "navigation": "Navigation",
+      "projects": "Active Projects",
+      "actions": "Quick Actions",
+      "system": "System & Preferences"
+    }
+  },
+  "tabs": {
+    "close": "Close",
+    "closeOthers": "Close Other Tabs",
+    "closeOthersShort": "Close Others",
+    "closeRight": "Close Tabs to the Right",
+    "pin": "Pin Tab",
+    "unpin": "Unpin Tab",
+    "duplicate": "Duplicate Tab",
+    "newTab": "Open New Tab (+)",
+    "newTabTooltip": "Open new tab (Ctrl+Alt+T or Ctrl+K)",
+    "unsavedConfirm": "There are unsaved changes in this tab. Close anyway?",
+    "unsavedDot": "Unsaved changes",
+    "switcherTitle": "Open Tabs List",
+    "activeTabsCount": "active tabs",
+    "contextClose": "Close Tab",
+    "contextCloseOthers": "Close Other Tabs",
+    "contextCloseRight": "Close Tabs to the Right",
+    "contextPin": "Pin Tab",
+    "contextUnpin": "Unpin Tab",
+    "contextDuplicate": "Duplicate Tab"
   },
   "nav": {
     "home": "Home"

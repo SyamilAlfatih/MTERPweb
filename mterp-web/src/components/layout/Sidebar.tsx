@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   ChevronRight,
@@ -8,17 +8,22 @@ import {
   User,
   Globe,
   LogOut,
+  Search,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSidebar } from '../../contexts/SidebarContext';
+import { useCommandPalette } from '../../contexts/CommandPaletteContext';
+import { useTabs } from '../../contexts/TabsContext';
 import { getImageUrl } from '../../utils/image';
-import { NAV_GROUPS, NavItemConfig, NavGroupConfig } from './navConfig';
+import { NAV_GROUPS, NavItemConfig } from './navConfig';
 
 export default function Sidebar() {
   const { t, i18n } = useTranslation();
   const { user, logout } = useAuth();
   const { isCollapsed, toggle } = useSidebar();
+  const { open: openCommandPalette, isMac } = useCommandPalette();
+  const { openTab } = useTabs();
   const location = useLocation();
   const userRole = user?.role?.toLowerCase() || 'worker';
 
@@ -40,29 +45,27 @@ export default function Sidebar() {
     })).filter((group) => group.items.length > 0);
   }, [userRole]);
 
-  // Automatically expand group containing the currently active route
-  useEffect(() => {
-    const currentPath = location.pathname;
+  // Automatically expand group containing the currently active route on route change
+  const [prevRoutePath, setPrevRoutePath] = useState(location.pathname);
+  if (location.pathname !== prevRoutePath) {
+    setPrevRoutePath(location.pathname);
     const activeGroup = visibleGroups.find((group) =>
       group.items.some(
         (item) =>
-          currentPath === item.route ||
-          (item.route !== '/home' && currentPath.startsWith(item.route + '/'))
+          location.pathname === item.route ||
+          (item.route !== '/home' && location.pathname.startsWith(item.route + '/'))
       )
     );
-
     if (activeGroup && collapsedGroups[activeGroup.id]) {
-      setCollapsedGroups((prev) => {
-        const next = { ...prev, [activeGroup.id]: false };
-        try {
-          localStorage.setItem('mterp_collapsed_groups', JSON.stringify(next));
-        } catch {
-          // ignore
-        }
-        return next;
-      });
+      const next = { ...collapsedGroups, [activeGroup.id]: false };
+      setCollapsedGroups(next);
+      try {
+        localStorage.setItem('mterp_collapsed_groups', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
     }
-  }, [location.pathname, visibleGroups, collapsedGroups]);
+  }
 
   const toggleGroup = (groupId: string) => {
     setCollapsedGroups((prev) => {
@@ -128,6 +131,28 @@ export default function Sidebar() {
         )}
       </div>
 
+      {/* Quick Search / Command Palette Button */}
+      <button
+        type="button"
+        onClick={openCommandPalette}
+        className={`flex items-center rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white/80 hover:text-white transition-all duration-150 mb-2 cursor-pointer group select-none ${
+          isCollapsed ? 'justify-center py-2.5 px-0' : 'gap-2.5 py-2 px-3'
+        }`}
+        title={t('commandPalette.tooltip', 'Cari menu, proyek, atau aksi (Ctrl+K)')}
+      >
+        <Search size={16} className="shrink-0 text-white/70 group-hover:text-white transition-transform group-hover:scale-110" />
+        {!isCollapsed && (
+          <>
+            <span className="text-xs font-medium text-white/70 group-hover:text-white flex-1 text-left truncate">
+              {t('commandPalette.sidebarSearch', 'Cari...')}
+            </span>
+            <kbd className="px-1.5 py-0.5 text-[9px] font-bold text-white/60 bg-white/10 rounded border border-white/15 shadow-2xs">
+              {isMac ? '⌘K' : 'Ctrl+K'}
+            </kbd>
+          </>
+        )}
+      </button>
+
       {/* Navigation Groups */}
       <nav className="flex flex-col gap-1 flex-1 overflow-y-auto overflow-x-hidden pr-1 -mr-1 py-1 scrollbar-thin scrollbar-thumb-white/10">
         {visibleGroups.map((group, groupIndex) => {
@@ -175,6 +200,16 @@ export default function Sidebar() {
                         key={item.id}
                         to={item.route}
                         title={tooltipText}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          openTab(item.route);
+                        }}
+                        onMouseDown={(e) => {
+                          if (e.button === 1) {
+                            e.preventDefault();
+                            openTab(item.route);
+                          }
+                        }}
                         className={`flex items-center rounded-xl font-medium text-sm transition-all duration-150 relative group ${
                           isCollapsed
                             ? 'justify-center py-2.5 px-0'
@@ -220,6 +255,10 @@ export default function Sidebar() {
         <NavLink
           to="/profile"
           title={isCollapsed ? user?.fullName || 'Profile' : undefined}
+          onClick={(e) => {
+            e.preventDefault();
+            openTab('/profile');
+          }}
           className={`flex items-center rounded-xl transition-all relative ${
             isCollapsed
               ? 'justify-center py-2 px-0'

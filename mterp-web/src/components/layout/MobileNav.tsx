@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Menu, X, LogOut, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTabs } from '../../contexts/TabsContext';
 import { NAV_GROUPS, NavItemConfig } from './navConfig';
 
 export default function MobileNav() {
@@ -10,6 +11,7 @@ export default function MobileNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { openTab } = useTabs();
   const [isOpen, setIsOpen] = useState(false);
   const userRole = user?.role?.toLowerCase() || 'worker';
 
@@ -22,7 +24,7 @@ export default function MobileNav() {
   }, [userRole]);
 
   const handleNavigation = (route: string) => {
-    navigate(route);
+    openTab(route);
     setIsOpen(false);
   };
 

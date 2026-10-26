@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, User, Bell, CheckCheck, ArrowUpRight } from 'lucide-react';
+import { Navigate, useLocation } from 'react-router-dom';
+import { LogOut, Bell, CheckCheck, ArrowUpRight, Search } from 'lucide-react';
 import {
   ClipboardList,
   CheckCircle2,
@@ -15,10 +15,16 @@ import { useTranslation } from 'react-i18next';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import Breadcrumbs from './Breadcrumbs';
+import CommandPalette from './CommandPalette';
+import TabBar from './TabBar';
+import TabbedOutlet from './TabbedOutlet';
+import MobileTabSwitcher from './MobileTabSwitcher';
 import { GlobalNearDeadlineWidget } from '../tasks/GlobalNearDeadlineWidget';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useSidebar } from '../../contexts/SidebarContext';
+import { useCommandPalette } from '../../contexts/CommandPaletteContext';
+import { useTabs } from '../../contexts/TabsContext';
 import type { AppNotification, NotificationType } from '../../types';
 import { timeAgo } from '../../utils/date';
 
@@ -41,12 +47,20 @@ export default function AppLayout() {
   const { t } = useTranslation();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const { notifications, unreadCount, markAsRead, markAllRead } = useNotifications();
   const { isCollapsed } = useSidebar();
+  const { open: openCommandPalette, isMac } = useCommandPalette();
+  const { openTab } = useTabs();
 
   const [showDropdown, setShowDropdown] = useState(false);
+  const [prevPathname, setPrevPathname] = useState(location.pathname);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on route change (adjusting state during render)
+  if (location.pathname !== prevPathname) {
+    setPrevPathname(location.pathname);
+    setShowDropdown(false);
+  }
 
   // Close dropdown on outside click or Escape
   useEffect(() => {
@@ -68,11 +82,6 @@ export default function AppLayout() {
     };
   }, [showDropdown]);
 
-  // Close dropdown on route change
-  useEffect(() => {
-    setShowDropdown(false);
-  }, [location.pathname]);
-
   const getGreetingKey = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'home.greeting.morning';
@@ -80,15 +89,14 @@ export default function AppLayout() {
     return 'home.greeting.evening';
   };
 
-
   const handleNotificationClick = (n: AppNotification) => {
     if (!n.isRead) markAsRead(n._id);
     setShowDropdown(false);
-    if (n.data?.taskId) navigate('/tasks');
-    else if (n.data?.projectId) navigate(`/project/${n.data.projectId}`);
-    else if (n.data?.requestId) navigate('/approvals');
-    else if (n.data?.kasbonId) navigate('/approvals');
-    else if (n.data?.reportId && n.data?.projectId) navigate(`/project-reports/${n.data.projectId}`);
+    if (n.data?.taskId) openTab('/tasks');
+    else if (n.data?.reportId && n.data?.projectId) openTab(`/project-reports/${n.data.projectId}`);
+    else if (n.data?.projectId) openTab(`/project/${n.data.projectId}`);
+    else if (n.data?.requestId || n.data?.kasbonId) openTab('/approvals');
+    else openTab('/notifications');
   };
 
   if (isLoading) {
@@ -149,8 +157,42 @@ export default function AppLayout() {
             )}
           </div>
 
+          {/* Center-Right: Quick Search / Command Palette Trigger */}
+          <div className="flex items-center gap-2 shrink-0 mr-1 sm:mr-2">
+            {/* Desktop trigger */}
+            <button
+              type="button"
+              onClick={openCommandPalette}
+              className="hidden md:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-bg-secondary/70 hover:bg-bg-secondary border border-border-light text-text-muted hover:text-text-primary text-xs transition-all duration-150 cursor-pointer shadow-2xs group"
+              title={t('commandPalette.tooltip', 'Cari menu, proyek, atau aksi (Ctrl+K)')}
+              aria-label={t('commandPalette.ariaLabel', 'Buka Command Palette')}
+            >
+              <Search size={14} className="text-text-muted group-hover:text-primary transition-colors" />
+              <span className="font-medium text-text-muted group-hover:text-text-secondary select-none">
+                {t('header.search', 'Cari proyek, menu, aksi...')}
+              </span>
+              <kbd className="ml-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold text-text-muted bg-bg-white border border-border-light rounded shadow-2xs select-none">
+                <span>{isMac ? '⌘' : 'Ctrl'}</span> K
+              </kbd>
+            </button>
+
+            {/* Mobile / Tablet icon trigger */}
+            <button
+              type="button"
+              onClick={openCommandPalette}
+              className="flex md:hidden items-center justify-center w-10 h-10 rounded-xl bg-bg-secondary border border-border-light text-text-muted hover:text-primary hover:bg-primary/10 transition-all cursor-pointer active:scale-95"
+              title={t('commandPalette.tooltip', 'Cari menu, proyek, atau aksi (Ctrl+K)')}
+              aria-label={t('commandPalette.ariaLabel', 'Buka Command Palette')}
+            >
+              <Search size={18} />
+            </button>
+
+            {/* Mobile Tab Switcher */}
+            <MobileTabSwitcher />
+          </div>
+
           {/* Right: notification bell + user chip + logout */}
-          <div className="flex items-center gap-2 shrink-0 ml-4">
+          <div className="flex items-center gap-2 shrink-0 ml-1 sm:ml-2">
 
             {/* Notification Bell */}
             <div className="relative" ref={dropdownRef}>
@@ -259,7 +301,7 @@ export default function AppLayout() {
                   {/* Dropdown Footer */}
                   <div className="border-t border-border-light px-4 py-2.5 bg-bg-secondary/20">
                     <button
-                      onClick={() => { setShowDropdown(false); navigate('/notifications'); }}
+                      onClick={() => { setShowDropdown(false); openTab('/notifications'); }}
                       className="flex items-center justify-center gap-1.5 w-full text-xs font-bold text-primary hover:text-primary-light transition-colors cursor-pointer bg-transparent border-none p-1"
                     >
                       <span>{t('common.viewAllNotifications', 'Buka Pusat Notifikasi')}</span>
@@ -294,9 +336,12 @@ export default function AppLayout() {
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto pb-safe" style={{ paddingBottom: 'max(80px, env(safe-area-inset-bottom, 80px))' }}>
-          <Outlet />
+        {/* Desktop / Tablet Tab Bar */}
+        <TabBar />
+
+        {/* Page Content: Multi-Tab Isolated Container */}
+        <main className="flex-1 overflow-y-auto pb-safe flex flex-col min-w-0" style={{ paddingBottom: 'max(80px, env(safe-area-inset-bottom, 80px))' }}>
+          <TabbedOutlet />
         </main>
       </div>
 
@@ -305,6 +350,9 @@ export default function AppLayout() {
 
       {/* Global Near-Deadline Floating Alert & Evidence Submission */}
       <GlobalNearDeadlineWidget />
+
+      {/* Global Command Palette (Ctrl+K / ⌘K) */}
+      <CommandPalette />
     </div>
   );
 }
