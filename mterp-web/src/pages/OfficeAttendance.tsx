@@ -904,7 +904,7 @@ export default function OfficeAttendance() {
   const userRoleBadge = user?.role?.replace(/_/g, ' ').toUpperCase() || 'OFFICE STAFF';
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5">
       {/* Offline Sync Status Banner */}
       <OfflineAttendanceBanner />
 
@@ -920,7 +920,7 @@ export default function OfficeAttendance() {
       )}
 
       {/* ── Executive Header Command Center ─────────────────────────────────── */}
-      <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-indigo-900/40 bg-gradient-to-br from-[#0a1226] via-[#101f4a] to-[#1e3a8a] text-white p-6 sm:p-8">
+      <div className="relative rounded-2xl overflow-hidden shadow-md border border-indigo-900/40 bg-gradient-to-br from-[#0a1226] via-[#101f4a] to-[#1e3a8a] text-white p-4 sm:p-5 lg:p-6">
         {/* Subtle ambient grid and atmospheric glow */}
         <div
           className="absolute inset-0 opacity-[0.06] pointer-events-none"

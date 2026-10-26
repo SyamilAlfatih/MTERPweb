@@ -340,7 +340,7 @@ export default function AppLayout() {
         <TabBar />
 
         {/* Page Content: Multi-Tab Isolated Container */}
-        <main className="flex-1 overflow-y-auto pb-safe flex flex-col min-w-0" style={{ paddingBottom: 'max(80px, env(safe-area-inset-bottom, 80px))' }}>
+        <main className="flex-1 overflow-y-auto flex flex-col min-w-0 pb-20 lg:pb-6">
           <TabbedOutlet />
         </main>
       </div>

@@ -756,7 +756,7 @@ export default function AttendanceLogs() {
   ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto max-lg:p-4 max-sm:p-3 space-y-6">
+    <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5">
 
       {/* Toast Alert Banner */}
       {toastMessage && (

@@ -308,7 +308,7 @@ export default function Approvals() {
   const totalItems = approvals.length + kasbons.length;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto max-lg:p-4 max-sm:p-3 min-h-[calc(100vh-100px)] flex flex-col">
+    <div className="px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 w-full max-w-[1800px] mx-auto min-h-[calc(100vh-100px)] flex flex-col">
       <AriaLiveRegion message={liveMessage} />
 
       {/* Header */}

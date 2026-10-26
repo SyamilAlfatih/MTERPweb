@@ -261,18 +261,18 @@ export default function Tools() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto max-lg:p-4 max-sm:p-3">
+    <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5">
       <LoadingOverlay visible={loading} />
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-6 max-sm:flex-col max-sm:items-start max-sm:gap-3">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary-light rounded-md flex items-center justify-center shadow-primary shrink-0 max-sm:w-10 max-sm:h-10">
-            <Wrench size={24} color="white" />
+      <div className="flex justify-between items-center max-sm:flex-col max-sm:items-start max-sm:gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary-light rounded-lg flex items-center justify-center shadow-primary shrink-0">
+            <Wrench size={20} color="white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-text-primary m-0 max-sm:text-xl">{t('tools.title')}</h1>
-            <p className="text-sm text-text-muted m-0 mt-[2px]">{t('tools.subtitle')}</p>
+            <h1 className="text-xl font-bold text-text-primary m-0 tracking-tight">{t('tools.title')}</h1>
+            <p className="text-xs text-text-muted m-0">{t('tools.subtitle')}</p>
           </div>
         </div>
         <div className="flex items-center gap-2.5">
@@ -308,8 +308,8 @@ export default function Tools() {
 
       {/* KPI Cards */}
       {stats && (
-        <div className="grid grid-cols-4 gap-4 mb-6 max-lg:grid-cols-2 max-sm:grid-cols-2 max-sm:gap-2">
-          <Card className="flex items-center gap-3 p-4 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-lg max-sm:p-3 max-sm:gap-2">
+        <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2 max-sm:grid-cols-2 max-sm:gap-2">
+          <Card className="flex items-center gap-2.5 p-3 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-xs">
             <div className="w-11 h-11 rounded-md flex items-center justify-center shrink-0 max-sm:w-9 max-sm:h-9" style={{ backgroundColor: '#EDE9FE' }}>
               <Package size={20} color="#7C3AED" />
             </div>

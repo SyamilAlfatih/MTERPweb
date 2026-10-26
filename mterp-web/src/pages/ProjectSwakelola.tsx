@@ -676,7 +676,7 @@ export default function ProjectSwakelola() {
   const pendingOfflineCount = offlineRecords.filter((r) => r.syncStatus === 'PENDING').length;
 
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+    <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5">
       {/* Network Offline Status Banner */}
       {!isOnline && (
         <div className="bg-amber-500 text-white px-4 py-2.5 rounded-lg flex items-center justify-between text-sm shadow-sm">

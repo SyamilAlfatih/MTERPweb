@@ -700,34 +700,32 @@ export default function Materials() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="px-3 sm:px-5 lg:px-6 py-3 sm:py-4 w-full max-w-[1800px] mx-auto space-y-3">
       {/* ── Header Banner ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-bg-white border border-border-light rounded-2xl p-5 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <ShoppingBag size={22} />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-black text-text-primary tracking-tight m-0">
-                Pengadaan & PO (Procurement Hub)
-              </h1>
-              <p className="text-xs text-text-muted m-0 mt-0.5">
-                RAB Purchase Request ➔ Evaluasi Komparasi Supplier ➔ PO Mengikat ➔ Penerimaan Fisik Proyek
-              </p>
-            </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200/90 rounded-xl px-4 py-2.5 sm:py-3 shadow-2xs">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <ShoppingBag size={18} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight m-0 truncate">
+              Pengadaan & PO (Procurement Hub)
+            </h1>
+            <p className="text-[11px] text-slate-500 font-medium m-0 truncate">
+              RAB Purchase Request ➔ Evaluasi Komparasi Supplier ➔ PO Mengikat ➔ Penerimaan Fisik Proyek
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {isOwner && (
             <button
               type="button"
               onClick={() => navigate('/approval-config')}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all cursor-pointer shadow-xs shrink-0 border border-slate-800"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all cursor-pointer shadow-2xs shrink-0 border border-slate-800"
               title="Pusat Kebijakan & Otorisasi Approver Global (Owner Only)"
             >
-              <ShieldCheck size={15} className="text-amber-400" />
+              <ShieldCheck size={14} className="text-amber-400" />
               <span>Kebijakan Approver</span>
             </button>
           )}
@@ -735,31 +733,31 @@ export default function Materials() {
           <button
             type="button"
             onClick={handleOpenAddPrModal}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white font-bold text-xs hover:bg-primary-dark transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-primary text-white font-bold text-xs hover:bg-primary-dark transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
           >
-            <Plus size={16} />
-            <span>Buat PR Baru (Multi-Item)</span>
+            <Plus size={15} />
+            <span>Buat PR Baru</span>
           </button>
         </div>
       </div>
 
       {/* ── Search, Project Filter & View Controls ── */}
-      <div className="flex flex-col sm:flex-row items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-center gap-2.5">
         <div className="relative flex-1 w-full">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nomor PR, PO, nama material, supplier..."
-            className="w-full pl-10 pr-4 py-2.5 text-xs rounded-xl border-2 border-slate-300 bg-white text-slate-900 font-medium placeholder:text-slate-500 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-2xs"
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 shadow-2xs"
           />
         </div>
 
         <select
           value={selectedProjectId}
           onChange={(e) => setSelectedProjectId(e.target.value)}
-          className="w-full sm:w-60 px-3 py-2.5 text-xs rounded-xl border-2 border-slate-300 bg-white text-slate-900 font-bold focus:outline-none focus:border-primary shadow-2xs cursor-pointer"
+          className="w-full sm:w-56 px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 font-bold focus:outline-none focus:border-primary shadow-2xs cursor-pointer"
         >
           <option value="all">Semua Proyek</option>
           {projects.map((p) => (
@@ -770,38 +768,38 @@ export default function Materials() {
         </select>
 
         {/* View Mode Toggle: Tabel ERP vs Kartu */}
-        <div className="flex items-center gap-1 p-1 bg-slate-200 rounded-xl border border-slate-300 shrink-0 shadow-2xs">
+        <div className="flex items-center gap-0.5 p-0.5 bg-slate-100 rounded-lg border border-slate-200 shrink-0 shadow-2xs">
           <button
             type="button"
             onClick={() => setViewMode('table')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-black transition-all cursor-pointer ${
               viewMode === 'table'
-                ? 'bg-primary text-white shadow-xs border border-primary'
-                : 'text-slate-700 hover:text-slate-950 hover:bg-slate-300/60'
+                ? 'bg-primary text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
             title="Tampilan Tabel ERP Enterprise (Terstruktur & Padat Data)"
           >
-            <Table size={14} strokeWidth={2.5} />
+            <Table size={13} strokeWidth={2.5} />
             <span>Tabel ERP</span>
           </button>
           <button
             type="button"
             onClick={() => setViewMode('card')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-black transition-all cursor-pointer ${
               viewMode === 'card'
-                ? 'bg-primary text-white shadow-xs border border-primary'
-                : 'text-slate-700 hover:text-slate-950 hover:bg-slate-300/60'
+                ? 'bg-primary text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
             title="Tampilan Kartu Tradisional"
           >
-            <LayoutGrid size={14} strokeWidth={2.5} />
+            <LayoutGrid size={13} strokeWidth={2.5} />
             <span>Kartu</span>
           </button>
         </div>
       </div>
 
       {/* ── Pipeline Navigation Tabs ── */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-border-light">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200">
         {[
           { id: 'PR', label: '1. Pengajuan PR', count: tabCounts.PR },
           { id: 'PO_SOURCING', label: '2. Komparasi PO', count: tabCounts.PO_SOURCING },
@@ -817,16 +815,16 @@ export default function Materials() {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id as PipelineTab)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                 isActive
-                  ? 'bg-primary text-white shadow-xs'
-                  : 'bg-bg-secondary text-text-secondary hover:bg-border/60'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'bg-slate-100/90 text-slate-700 hover:bg-slate-200/80 border border-slate-200/60'
               }`}
             >
               <span>{tab.label}</span>
               <span
-                className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
-                  isActive ? 'bg-white/20 text-white' : 'bg-border text-text-muted'
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
                 }`}
               >
                 {tab.count}
@@ -849,17 +847,17 @@ export default function Materials() {
         /* ══════════════════════════════════════════════════════════════ */
         /* ── ENTERPRISE DATA TABLE (ERP-TABLES-UX STANDARD) ──           */
         /* ══════════════════════════════════════════════════════════════ */
-        <div className="bg-white border-2 border-slate-300 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-900 text-white border-b-2 border-slate-950 text-[11px] font-black uppercase tracking-wider select-none">
+                <tr className="bg-slate-900 text-white border-b border-slate-950 text-[10px] font-black uppercase tracking-wider select-none">
                   {/* Master Selection Checkbox */}
-                  <th className="py-3.5 px-3 w-10 text-center">
+                  <th className="py-2 px-2.5 w-9 text-center">
                     <input
                       type="checkbox"
                       aria-label="Pilih semua data pengadaan pada halaman ini"
-                      className="w-4 h-4 rounded border-slate-500 text-primary accent-primary cursor-pointer transition-colors"
+                      className="w-3.5 h-3.5 rounded border-slate-500 text-primary accent-primary cursor-pointer transition-colors"
                       checked={isAllSelected}
                       ref={(el) => {
                         if (el) el.indeterminate = isSomeSelected;
@@ -867,39 +865,39 @@ export default function Materials() {
                       onChange={handleToggleSelectAll}
                     />
                   </th>
-                  <th className="py-3.5 px-3 w-12 text-center text-slate-300">#</th>
+                  <th className="py-2 px-2 w-10 text-center text-slate-400">#</th>
                   <th
-                    className="py-3.5 px-3 text-left cursor-pointer hover:bg-slate-800 transition-colors text-white"
+                    className="py-2 px-2.5 text-left cursor-pointer hover:bg-slate-800 transition-colors text-white"
                     onClick={() => handleSort('prNumber')}
                   >
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <span>No. Dokumen</span>
-                      <ArrowUpDown size={12} className={sortField === 'prNumber' ? 'text-amber-400 font-bold' : 'text-slate-400 opacity-60'} />
+                      <ArrowUpDown size={11} className={sortField === 'prNumber' ? 'text-amber-400 font-bold' : 'text-slate-400 opacity-60'} />
                     </div>
                   </th>
-                  <th className="py-3.5 px-3 text-left text-white min-w-[200px]">Proyek & Tipe</th>
-                  <th className="py-3.5 px-3 text-left text-white">Pemohon</th>
-                  <th className="py-3.5 px-3 text-left text-white">Ringkasan Material</th>
+                  <th className="py-2 px-2.5 text-left text-white min-w-[160px]">Proyek & Tipe</th>
+                  <th className="py-2 px-2.5 text-left text-white">Pemohon</th>
+                  <th className="py-2 px-2.5 text-left text-white">Ringkasan Material</th>
                   <th
-                    className="py-3.5 px-3 text-right cursor-pointer hover:bg-slate-800 transition-colors text-white"
+                    className="py-2 px-2.5 text-right cursor-pointer hover:bg-slate-800 transition-colors text-white"
                     onClick={() => handleSort('amount')}
                   >
-                    <div className="flex items-center justify-end gap-1.5">
+                    <div className="flex items-center justify-end gap-1">
                       <span>Total Anggaran / PO</span>
-                      <ArrowUpDown size={12} className={sortField === 'amount' ? 'text-amber-400 font-bold' : 'text-slate-400 opacity-60'} />
+                      <ArrowUpDown size={11} className={sortField === 'amount' ? 'text-amber-400 font-bold' : 'text-slate-400 opacity-60'} />
                     </div>
                   </th>
                   <th
-                    className="py-3.5 px-3 text-left cursor-pointer hover:bg-slate-800 transition-colors text-white"
+                    className="py-2 px-2.5 text-left cursor-pointer hover:bg-slate-800 transition-colors text-white"
                     onClick={() => handleSort('status')}
                   >
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <span>Status & Tahap</span>
-                      <ArrowUpDown size={12} className={sortField === 'status' ? 'text-amber-400 font-bold' : 'text-slate-400 opacity-60'} />
+                      <ArrowUpDown size={11} className={sortField === 'status' ? 'text-amber-400 font-bold' : 'text-slate-400 opacity-60'} />
                     </div>
                   </th>
-                  <th className="py-3.5 px-3 text-left text-white">Penanggung Jawab</th>
-                  <th className="py-3.5 px-3 text-right text-white">Aksi & Dokumen</th>
+                  <th className="py-2 px-2.5 text-left text-white">Penanggung Jawab</th>
+                  <th className="py-2 px-2.5 text-right text-white">Aksi & Dokumen</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -936,66 +934,66 @@ export default function Materials() {
                         }`}
                       >
                         {/* Checkbox Column */}
-                        <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <td className="py-2 px-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             aria-label={`Pilih ${order.prNumber || 'order'}`}
-                            className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer transition-colors"
+                            className="w-3.5 h-3.5 rounded border-slate-300 text-primary accent-primary cursor-pointer transition-colors"
                             checked={isSelected}
                             onChange={() => handleToggleSelectOrder(order._id!)}
                           />
                         </td>
 
                         {/* 0. Expand Button */}
-                        <td className="py-3 px-3 text-center">
+                        <td className="py-2 px-2 text-center">
                           <button
                             type="button"
                             onClick={() => toggleExpandOrder(order._id!)}
-                            className={`w-7 h-7 mx-auto rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+                            className={`w-6 h-6 mx-auto rounded-md flex items-center justify-center transition-all cursor-pointer border ${
                               isExpanded
-                                ? 'bg-primary text-white border-primary shadow-xs'
-                                : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100 hover:text-primary hover:border-primary/50'
+                                ? 'bg-primary text-white border-primary shadow-2xs'
+                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 hover:text-primary hover:border-primary/50'
                             }`}
                             title={isExpanded ? 'Tutup Rincian' : 'Buka Rincian Material'}
                           >
-                            {isExpanded ? <ChevronDown size={14} strokeWidth={2.5} /> : <ChevronRight size={14} strokeWidth={2.5} />}
+                            {isExpanded ? <ChevronDown size={13} strokeWidth={2.5} /> : <ChevronRight size={13} strokeWidth={2.5} />}
                           </button>
                         </td>
 
                         {/* 1. No. Dokumen (Left-aligned) */}
-                        <td className="py-3 px-3 text-left whitespace-nowrap min-w-[130px]">
+                        <td className="py-2 px-2.5 text-left whitespace-nowrap min-w-[130px]">
                           <div className="font-black text-slate-950 text-xs flex items-center gap-1.5">
                             <span className="font-mono tracking-tight">{order.prNumber || 'DRAFT-PR'}</span>
                           </div>
                           {order.poNumber && (
                             <div className="mt-0.5">
-                              <span className="inline-flex items-center gap-1 text-[10px] font-black font-mono text-blue-950 bg-blue-100 border border-blue-400 px-2 py-0.5 rounded-md shadow-2xs">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black font-mono text-blue-950 bg-blue-100 border border-blue-400 px-1.5 py-0.2 rounded shadow-2xs">
                                 PO: {order.poNumber}
                               </span>
                             </div>
                           )}
-                          <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 mt-0.5">
-                            <Clock size={10} className="text-slate-500 shrink-0" />
+                          <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 mt-0.5">
+                            <Clock size={10} className="text-slate-400 shrink-0" />
                             <span>{fmtDateStr(order.createdAt || order.dateNeeded)}</span>
                           </div>
                         </td>
 
                         {/* 2. Proyek & Tipe (Left-aligned) */}
-                        <td className="py-3 px-3 text-left min-w-[200px] max-w-[320px]">
+                        <td className="py-2 px-2.5 text-left min-w-[180px] max-w-[280px]">
                           <div
                             className="font-bold text-slate-950 text-xs break-words line-clamp-2 leading-snug"
                             title={typeof order.projectId === 'object' && order.projectId?.nama ? order.projectId.nama : 'Non-Proyek / Umum'}
                           >
                             {typeof order.projectId === 'object' && order.projectId?.nama ? order.projectId.nama : 'Non-Proyek / Umum'}
                           </div>
-                          <div className="mt-1">
+                          <div className="mt-0.5">
                             {hasRab ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-indigo-950 bg-indigo-100 border border-indigo-400 px-2 py-0.5 rounded-md shadow-2xs">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-indigo-950 bg-indigo-100 border border-indigo-300 px-1.5 py-0.2 rounded shadow-2xs">
                                 <Layers size={10} className="text-indigo-800 shrink-0" />
-                                <span>RAB Based</span>
+                                <span>RAB</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-amber-950 bg-amber-100 border border-amber-400 px-2 py-0.5 rounded-md shadow-2xs">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-amber-950 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded shadow-2xs">
                                 <Package size={10} className="text-amber-800 shrink-0" />
                                 <span>Non-RAB</span>
                               </span>
@@ -1004,21 +1002,21 @@ export default function Materials() {
                         </td>
 
                         {/* 3. Pemohon (Left-aligned) */}
-                        <td className="py-3 px-3 text-left">
+                        <td className="py-2 px-2.5 text-left">
                           <div className="font-bold text-slate-950 text-xs truncate max-w-[130px]">
                             {typeof order.requestedBy === 'object' ? (order.requestedBy?.fullName || order.requestedBy?.name) : 'User'}
                           </div>
-                          <div className="mt-1">
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-slate-200 text-slate-900 border border-slate-300">
+                          <div className="mt-0.5">
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
                               {typeof order.requestedBy === 'object' ? (order.requestedBy?.role || 'Staff') : 'Staff'}
                             </span>
                           </div>
                         </td>
 
                         {/* 4. Ringkasan Material (Left-aligned) */}
-                        <td className="py-3 px-3 text-left max-w-[210px]">
+                        <td className="py-2 px-2.5 text-left max-w-[220px]">
                           <div className="flex items-center gap-1.5">
-                            <span className="px-2 py-0.5 rounded-md bg-slate-800 text-white font-black text-[10px] shrink-0 font-mono shadow-2xs">
+                            <span className="px-1.5 py-0.2 rounded bg-slate-800 text-white font-black text-[10px] shrink-0 font-mono shadow-2xs">
                               {itemsList.length} Item
                             </span>
                             <span className="text-xs font-bold text-slate-950 truncate" title={itemsList[0]?.item}>
@@ -1026,36 +1024,36 @@ export default function Materials() {
                             </span>
                           </div>
                           {itemsList.length > 1 && (
-                            <div className="text-[10px] font-semibold text-slate-600 truncate mt-1">
+                            <div className="text-[10px] font-semibold text-slate-500 truncate mt-0.5">
                               +{itemsList.length - 1} item lainnya ({itemsList.slice(1).map((i) => i.item).join(', ')})
                             </div>
                           )}
                         </td>
 
                         {/* 5. Est. Anggaran / Nilai PO (Strictly Right-aligned) */}
-                        <td className="py-3 px-3 text-right">
-                          <div className="font-black font-mono tabular-nums text-xs sm:text-[13px] text-slate-950 text-right">
+                        <td className="py-2 px-2.5 text-right">
+                          <div className="font-black font-mono tabular-nums text-xs text-slate-950 text-right">
                             {formatRupiah(totalAmt)}
                           </div>
                           <div className="mt-0.5 text-right">
                             {order.poNumber ? (
-                              <span className="text-[10px] font-black text-blue-900 uppercase tracking-wider">
+                              <span className="text-[9px] font-black text-blue-900 uppercase tracking-wider">
                                 PO Mengikat
                               </span>
                             ) : (
-                              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                                Est. Plafon PR
+                              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                Est. Plafon
                               </span>
                             )}
                           </div>
                         </td>
 
                         {/* 6. Status & Tahapan (Left-aligned badge) */}
-                        <td className="py-3 px-3 text-left whitespace-nowrap">
+                        <td className="py-2 px-2.5 text-left whitespace-nowrap">
                           {getStatusBadge(order.status)}
                           {(order.selectedSupplier?.schemeType === 'PAYLATER' || order.selectedSupplier?.isPaylater) && (
-                            <div className="mt-1">
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-950 border border-emerald-300">
+                            <div className="mt-0.5">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-100 text-emerald-950 border border-emerald-300">
                                 Paylater 0%
                               </span>
                             </div>
@@ -1063,12 +1061,12 @@ export default function Materials() {
                         </td>
 
                         {/* 7. Penanggung Jawab (Left-aligned) */}
-                        <td className="py-3 px-3 text-left">
+                        <td className="py-2 px-2.5 text-left">
                           <div className="flex items-center gap-1.5 text-xs">
-                            <div className="w-5 h-5 rounded-md bg-blue-100 text-blue-900 flex items-center justify-center shrink-0 border border-blue-300">
-                              <UserCheck size={12} />
+                            <div className="w-5 h-5 rounded bg-blue-50 text-blue-900 flex items-center justify-center shrink-0 border border-blue-200">
+                              <UserCheck size={11} />
                             </div>
-                            <span className="font-bold text-slate-950 truncate max-w-[130px]" title={getCurrentApproverName(order)}>
+                            <span className="font-bold text-slate-950 truncate max-w-[120px]" title={getCurrentApproverName(order)}>
                               {getCurrentApproverName(order)}
                             </span>
                           </div>
@@ -1076,16 +1074,16 @@ export default function Materials() {
                             <button
                               type="button"
                               onClick={() => handleOpenAssignModal(order)}
-                              className="inline-flex items-center gap-1 text-[10px] font-black text-primary hover:text-blue-950 hover:underline mt-1 cursor-pointer"
+                              className="inline-flex items-center gap-1 text-[9px] font-black text-primary hover:text-blue-950 hover:underline mt-0.5 cursor-pointer"
                             >
-                              <SlidersHorizontal size={10} />
-                              <span>Ubah Approver</span>
+                              <SlidersHorizontal size={9} />
+                              <span>Ubah</span>
                             </button>
                           )}
                         </td>
 
                         {/* 8. Aksi & Dokumen (Right-aligned) */}
-                        <td className="py-3 px-3 text-right">
+                        <td className="py-2 px-2.5 text-right">
                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
                             {/* Stage actions */}
                             {['PR_PENDING', 'Pending'].includes(order.status) && canReview && (
@@ -1248,26 +1246,26 @@ export default function Materials() {
 
                       {/* ── EXPANDABLE SUB-ROW ACCORDION (LINE-ITEMS DETAIL) ── */}
                       {isExpanded && (
-                        <tr className="bg-slate-100/90 border-b-2 border-slate-300">
-                          <td colSpan={10} className="p-4 sm:p-5">
-                            <div className="space-y-4">
+                        <tr className="bg-slate-50/80 border-b border-slate-200">
+                          <td colSpan={10} className="p-2.5 sm:p-3">
+                            <div className="space-y-2.5">
                               {/* Rejection notice if present */}
                               {order.rejectionReason && (
-                                <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-100 border-2 border-rose-300 text-xs text-rose-950 font-bold shadow-2xs">
-                                  <AlertCircle size={16} className="shrink-0 text-rose-700" />
+                                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-rose-50 border border-rose-300 text-xs text-rose-950 font-bold shadow-2xs">
+                                  <AlertCircle size={15} className="shrink-0 text-rose-700" />
                                   <span>Alasan Penolakan: <b className="text-rose-900">{order.rejectionReason}</b></span>
                                 </div>
                               )}
 
                               {/* Material Line Items Sub-Table */}
-                              <div className="rounded-xl border-2 border-slate-300 bg-white overflow-hidden shadow-xs">
-                                <div className="px-4 py-3 bg-slate-900 border-b border-slate-950 flex items-center justify-between">
-                                  <span className="text-xs font-black uppercase text-white tracking-wide flex items-center gap-2">
-                                    <Layers size={14} className="text-amber-400" />
+                              <div className="rounded-lg border border-slate-200/90 bg-white overflow-hidden shadow-2xs">
+                                <div className="px-3 py-1.5 bg-slate-900 border-b border-slate-950 flex items-center justify-between">
+                                  <span className="text-[11px] font-black uppercase text-white tracking-wide flex items-center gap-1.5">
+                                    <Layers size={13} className="text-amber-400" />
                                     <span>Rincian Material & Spesifikasi ({itemsList.length} Baris)</span>
                                   </span>
                                   {order.purpose && (
-                                    <span className="text-xs text-slate-300 font-medium italic">
+                                    <span className="text-[11px] text-slate-300 font-medium italic">
                                       Keperluan: {order.purpose}
                                     </span>
                                   )}
@@ -1275,20 +1273,20 @@ export default function Materials() {
 
                                 <table className="w-full text-left text-xs border-collapse">
                                   <thead>
-                                    <tr className="bg-slate-200 border-b-2 border-slate-300 text-[10px] font-black text-slate-900 uppercase tracking-wider">
-                                      <th className="py-2.5 px-3 w-10 text-center">No</th>
-                                      <th className="py-2.5 px-3 text-left">Nama Material</th>
-                                      <th className="py-2.5 px-3 text-left">Spesifikasi Teknis</th>
-                                      <th className="py-2.5 px-3 text-left">Mata Anggaran / WBS</th>
-                                      <th className="py-2.5 px-3 text-right">Kuantitas</th>
-                                      <th className="py-2.5 px-3 text-left">Satuan</th>
-                                      <th className="py-2.5 px-3 text-right">Tarif Est.</th>
-                                      <th className="py-2.5 px-3 text-right">Subtotal Plafon</th>
-                                      {order.poNumber && <th className="py-2.5 px-3 text-right text-blue-950">Tarif PO Satuan</th>}
-                                      {order.poNumber && <th className="py-2.5 px-3 text-right text-blue-950">Subtotal PO</th>}
+                                    <tr className="bg-slate-100 border-b border-slate-200 text-[10px] font-black text-slate-900 uppercase tracking-wider">
+                                      <th className="py-1.5 px-2.5 w-9 text-center">No</th>
+                                      <th className="py-1.5 px-2.5 text-left">Nama Material</th>
+                                      <th className="py-1.5 px-2.5 text-left">Spesifikasi Teknis</th>
+                                      <th className="py-1.5 px-2.5 text-left">Mata Anggaran / WBS</th>
+                                      <th className="py-1.5 px-2.5 text-right">Kuantitas</th>
+                                      <th className="py-1.5 px-2.5 text-left">Satuan</th>
+                                      <th className="py-1.5 px-2.5 text-right">Tarif Est.</th>
+                                      <th className="py-1.5 px-2.5 text-right">Subtotal Plafon</th>
+                                      {order.poNumber && <th className="py-1.5 px-2.5 text-right text-blue-950">Tarif PO Satuan</th>}
+                                      {order.poNumber && <th className="py-1.5 px-2.5 text-right text-blue-950">Subtotal PO</th>}
                                     </tr>
                                   </thead>
-                                  <tbody className="divide-y divide-slate-200">
+                                  <tbody className="divide-y divide-slate-100">
                                     {itemsList.map((itm, iIdx) => {
                                       const q = Number(itm.qty) || 1;
                                       const budgetRate = Number(itm.budgetUnitRate) || 0;
@@ -1297,46 +1295,46 @@ export default function Materials() {
                                       const poSub = Number(itm.poTotalAmount) || (q * poRate);
 
                                       return (
-                                        <tr key={iIdx} className="hover:bg-blue-50/60 even:bg-slate-50/50 odd:bg-white">
-                                          <td className="py-2.5 px-3 text-center text-slate-700 font-mono font-bold">{iIdx + 1}</td>
-                                          <td className="py-2.5 px-3 font-bold text-slate-950 text-left">{itm.item}</td>
-                                          <td className="py-2.5 px-3 text-left">
+                                        <tr key={iIdx} className="hover:bg-blue-50/50 even:bg-slate-50/40 odd:bg-white">
+                                          <td className="py-1.5 px-2.5 text-center text-slate-600 font-mono font-bold">{iIdx + 1}</td>
+                                          <td className="py-1.5 px-2.5 font-bold text-slate-950 text-left">{itm.item}</td>
+                                          <td className="py-1.5 px-2.5 text-left">
                                             {itm.specifications ? (
-                                              <span className="text-slate-900 font-semibold bg-slate-100 border border-slate-300 px-2 py-0.5 rounded text-[11px]">
+                                              <span className="text-slate-800 font-semibold bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded text-[10px]">
                                                 {itm.specifications}
                                               </span>
                                             ) : (
-                                              <span className="italic text-slate-400 text-[11px]">-</span>
+                                              <span className="italic text-slate-400 text-[10px]">-</span>
                                             )}
                                           </td>
-                                          <td className="py-2.5 px-3 text-left">
+                                          <td className="py-1.5 px-2.5 text-left">
                                             {itm.wbsCode ? (
-                                              <span className="font-mono text-indigo-950 bg-indigo-100 border border-indigo-300 px-2 py-0.5 rounded text-[10px] font-black">
+                                              <span className="font-mono text-indigo-950 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded text-[10px] font-black">
                                                 {itm.wbsCode}
                                               </span>
                                             ) : (
-                                              <span className="text-amber-950 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded text-[10px] font-black">
+                                              <span className="text-amber-950 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded text-[10px] font-black">
                                                 Non-RAB
                                               </span>
                                             )}
                                           </td>
-                                          <td className="py-2.5 px-3 text-right font-mono tabular-nums font-black text-slate-950">
+                                          <td className="py-1.5 px-2.5 text-right font-mono tabular-nums font-black text-slate-950">
                                             {q.toLocaleString('id-ID')}
                                           </td>
-                                          <td className="py-2.5 px-3 text-left font-bold text-slate-800">{itm.unit || 'Pcs'}</td>
-                                          <td className="py-2.5 px-3 text-right font-mono tabular-nums font-semibold text-slate-700">
+                                          <td className="py-1.5 px-2.5 text-left font-bold text-slate-800">{itm.unit || 'Pcs'}</td>
+                                          <td className="py-1.5 px-2.5 text-right font-mono tabular-nums font-semibold text-slate-700">
                                             {formatRupiah(budgetRate)}
                                           </td>
-                                          <td className="py-2.5 px-3 text-right font-mono tabular-nums font-black text-slate-950">
+                                          <td className="py-1.5 px-2.5 text-right font-mono tabular-nums font-black text-slate-950">
                                             {formatRupiah(budgetSub)}
                                           </td>
                                           {order.poNumber && (
-                                            <td className="py-2.5 px-3 text-right font-mono tabular-nums font-bold text-blue-900">
+                                            <td className="py-1.5 px-2.5 text-right font-mono tabular-nums font-bold text-blue-900">
                                               {poRate > 0 ? formatRupiah(poRate) : '-'}
                                             </td>
                                           )}
                                           {order.poNumber && (
-                                            <td className="py-2.5 px-3 text-right font-mono tabular-nums font-black text-blue-950 bg-blue-50/70">
+                                            <td className="py-1.5 px-2.5 text-right font-mono tabular-nums font-black text-blue-950 bg-blue-50/50">
                                               {poSub > 0 ? formatRupiah(poSub) : '-'}
                                             </td>
                                           )}
@@ -1347,74 +1345,74 @@ export default function Materials() {
                                 </table>
                               </div>
 
-                              {/* Additional contextual accordions (Supplier / Dispatch / Goods Receipt) */}
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                                {/* Approver Chain */}
-                                <div className="p-3.5 rounded-xl bg-white border-2 border-slate-300 space-y-2 shadow-2xs">
-                                  <span className="text-[11px] font-black uppercase text-slate-900 block border-b border-slate-200 pb-1">
+                              {/* Additional contextual cards (Supplier / Dispatch / Goods Receipt / Pelunasan) in unified 4-col grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
+                                {/* 1. Approver Chain */}
+                                <div className="p-2.5 rounded-lg bg-white border border-slate-200/90 space-y-1.5 shadow-2xs">
+                                  <span className="text-[10px] font-black uppercase text-slate-900 block border-b border-slate-100 pb-1">
                                     Alur & Otorisasi Personel
                                   </span>
-                                  <div className="space-y-1.5 text-[11px]">
+                                  <div className="space-y-1 text-[11px]">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-slate-600 font-bold">1. QC/SPV:</span>
-                                      <span className="font-extrabold text-slate-950">
+                                      <span className="text-slate-500 font-bold">1. QC/SPV:</span>
+                                      <span className="font-extrabold text-slate-950 truncate max-w-[140px]">
                                         {typeof order.assignedReviewerId === 'object' ? order.assignedReviewerId?.fullName : (order.reviewedBy?.user?.fullName || 'Belum ditugaskan')}
                                       </span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                      <span className="text-slate-600 font-bold">2. Ops Director:</span>
-                                      <span className="font-extrabold text-slate-950">
+                                      <span className="text-slate-500 font-bold">2. Ops Dir:</span>
+                                      <span className="font-extrabold text-slate-950 truncate max-w-[140px]">
                                         {typeof order.assignedOpsApproverId === 'object' ? order.assignedOpsApproverId?.fullName : (order.opsApprovedBy?.user?.fullName || 'Belum ditugaskan')}
                                       </span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                      <span className="text-slate-600 font-bold">3. Finance Director:</span>
-                                      <span className="font-extrabold text-slate-950">
+                                      <span className="text-slate-500 font-bold">3. Fin Dir:</span>
+                                      <span className="font-extrabold text-slate-950 truncate max-w-[140px]">
                                         {typeof order.assignedFinanceApproverId === 'object' ? order.assignedFinanceApproverId?.fullName : (order.financeApprovedBy?.user?.fullName || 'Belum ditugaskan')}
                                       </span>
                                     </div>
                                   </div>
                                 </div>
 
-                                {/* Supplier info */}
+                                {/* 2. Supplier info */}
                                 {order.selectedSupplier && (
-                                  <div className="p-3.5 rounded-xl bg-purple-50/70 border-2 border-purple-300 space-y-2 shadow-2xs">
-                                    <span className="text-[11px] font-black uppercase text-purple-950 block border-b border-purple-200 pb-1">
+                                  <div className="p-2.5 rounded-lg bg-purple-50/60 border border-purple-200/80 space-y-1.5 shadow-2xs">
+                                    <span className="text-[10px] font-black uppercase text-purple-950 block border-b border-purple-200/60 pb-1">
                                       Vendor Terpilih (PO)
                                     </span>
-                                    <div className="font-black text-purple-950 text-xs">
+                                    <div className="font-black text-purple-950 text-xs truncate">
                                       {order.selectedSupplier.supplierName}
                                     </div>
-                                    <div className="text-[11px] font-semibold text-purple-900">
+                                    <div className="text-[11px] font-semibold text-purple-900 truncate">
                                       {order.selectedSupplier.contact ? `Kontak: ${order.selectedSupplier.contact}` : (order.selectedSupplier.location || 'Lokal')}
                                     </div>
-                                    <div className="text-xs font-black text-purple-950 font-mono tabular-nums bg-purple-200/80 px-2 py-1 rounded border border-purple-300">
-                                      Total PO: {formatRupiah(order.selectedSupplier.totalLandedCost || order.poTotalAmount)}
+                                    <div className="text-xs font-black text-purple-950 font-mono tabular-nums bg-purple-100/90 px-1.5 py-0.5 rounded border border-purple-200">
+                                      Total: {formatRupiah(order.selectedSupplier.totalLandedCost || order.poTotalAmount)}
                                     </div>
                                   </div>
                                 )}
 
-                                {/* Dispatch or Delivery info */}
+                                {/* 3. Dispatch info */}
                                 {order.dispatchInfo && (
-                                  <div className="p-3.5 rounded-xl bg-sky-50/70 border-2 border-sky-300 space-y-2 shadow-2xs">
-                                    <span className="text-[11px] font-black uppercase text-sky-950 block border-b border-sky-200 pb-1">
+                                  <div className="p-2.5 rounded-lg bg-sky-50/60 border border-sky-200/80 space-y-1.5 shadow-2xs">
+                                    <span className="text-[10px] font-black uppercase text-sky-950 block border-b border-sky-200/60 pb-1">
                                       Status Pengiriman
                                     </span>
-                                    <div className="font-black text-sky-950 text-xs">
+                                    <div className="font-black text-sky-950 text-xs truncate">
                                       Supir: {order.dispatchInfo.driverName || '-'} ({order.dispatchInfo.vehiclePlate || 'Kendaraan'})
                                     </div>
-                                    <div className="text-[11px] font-semibold text-sky-900">
+                                    <div className="text-[11px] font-semibold text-sky-900 truncate">
                                       Telp: {order.dispatchInfo.driverPhone || '-'} • ETA: {fmtDateStr(order.dispatchInfo.eta)}
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                                       {order.dispatchInfo.suratJalanPhoto && (
                                         <a
                                           href={getImageUrl(order.dispatchInfo.suratJalanPhoto)}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="text-xs font-black text-sky-950 bg-sky-200/80 hover:bg-sky-300 px-2 py-1 rounded border border-sky-400 inline-flex items-center gap-1 transition-colors"
+                                          className="text-[11px] font-black text-sky-950 bg-sky-100 hover:bg-sky-200 px-2 py-0.5 rounded border border-sky-300 inline-flex items-center gap-1 transition-colors"
                                         >
-                                          <ExternalLink size={12} /> <span>Lihat Surat Jalan</span>
+                                          <ExternalLink size={11} /> <span>Surat Jalan</span>
                                         </a>
                                       )}
                                       {order.dispatchInfo.supplierNotaPhoto && (
@@ -1422,87 +1420,77 @@ export default function Materials() {
                                           href={getImageUrl(order.dispatchInfo.supplierNotaPhoto)}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="text-xs font-black text-sky-950 bg-sky-200/80 hover:bg-sky-300 px-2 py-1 rounded border border-sky-400 inline-flex items-center gap-1 transition-colors"
+                                          className="text-[11px] font-black text-sky-950 bg-sky-100 hover:bg-sky-200 px-2 py-0.5 rounded border border-sky-300 inline-flex items-center gap-1 transition-colors"
                                         >
-                                          <ExternalLink size={12} /> <span>Lihat Nota Supplier</span>
+                                          <ExternalLink size={11} /> <span>Nota</span>
                                         </a>
                                       )}
                                     </div>
                                   </div>
                                 )}
 
+                                {/* 4. Delivery Proof / GRN */}
                                 {order.deliveryProof && (
-                                  <div className="p-3.5 rounded-xl bg-teal-50/70 border-2 border-teal-300 space-y-2 shadow-2xs">
-                                    <span className="text-[11px] font-black uppercase text-teal-950 block border-b border-teal-200 pb-1">
-                                      Penerimaan di Lapangan (GRN)
+                                  <div className="p-2.5 rounded-lg bg-teal-50/60 border border-teal-200/80 space-y-1.5 shadow-2xs">
+                                    <span className="text-[10px] font-black uppercase text-teal-950 block border-b border-teal-200/60 pb-1">
+                                      Penerimaan Lapangan (GRN)
                                     </span>
                                     <div className="font-black text-teal-950 text-xs flex items-center gap-1.5">
-                                      <CheckCircle2 size={14} className="text-teal-700" />
+                                      <CheckCircle2 size={13} className="text-teal-700" />
                                       <span>Kondisi: {order.deliveryProof.overallCondition || 'Good'}</span>
                                     </div>
-                                    <div className="text-[11px] font-semibold text-teal-900">
+                                    <div className="text-[11px] font-semibold text-teal-900 truncate">
                                       Penerima: {typeof order.deliveryProof.receivedBy === 'object' ? order.deliveryProof.receivedBy?.fullName : 'Staff Proyek'}
                                     </div>
-                                    {order.deliveryProof.notes && (
-                                      <div className="text-[11px] text-teal-800 italic">
-                                        Catatan: {order.deliveryProof.notes}
-                                      </div>
-                                    )}
-                                    {order.deliveryProof.receiverSignature && (
-                                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-teal-800">
-                                        <CheckCircle2 size={13} className="text-teal-600" />
-                                        <span>Tanda Tangan Digital Tersimpan</span>
-                                      </div>
-                                    )}
                                     {order.deliveryProof.sitePhoto && (
-                                      <div className="pt-2 border-t border-teal-200 flex items-center justify-between gap-2">
+                                      <div className="pt-1 border-t border-teal-200/60">
                                         <a
                                           href={getImageUrl(order.deliveryProof.sitePhoto)}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="text-xs font-black text-teal-950 bg-teal-200/80 hover:bg-teal-300 px-2.5 py-1 rounded border border-teal-400 inline-flex items-center gap-1 transition-colors"
+                                          className="text-[11px] font-black text-teal-950 bg-teal-100 hover:bg-teal-200 px-2 py-0.5 rounded border border-teal-300 inline-flex items-center gap-1 transition-colors"
                                         >
-                                          <ExternalLink size={12} /> <span>Lihat Foto Fisik (Site Photo)</span>
+                                          <ExternalLink size={11} /> <span>Foto Fisik</span>
                                         </a>
-                                        <span className="text-[10px] text-teal-800 font-semibold">Tercantum di Dokumen GRN</span>
                                       </div>
                                     )}
                                   </div>
                                 )}
 
+                                {/* 5. Payment Confirmation */}
                                 {order.paymentConfirmation && (
-                                  <div className="p-3.5 rounded-xl bg-emerald-50/70 border-2 border-emerald-300 space-y-2 shadow-2xs">
-                                    <div className="flex items-center justify-between border-b border-emerald-200 pb-1">
-                                      <span className="text-[11px] font-black uppercase text-emerald-950">
-                                        Pelunasan & Bukti Kas (Lunas)
+                                  <div className="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-200/80 space-y-1.5 shadow-2xs">
+                                    <div className="flex items-center justify-between border-b border-emerald-200/60 pb-1">
+                                      <span className="text-[10px] font-black uppercase text-emerald-950">
+                                        Pelunasan Kas (Lunas)
                                       </span>
                                       {order.paymentConfirmation.schemeApplied === 'PAYLATER' && (
-                                        <span className="text-[10px] font-black bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded">
-                                          Paylater 0%
+                                        <span className="text-[9px] font-black bg-emerald-200 text-emerald-900 px-1 py-0.2 rounded">
+                                          Paylater
                                         </span>
                                       )}
                                     </div>
                                     <div className="font-black text-emerald-950 text-xs flex items-center justify-between">
-                                      <span>Nominal: {formatRupiah(order.paymentConfirmation.amountPaid)}</span>
+                                      <span>{formatRupiah(order.paymentConfirmation.amountPaid)}</span>
                                       <span className="text-[10px] font-bold text-emerald-800">{order.paymentConfirmation.paymentMethod}</span>
                                     </div>
-                                    <div className="text-[11px] font-semibold text-emerald-900">
-                                      Dikonfirmasi: {typeof order.paymentConfirmation.confirmedBy === 'object' ? order.paymentConfirmation.confirmedBy?.fullName : 'Kasir/Finance'} • {fmtDateStr(order.paymentConfirmation.paymentDate)}
+                                    <div className="text-[11px] font-semibold text-emerald-900 truncate">
+                                      {typeof order.paymentConfirmation.confirmedBy === 'object' ? order.paymentConfirmation.confirmedBy?.fullName : 'Kasir'} • {fmtDateStr(order.paymentConfirmation.paymentDate)}
                                     </div>
-                                    <div className="pt-2 border-t border-emerald-200 flex flex-wrap gap-2">
+                                    <div className="pt-1 border-t border-emerald-200/60 flex flex-wrap gap-1.5">
                                       <button
                                         type="button"
                                         onClick={() => setViewEvidenceOrder(order)}
-                                        className="text-xs font-black text-emerald-950 bg-emerald-200/90 hover:bg-emerald-300 px-2.5 py-1 rounded border border-emerald-400 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                                        className="text-[10px] font-black text-emerald-950 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded border border-emerald-300 inline-flex items-center gap-1 transition-colors cursor-pointer"
                                       >
-                                        <Receipt size={12} /> <span>Lihat Bukti Bayar & Transfer</span>
+                                        <Receipt size={11} /> <span>Bukti Bayar</span>
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => exportPaymentVoucherPdf(order)}
-                                        className="text-xs font-black text-slate-900 bg-white hover:bg-slate-100 px-2.5 py-1 rounded border border-slate-300 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                                        className="text-[10px] font-black text-slate-900 bg-white hover:bg-slate-100 px-2 py-0.5 rounded border border-slate-300 inline-flex items-center gap-1 transition-colors cursor-pointer"
                                       >
-                                        <Download size={12} /> <span>Voucher PDF</span>
+                                        <Download size={11} /> <span>Voucher</span>
                                       </button>
                                     </div>
                                   </div>

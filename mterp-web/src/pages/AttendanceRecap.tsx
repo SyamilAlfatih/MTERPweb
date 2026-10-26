@@ -783,7 +783,7 @@ export default function AttendanceRecap() {
   };
 
   return (
-    <div className="p-4 lg:p-6 space-y-6 max-w-[1600px] mx-auto">
+    <div className="px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5 w-full max-w-[1800px] mx-auto">
       {/* Toast Alert Banner */}
       {toastMessage && (
         <div

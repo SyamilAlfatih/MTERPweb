@@ -776,7 +776,7 @@ export default function SlipGaji() {
     }, [filteredSlips]);
 
     return (
-        <div className="p-6 max-w-7xl mx-auto max-sm:p-3">
+        <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5">
             <Alert
                 visible={alertData.visible}
                 type={alertData.type}
@@ -786,22 +786,22 @@ export default function SlipGaji() {
             />
 
             {/* Header */}
-            <div className="flex items-center gap-3 mb-6">
-                <button className="w-9 h-9 border border-border bg-bg-white rounded-md flex items-center justify-center text-text-primary transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0 cursor-pointer" onClick={() => navigate(-1)}>
-                    <ArrowLeft size={20} />
+            <div className="flex items-center gap-3">
+                <button className="w-8 h-8 border border-border bg-bg-white rounded-lg flex items-center justify-center text-text-primary transition-all hover:bg-bg-secondary hover:border-primary hover:text-primary shrink-0 cursor-pointer" onClick={() => navigate(-1)}>
+                    <ArrowLeft size={16} />
                 </button>
-                <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-teal-600 to-teal-400 flex items-center justify-center shadow-[0_4px_14px_rgba(13,148,136,0.35)] shrink-0">
-                    <Receipt size={22} color="white" />
+                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-600 to-teal-400 flex items-center justify-center shadow-xs shrink-0">
+                    <Receipt size={18} color="white" />
                 </div>
                 <div>
-                    <h1 className="text-xl font-bold text-text-primary m-0">{t('slipGaji.title')}</h1>
+                    <h1 className="text-xl font-bold text-text-primary m-0 tracking-tight">{t('slipGaji.title')}</h1>
                     <p className="text-xs text-text-muted m-0">{t('slipGaji.subtitle')}</p>
                 </div>
             </div>
 
             {/* Executive Payroll Summary Metrics Strip */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
-                <Card className="!p-4 border border-border-light bg-bg-white shadow-xs rounded-xl flex items-center justify-between hover:border-primary/40 transition-colors">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <Card className="!p-3 border border-border-light bg-bg-white shadow-2xs rounded-xl flex items-center justify-between hover:border-primary/40 transition-colors">
                     <div>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Total Beban Gaji</span>
                         <div className="text-xl font-bold font-mono tabular-nums text-text-primary mt-0.5">

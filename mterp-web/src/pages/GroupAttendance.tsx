@@ -1739,7 +1739,7 @@ export default function GroupAttendance() {
 
   // ── Render ──
   return (
-    <div className="p-6 max-w-7xl mx-auto max-lg:p-4 max-sm:p-3 space-y-6">
+    <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5">
       <Alert
         visible={alertData.visible}
         type={alertData.type}
@@ -1758,7 +1758,7 @@ export default function GroupAttendance() {
       />
 
       {/* ══════════════ 1. ENTERPRISE ERP HEADER ══════════════ */}
-      <div className="rounded-2xl bg-bg-white border border-border-light p-6 shadow-sm">
+      <div className="rounded-xl bg-bg-white border border-border-light p-4 sm:p-5 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
           {/* Title & Breadcrumb */}
           <div>

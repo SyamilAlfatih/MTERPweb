@@ -1013,9 +1013,9 @@ export default function OvertimeSPKL() {
   }, [approvalRecords, canActOnRecord]);
 
   return (
-    <div className="p-3 sm:p-5 lg:p-7 max-w-7xl mx-auto space-y-5 sm:space-y-6 pb-24 font-sans">
+    <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5 pb-12 font-sans">
       {/* ── 1. ENTERPRISE HERO & CREDENTIALS BANNER ────────────────────────── */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white p-4 sm:p-6 lg:p-7 rounded-2xl sm:rounded-3xl shadow-xl border border-slate-800">
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white p-4 sm:p-5 lg:p-6 rounded-2xl shadow-md border border-slate-800">
         {/* Subtle decorative glow */}
         <div className="absolute -top-24 -right-24 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />

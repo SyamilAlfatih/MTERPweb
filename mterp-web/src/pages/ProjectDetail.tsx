@@ -754,7 +754,7 @@ export default function ProjectDetail() {
   const projStatus = (project.status || (progress >= 100 ? 'Selesai' : progress > 0 ? 'Sedang Berjalan' : 'Perencanaan'));
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5">
       {/* ── Breadcrumb Navigation ── */}
       <div className="flex items-center gap-2 text-xs text-text-muted">
         <Link to="/projects" className="hover:text-primary transition-colors flex items-center gap-1 font-medium">
@@ -767,11 +767,11 @@ export default function ProjectDetail() {
       </div>
 
       {/* ── Executive ERP Header Banner ── */}
-      <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-2xl p-5 sm:p-6 shadow-xs transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-        <div className="flex items-start gap-4">
+      <div className="bg-bg-white dark:bg-bg-secondary/40 border border-border rounded-xl p-4 sm:p-5 shadow-xs transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
           <button
             onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-xl bg-bg-secondary hover:bg-border/60 text-text-primary flex items-center justify-center transition-all cursor-pointer border border-border-light shrink-0 mt-0.5"
+            className="w-9 h-9 rounded-lg bg-bg-secondary hover:bg-border/60 text-text-primary flex items-center justify-center transition-all cursor-pointer border border-border-light shrink-0 mt-0.5"
             title="Kembali"
           >
             <ArrowLeft size={18} />

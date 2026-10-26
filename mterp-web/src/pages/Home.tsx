@@ -655,9 +655,9 @@ export default function Home() {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-6">
+    <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-4">
       {/* ── Executive Command Center Hero Banner ────────────────────────── */}
-      <div className="relative rounded-3xl overflow-hidden shadow-lg border border-slate-700/30 bg-gradient-to-br from-[#0a1530] via-[#102353] to-[#1e3a8a] text-white">
+      <div className="relative rounded-2xl overflow-hidden shadow-md border border-slate-700/30 bg-gradient-to-br from-[#0a1530] via-[#102353] to-[#1e3a8a] text-white">
         {/* Subtle architectural grid pattern background */}
         <div
           className="absolute inset-0 opacity-[0.06] pointer-events-none"
@@ -670,9 +670,9 @@ export default function Home() {
         <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-blue-500/20 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-20 -left-20 w-80 h-80 rounded-full bg-amber-500/15 blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 p-5 sm:p-7 lg:p-8 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+        <div className="relative z-10 p-4 sm:p-5 lg:p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           {/* Left: Greeting, identity & live clock */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div className="flex items-center gap-2.5 flex-wrap">
               <div className="w-9 h-9 rounded-xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-inner">
                 <span className="text-white font-black text-sm">

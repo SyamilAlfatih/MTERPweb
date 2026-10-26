@@ -324,7 +324,7 @@ export default function Projects() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 w-full max-w-[1800px] mx-auto space-y-3.5">
       <LoadingOverlay visible={loading} />
       
       {alertData.visible && (
