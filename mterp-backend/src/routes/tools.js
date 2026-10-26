@@ -2,11 +2,28 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const ExcelJS = require('exceljs');
-const { Tool } = require('../models');
+const { Tool, ToolMovement, Warehouse } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const { nowWIB } = require('../utils/date');
+
+// Helper to safely delete physical photo files from disk (Storage optimization rule)
+function deletePhysicalFile(filePath) {
+  if (!filePath) return;
+  try {
+    let resolvedPath = filePath;
+    if (!path.isAbsolute(resolvedPath)) {
+      resolvedPath = path.join(__dirname, '../../', filePath);
+    }
+    if (fs.existsSync(resolvedPath)) {
+      fs.unlinkSync(resolvedPath);
+      console.log(`[Storage Cleanup] Purged physical photo: ${resolvedPath}`);
+    }
+  } catch (err) {
+    console.warn(`[Storage Cleanup] Could not delete file ${filePath}:`, err.message);
+  }
+}
 
 const router = express.Router();
 
@@ -33,8 +50,9 @@ router.get('/dashboard', auth, async (req, res) => {
     
     // Get ALL tools first for stats, then filter for display
     const allTools = await Tool.find()
-      .populate('assignedTo', 'fullName')
-      .populate('projectId', 'nama')
+      .populate('assignedTo', 'fullName username role')
+      .populate('projectId', 'nama code')
+      .populate('warehouseId', 'name code type geo zones isDefault')
       .sort({ nama: 1 })
       .lean();
     
@@ -772,12 +790,53 @@ router.get('/project/:projectId', auth, async (req, res) => {
   }
 });
 
+// GET /api/tools/my-tools - Get tools assigned to the current authenticated user (MUST be before /:id)
+router.get('/my-tools', auth, async (req, res) => {
+  try {
+    const tools = await Tool.find({ assignedTo: req.user._id })
+      .populate('assignedTo', 'fullName username role phone')
+      .populate('projectId', 'nama code')
+      .populate('warehouseId', 'name code type geo zones isDefault')
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    // Fetch the latest movement record for each tool to show checkout context
+    const toolIds = tools.map((t) => t._id);
+    const latestMovements = await ToolMovement.aggregate([
+      { $match: { toolId: { $in: toolIds } } },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$toolId',
+          latestMovement: { $first: '$$ROOT' },
+        },
+      },
+    ]);
+
+    const movementMap = {};
+    latestMovements.forEach((m) => {
+      movementMap[m._id.toString()] = m.latestMovement;
+    });
+
+    const enriched = tools.map((t) => ({
+      ...t,
+      lastMovement: movementMap[t._id.toString()] || null,
+    }));
+
+    res.json(enriched);
+  } catch (error) {
+    console.error('Get my-tools error:', error);
+    res.status(500).json({ msg: 'Server error saat mengambil data alat saya' });
+  }
+});
+
 // GET /api/tools/:id - Get single tool (MUST be after static routes)
 router.get('/:id', auth, async (req, res) => {
   try {
     const tool = await Tool.findById(req.params.id)
-      .populate('assignedTo', 'fullName')
-      .populate('projectId', 'nama')
+      .populate('assignedTo', 'fullName username role phone')
+      .populate('projectId', 'nama code')
+      .populate('warehouseId', 'name code type geo zones isDefault')
       .lean();
     
     if (!tool) {
@@ -791,25 +850,337 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
+// GET /api/tools/:id/movements - Get audit trail of all movements for a tool
+router.get('/:id/movements', auth, async (req, res) => {
+  try {
+    const movements = await ToolMovement.find({ toolId: req.params.id })
+      .populate('byUserId', 'fullName username role')
+      .populate('assignedTo', 'fullName username role')
+      .populate('projectId', 'nama code')
+      .populate('fromWarehouseId', 'name code')
+      .populate('toWarehouseId', 'name code')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json(movements);
+  } catch (error) {
+    console.error('Get tool movements error:', error);
+    res.status(500).json({ msg: 'Server error saat mengambil riwayat pergerakan alat' });
+  }
+});
+
+// POST /api/tools/movement - Move tool (check-out, return, hand-over, transfer, relocation, etc.)
+// Enforces GPS / manual override, live watermark photo, and automatic storage purging of previous photos
+router.post('/movement', auth, uploadLimiter, upload.single('photo'), async (req, res) => {
+  try {
+    const {
+      toolId,
+      action,
+      qty,
+      toWarehouseId,
+      toBin,
+      toLokasi,
+      assignedTo,
+      projectId,
+      condition,
+      lat,
+      lng,
+      accuracy,
+      capturedAt,
+      isManualGpsOverride,
+      notes,
+    } = req.body;
+
+    if (!toolId || !action) {
+      return res.status(400).json({ msg: 'toolId dan action wajib diisi' });
+    }
+
+    const tool = await Tool.findById(toolId);
+    if (!tool) {
+      return res.status(404).json({ msg: 'Alat tidak ditemukan' });
+    }
+
+    const userRole = req.user.role;
+    const isOwnerOrAdmin = ['owner', 'director', 'asset_admin'].includes(userRole);
+    const isSupervisor = userRole === 'supervisor';
+
+    // Verify Action Permissions
+    if (action === 'check_out') {
+      if (!isOwnerOrAdmin && !isSupervisor) {
+        return res.status(403).json({ msg: 'Check-out alat hanya dapat dilakukan oleh Supervisor atau Asset Admin' });
+      }
+    } else if (action === 'return') {
+      const isCurrentHolder = tool.assignedTo && tool.assignedTo.toString() === req.user._id.toString();
+      if (!isOwnerOrAdmin && !isSupervisor && !isCurrentHolder) {
+        return res.status(403).json({ msg: 'Pengembalian alat hanya dapat dilakukan oleh pemegang alat, Supervisor, atau Asset Admin' });
+      }
+    } else {
+      // hand_over, transfer, relocation, maintenance_in, maintenance_out, condition_change
+      if (!isOwnerOrAdmin && !isSupervisor) {
+        return res.status(403).json({ msg: 'Aksi ini memerlukan wewenang Supervisor atau Asset Admin' });
+      }
+    }
+
+    // Validate GPS / Manual Override
+    const hasGps = lat !== undefined && lat !== null && lat !== '' && !isNaN(Number(lat)) &&
+                   lng !== undefined && lng !== null && lng !== '' && !isNaN(Number(lng));
+    const manualOverride = isManualGpsOverride === 'true' || isManualGpsOverride === true;
+    if (!hasGps) {
+      if (!manualOverride) {
+        return res.status(400).json({ msg: 'Lokasi GPS tidak terdeteksi. Aktifkan GPS pada perangkat atau minta Asset Admin untuk mengesahkan override manual.' });
+      }
+      if (!isOwnerOrAdmin) {
+        return res.status(403).json({ msg: 'Hanya Asset Admin atau Owner yang dapat mengesahkan override manual GPS.' });
+      }
+    }
+
+    // Capture Previous State for Audit Log
+    const fromWarehouseId = tool.warehouseId || null;
+    const fromBin = tool.binRef || '';
+    const fromLokasi = tool.lokasi || '';
+
+    // STORAGE OPTIMIZATION RULE:
+    // When tools move, purge previous physical photos from server disk to save space while retaining metadata
+    let purgedCount = 0;
+    const previousMovementsWithPhotos = await ToolMovement.find({
+      toolId: tool._id,
+      'evidence.photo': { $ne: null },
+      'evidence.photoPurged': { $ne: true },
+    });
+
+    for (const prev of previousMovementsWithPhotos) {
+      if (prev.evidence && prev.evidence.photo) {
+        deletePhysicalFile(prev.evidence.photo);
+        prev.evidence.photoPurged = true;
+        prev.evidence.photoPurgedAt = nowWIB();
+        await prev.save();
+        purgedCount++;
+      }
+    }
+
+    // Also purge previous tool.photo if a new photo is uploaded
+    if (req.file && tool.photo) {
+      deletePhysicalFile(tool.photo);
+    }
+
+    // Target warehouse details
+    let targetWh = null;
+    if (toWarehouseId) {
+      targetWh = await Warehouse.findById(toWarehouseId);
+    }
+
+    // Update Tool properties
+    const now = nowWIB();
+    tool.lastChecked = now;
+    tool.lastMovedAt = now;
+    if (req.file) {
+      tool.photo = req.file.path;
+    }
+
+    let finalToLokasi = toLokasi || '';
+    let finalToWarehouseId = toWarehouseId || tool.warehouseId;
+    let finalToBin = toBin !== undefined ? toBin : (tool.binRef || '');
+
+    switch (action) {
+      case 'check_out':
+        tool.assignedTo = assignedTo || req.user._id;
+        tool.projectId = projectId || tool.projectId || null;
+        finalToLokasi = toLokasi || (projectId ? 'On-Site' : 'In Use');
+        tool.lokasi = finalToLokasi;
+        break;
+
+      case 'return':
+        tool.assignedTo = null;
+        tool.projectId = null;
+        if (targetWh) {
+          tool.warehouseId = targetWh._id;
+          finalToWarehouseId = targetWh._id;
+          finalToLokasi = targetWh.name + (toBin ? ` (${toBin})` : '');
+        } else {
+          finalToLokasi = toLokasi || 'Warehouse';
+        }
+        tool.lokasi = finalToLokasi;
+        if (toBin !== undefined) tool.binRef = toBin;
+        if (condition) tool.kondisi = condition;
+        break;
+
+      case 'hand_over':
+        if (assignedTo) tool.assignedTo = assignedTo;
+        if (projectId !== undefined) tool.projectId = projectId || null;
+        finalToLokasi = toLokasi || 'In Use';
+        tool.lokasi = finalToLokasi;
+        break;
+
+      case 'transfer':
+        if (targetWh) {
+          tool.warehouseId = targetWh._id;
+          finalToWarehouseId = targetWh._id;
+          finalToLokasi = targetWh.name + (toBin ? ` (${toBin})` : '');
+        } else {
+          finalToLokasi = toLokasi || 'Transferred';
+        }
+        tool.lokasi = finalToLokasi;
+        if (toBin !== undefined) tool.binRef = toBin;
+        if (projectId !== undefined) tool.projectId = projectId || null;
+        break;
+
+      case 'relocation':
+        if (targetWh) {
+          tool.warehouseId = targetWh._id;
+          finalToWarehouseId = targetWh._id;
+        }
+        if (toBin) tool.binRef = toBin;
+        finalToLokasi = (targetWh ? targetWh.name : (tool.lokasi || 'Warehouse')) + (toBin ? ` (${toBin})` : '');
+        tool.lokasi = finalToLokasi;
+        break;
+
+      case 'maintenance_in':
+        tool.kondisi = 'Maintenance';
+        tool.lokasi = toLokasi || 'Workshop / Vendor Service';
+        finalToLokasi = tool.lokasi;
+        break;
+
+      case 'maintenance_out':
+        tool.kondisi = condition || 'Baik';
+        if (targetWh) {
+          tool.warehouseId = targetWh._id;
+          finalToWarehouseId = targetWh._id;
+          finalToLokasi = targetWh.name + (toBin ? ` (${toBin})` : '');
+        } else {
+          finalToLokasi = toLokasi || 'Warehouse';
+        }
+        tool.lokasi = finalToLokasi;
+        if (toBin !== undefined) tool.binRef = toBin;
+        break;
+
+      case 'condition_change':
+        if (condition) tool.kondisi = condition;
+        break;
+
+      default:
+        break;
+    }
+
+    await tool.save();
+
+    // Create ToolMovement record
+    const movement = new ToolMovement({
+      toolId: tool._id,
+      fromWarehouseId,
+      fromBin,
+      fromLokasi,
+      toWarehouseId: finalToWarehouseId || null,
+      toBin: finalToBin || '',
+      toLokasi: finalToLokasi,
+      action,
+      qty: Number(qty) || 1,
+      byUserId: req.user._id,
+      assignedTo: tool.assignedTo || null,
+      projectId: tool.projectId || null,
+      condition: tool.kondisi,
+      evidence: {
+        photo: req.file ? req.file.path : null,
+        lat: hasGps ? Number(lat) : null,
+        lng: hasGps ? Number(lng) : null,
+        accuracy: accuracy ? Number(accuracy) : null,
+        capturedAt: capturedAt ? new Date(capturedAt) : now,
+        serverTime: now,
+        isManualGpsOverride: manualOverride,
+        notes: notes ? notes.trim() : '',
+        photoPurged: false,
+      },
+    });
+
+    await movement.save();
+
+    const updatedTool = await Tool.findById(tool._id)
+      .populate('assignedTo', 'fullName username role phone')
+      .populate('projectId', 'nama code')
+      .populate('warehouseId', 'name code type geo zones isDefault')
+      .lean();
+
+    res.json({
+      success: true,
+      msg: 'Perpindahan alat berhasil dicatat',
+      tool: updatedTool,
+      movement,
+      purgedCount,
+    });
+  } catch (error) {
+    console.error('Record tool movement error:', error);
+    res.status(500).json({ msg: 'Server error saat mencatat perpindahan alat' });
+  }
+});
+
 // POST /api/tools - Create tool
 router.post('/', auth, authorize('owner', 'director', 'asset_admin'), uploadLimiter, upload.single('photo'), async (req, res) => {
   try {
-    const { nama, kategori, stok, satuan, kondisi, lokasi, qrCode, projectId } = req.body;
+    const { nama, kategori, stok, satuan, kondisi, lokasi, qrCode, projectId, warehouseId, binRef, notes } = req.body;
     
+    let whId = warehouseId || null;
+    let computedLokasi = lokasi;
+    if (whId) {
+      const wh = await Warehouse.findById(whId);
+      if (wh && (!lokasi || lokasi === 'Warehouse')) {
+        computedLokasi = wh.name + (binRef ? ` (${binRef})` : '');
+      }
+    } else {
+      const defaultWh = await Warehouse.findOne({ isDefault: true });
+      if (defaultWh) {
+        whId = defaultWh._id;
+        if (!computedLokasi) {
+          computedLokasi = defaultWh.name + (binRef ? ` (${binRef})` : '');
+        }
+      }
+    }
+
     const tool = new Tool({
       nama,
       kategori,
       stok: Number(stok) || 0,
       satuan: satuan || 'unit',
       kondisi: kondisi || 'Baik',
-      lokasi,
+      lokasi: computedLokasi || 'Warehouse',
+      warehouseId: whId,
+      binRef: binRef || '',
       qrCode,
       projectId: projectId || undefined,
       photo: req.file ? req.file.path : undefined,
+      notes: notes || undefined,
+      lastMovedAt: nowWIB(),
     });
     
     await tool.save();
-    res.status(201).json(tool);
+
+    // Create initial register movement record
+    try {
+      const initialMovement = new ToolMovement({
+        toolId: tool._id,
+        toWarehouseId: whId,
+        toBin: binRef || '',
+        toLokasi: tool.lokasi,
+        action: 'initial_register',
+        qty: tool.stok || 1,
+        byUserId: req.user._id,
+        condition: tool.kondisi,
+        evidence: {
+          photo: tool.photo || null,
+          serverTime: nowWIB(),
+          notes: 'Pendaftaran inventaris alat baru',
+          photoPurged: false,
+        },
+      });
+      await initialMovement.save();
+    } catch (movErr) {
+      console.warn('Initial movement save warning:', movErr.message);
+    }
+
+    const populated = await Tool.findById(tool._id)
+      .populate('assignedTo', 'fullName username role')
+      .populate('projectId', 'nama code')
+      .populate('warehouseId', 'name code type geo zones isDefault');
+
+    res.status(201).json(populated);
   } catch (error) {
     console.error('Create tool error:', error);
     res.status(500).json({ msg: 'Server error' });
@@ -819,7 +1190,7 @@ router.post('/', auth, authorize('owner', 'director', 'asset_admin'), uploadLimi
 // PUT /api/tools/:id - Update tool
 router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), uploadLimiter, upload.single('photo'), async (req, res) => {
   try {
-    const allowedFields = ['nama', 'kategori', 'stok', 'satuan', 'kondisi', 'lokasi', 'qrCode', 'notes'];
+    const allowedFields = ['nama', 'kategori', 'stok', 'satuan', 'kondisi', 'lokasi', 'qrCode', 'notes', 'warehouseId', 'binRef'];
     const updateData = { updatedAt: nowWIB() };
     allowedFields.forEach(field => {
       if (req.body[field] !== undefined) {
@@ -828,6 +1199,11 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), uploadLi
     });
 
     if (req.file) {
+      // Delete old photo if exists
+      const existing = await Tool.findById(req.params.id);
+      if (existing && existing.photo) {
+        deletePhysicalFile(existing.photo);
+      }
       updateData.photo = req.file.path;
     }
 
@@ -835,7 +1211,10 @@ router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), uploadLi
       req.params.id,
       { $set: updateData },
       { new: true }
-    );
+    )
+      .populate('assignedTo', 'fullName username role')
+      .populate('projectId', 'nama code')
+      .populate('warehouseId', 'name code type geo zones isDefault');
     
     if (!tool) {
       return res.status(404).json({ msg: 'Tool not found' });

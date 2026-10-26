@@ -2,20 +2,34 @@ import React, { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import {
   Search, Wrench, Plus, Package, MapPin, User,
   Calendar, Edit3, Trash2, X, ChevronDown, ChevronRight, AlertTriangle,
-  CheckCircle2, Settings, Archive, Camera, UserX, Warehouse,
-  LayoutGrid, List, FileSpreadsheet, Download, UploadCloud, Layers, Filter, Check
+  CheckCircle2, Settings, Archive, Camera, UserX, Warehouse as WarehouseIcon,
+  LayoutGrid, List, FileSpreadsheet, Download, UploadCloud, Layers, Filter, Check,
+  History, Compass, ShieldCheck, ArrowRightLeft, Building2
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import api, { getToolDashboard, createTool, updateTool, deleteTool, exportToolsExcel } from '../api/api';
+import api, {
+  getToolDashboard,
+  createTool,
+  updateTool,
+  deleteTool,
+  exportToolsExcel,
+  getWarehouses,
+  getMyTools,
+  getUsers,
+} from '../api/api';
 import { Card, Input, Badge, EmptyState, LoadingOverlay, Button } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
 import { PhotoView } from 'react-photo-view';
-import { Tool } from '../types';
+import { Tool, Warehouse } from '../types';
 import { getImageUrl } from '../utils/image';
 import { formatDate as formatWIBDate } from '../utils/date';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import ToolsExcelImportModal from '../components/tools/ToolsExcelImportModal';
+import ToolMovementModal, { MovementAction } from '../components/tools/ToolMovementModal';
+import ToolMovementsDrawer from '../components/tools/ToolMovementsDrawer';
+import WarehouseManagementModal from '../components/tools/WarehouseManagementModal';
+import ToolsMapView from '../components/tools/ToolsMapView';
 
 const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
 
@@ -55,7 +69,14 @@ const DEFAULT_EXPORT_COLUMNS = EXPORTABLE_TOOL_COLUMNS.filter(c => c.default).ma
 const COMPACT_EXPORT_COLUMNS = ['no', 'nama', 'kondisi', 'stok', 'lokasi', 'status'];
 
 const EMPTY_FORM = {
-  nama: '', kategori: '', stok: 1, satuan: 'unit', kondisi: 'Baik', lokasi: 'Warehouse'
+  nama: '',
+  kategori: '',
+  stok: 1,
+  satuan: 'unit',
+  kondisi: 'Baik',
+  lokasi: 'Warehouse',
+  warehouseId: '',
+  binRef: '',
 };
 
 const DENSITY_CONFIG = {
@@ -98,6 +119,25 @@ export default function Tools() {
     return (localStorage.getItem('tools_view_mode') as 'card' | 'table') || 'table';
   });
   const [tableDensity, setTableDensity] = useState<'compact' | 'normal' | 'comfortable'>('normal');
+
+  // Navigation tab
+  const [activeTab, setActiveTab] = useState<'inventory' | 'my_tools' | 'map'>('inventory');
+
+  // Master data states
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [myTools, setMyTools] = useState<Tool[]>([]);
+  const [usersList, setUsersList] = useState<Array<{ _id: string; fullName: string; role?: string }>>([]);
+  const [projectsList, setProjectsList] = useState<Array<{ _id: string; nama: string; code?: string }>>([]);
+
+  // Movement & Drawer modal states
+  const [movementModalOpen, setMovementModalOpen] = useState(false);
+  const [selectedToolForMovement, setSelectedToolForMovement] = useState<Tool | null>(null);
+  const [movementDefaultAction, setMovementDefaultAction] = useState<MovementAction>('check_out');
+
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [selectedToolForHistory, setSelectedToolForHistory] = useState<Tool | null>(null);
+
+  const [warehouseModalOpen, setWarehouseModalOpen] = useState(false);
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -145,14 +185,36 @@ export default function Tools() {
 
   const fetchData = async () => {
     try {
-      const data = await getToolDashboard(search);
-      setTools(data.tools || []);
-      setStats(data.stats || null);
+      const [dashData, whData, myToolsData, usersData, projectsRes] = await Promise.all([
+        getToolDashboard(search),
+        getWarehouses().catch(() => []),
+        getMyTools().catch(() => []),
+        getUsers().catch(() => []),
+        api.get('/projects').catch(() => ({ data: [] })),
+      ]);
+
+      setTools(dashData.tools || []);
+      setStats(dashData.stats || null);
+      setWarehouses(whData || []);
+      setMyTools(myToolsData || []);
+      setUsersList(Array.isArray(usersData) ? usersData : usersData?.users || []);
+      setProjectsList(Array.isArray(projectsRes.data) ? projectsRes.data : []);
     } catch (err) {
-      console.error('Failed to fetch tools', err);
+      console.error('Failed to fetch tools data', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const openMovementModal = (tool: Tool, defaultAction: MovementAction = 'check_out') => {
+    setSelectedToolForMovement(tool);
+    setMovementDefaultAction(defaultAction);
+    setMovementModalOpen(true);
+  };
+
+  const openHistoryDrawer = (tool: Tool) => {
+    setSelectedToolForHistory(tool);
+    setHistoryDrawerOpen(true);
   };
 
   useEffect(() => {
@@ -285,14 +347,25 @@ export default function Tools() {
 
   // CRUD handlers
   const openAddModal = () => {
+    const defaultWh = warehouses.find(w => w.isDefault) || warehouses[0];
     setEditingTool(null);
-    setFormData(EMPTY_FORM);
+    setFormData({
+      ...EMPTY_FORM,
+      warehouseId: defaultWh ? defaultWh._id : '',
+      lokasi: defaultWh ? defaultWh.name : 'Warehouse',
+    });
     setPhoto(null);
     setPhotoPreview(null);
     setShowAddModal(true);
   };
 
   const openEditModal = (tool: Tool) => {
+    const whId = typeof tool.warehouseId === 'object' && tool.warehouseId
+      ? tool.warehouseId._id
+      : typeof tool.warehouseId === 'string'
+      ? tool.warehouseId
+      : '';
+
     setEditingTool(tool);
     setFormData({
       nama: tool.nama,
@@ -301,6 +374,8 @@ export default function Tools() {
       satuan: tool.satuan,
       kondisi: tool.kondisi || 'Baik',
       lokasi: tool.lokasi || '',
+      warehouseId: whId,
+      binRef: tool.binRef || '',
     });
     setPhoto(null);
     setPhotoPreview(tool.photo ? getImageUrl(tool.photo) : null);
@@ -408,6 +483,19 @@ export default function Tools() {
           {canManage && (
             <button
               type="button"
+              onClick={() => setWarehouseModalOpen(true)}
+              className="flex items-center gap-1.5 py-1.5 px-3 bg-cyan-700 hover:bg-cyan-600 active:bg-cyan-800 text-white rounded-lg text-xs font-semibold transition-all shadow-2xs active:scale-95 cursor-pointer"
+              title="Kelola Fasilitas Gudang & Lokasi Bin"
+            >
+              <WarehouseIcon size={15} />
+              <span className="max-sm:hidden">Kelola Gudang</span>
+              <span className="hidden max-sm:inline">Gudang</span>
+            </button>
+          )}
+
+          {canManage && (
+            <button
+              type="button"
               onClick={() => setShowImportModal(true)}
               className="flex items-center gap-1.5 py-1.5 px-3 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white rounded-lg text-xs font-semibold transition-all shadow-2xs active:scale-95 cursor-pointer"
               title="Impor Alat dari Excel (.xlsx / .csv)"
@@ -448,7 +536,185 @@ export default function Tools() {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* Module Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-border-light pb-1 overflow-x-auto no-scrollbar">
+        <button
+          type="button"
+          onClick={() => setActiveTab('inventory')}
+          className={`flex items-center gap-2 py-2 px-3.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'inventory'
+              ? 'bg-primary text-white shadow-xs'
+              : 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'
+          }`}
+        >
+          <Package size={15} />
+          <span>Semua Inventaris</span>
+          <span
+            className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              activeTab === 'inventory' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-text-primary'
+            }`}
+          >
+            {tools.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('my_tools')}
+          className={`flex items-center gap-2 py-2 px-3.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'my_tools'
+              ? 'bg-primary text-white shadow-xs'
+              : 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'
+          }`}
+        >
+          <User size={15} />
+          <span>Alat Saya (Peminjaman)</span>
+          <span
+            className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+              myTools.length > 0
+                ? activeTab === 'my_tools'
+                  ? 'bg-emerald-400 text-slate-900'
+                  : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                : activeTab === 'my_tools'
+                ? 'bg-white/25 text-white'
+                : 'bg-slate-200 dark:bg-slate-700 text-text-primary'
+            }`}
+          >
+            {myTools.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('map')}
+          className={`flex items-center gap-2 py-2 px-3.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'map'
+              ? 'bg-primary text-white shadow-xs'
+              : 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'
+          }`}
+        >
+          <Compass size={15} />
+          <span>Peta Lokasi & Geofence</span>
+          <span
+            className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              activeTab === 'map' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-text-primary'
+            }`}
+          >
+            {warehouses.length} Fasilitas
+          </span>
+        </button>
+      </div>
+
+      {/* Map View Tab */}
+      {activeTab === 'map' && (
+        <ToolsMapView
+          warehouses={warehouses}
+          tools={tools}
+          onSelectWarehouseFilter={(whName) => {
+            setSearch(whName);
+            setActiveTab('inventory');
+          }}
+        />
+      )}
+
+      {/* My Tools Tab */}
+      {activeTab === 'my_tools' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-2xl border border-cyan-500/30 flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <User size={18} className="text-cyan-400" />
+                <span>Alat & Peralatan yang Sedang Anda Pegang</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Alat yang Anda pinjam wajib dikembalikan ke gudang dengan bukti foto ber-watermark GPS saat pekerjaan selesai.
+              </p>
+            </div>
+            <div className="px-3 py-1 rounded-xl bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 font-bold text-xs">
+              {myTools.length} Alat Aktif
+            </div>
+          </div>
+
+          {myTools.length === 0 ? (
+            <div className="py-16 text-center bg-bg-white rounded-2xl border border-border-light p-6 space-y-2">
+              <CheckCircle2 size={42} className="text-emerald-500 mx-auto mb-1" />
+              <h3 className="text-base font-bold text-text-primary">Tidak Ada Tanggungan Alat</h3>
+              <p className="text-xs text-text-muted max-w-md mx-auto">
+                Anda tidak memiliki alat yang sedang dipinjam saat ini. Jika Anda mengambil alat dari gudang, mintalah Supervisor atau Asset Admin untuk melakukan Check-out kepada Anda.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {myTools.map((tool) => (
+                <Card key={tool._id} className="p-4 flex flex-col justify-between gap-3 border border-border-light shadow-xs hover:border-cyan-500/40 transition-all">
+                  <div className="flex items-start gap-3">
+                    <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-bg-secondary border border-border-light flex items-center justify-center">
+                      {tool.photo ? (
+                        <PhotoView src={getImageUrl(tool.photo)}>
+                          <img src={getImageUrl(tool.photo)} alt={tool.nama} className="w-full h-full object-cover cursor-pointer" />
+                        </PhotoView>
+                      ) : (
+                        <Wrench size={24} className="text-text-muted" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">{tool.kategori || 'Alat'}</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          {tool.kondisi || 'Baik'}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-sm text-text-primary truncate mt-0.5">{tool.nama}</h4>
+                      <p className="text-xs text-text-muted mt-1 font-mono">
+                        Stok: <span className="font-bold text-text-primary">{tool.stok} {tool.satuan}</span>
+                      </p>
+                      {tool.binRef && (
+                        <p className="text-[11px] text-cyan-600 dark:text-cyan-400 font-semibold mt-0.5 truncate">
+                          Rak Asal: {tool.binRef}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions for My Tools */}
+                  <div className="pt-3 border-t border-border-light flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openMovementModal(tool, 'return')}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    >
+                      <Camera size={14} />
+                      <span>Kembalikan (Return)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openMovementModal(tool, 'hand_over')}
+                      className="flex items-center justify-center gap-1.5 py-2 px-3 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                      title="Oper Alih ke Rekan Teknisi"
+                    >
+                      <ArrowRightLeft size={14} />
+                      <span>Oper Alih</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openHistoryDrawer(tool)}
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-text-secondary transition-colors cursor-pointer"
+                      title="Riwayat Pergerakan"
+                    >
+                      <History size={15} />
+                    </button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Main Inventory Tab Content */}
+      {activeTab === 'inventory' && (
+        <>
+          {/* KPI Cards */}
       {stats && (
         <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2 max-sm:grid-cols-2 max-sm:gap-2">
           <Card className="flex items-center gap-2.5 p-3 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-xs">
@@ -717,9 +983,7 @@ export default function Tools() {
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px]`}>Lokasi</th>
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[150px]`}>Pengguna / Proyek</th>
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px]`}>Pengecekan</th>
-                        {canManage && (
-                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky right-0 z-20 bg-slate-50 text-right w-24 border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Aksi</th>
-                        )}
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky right-0 z-20 bg-slate-50 text-right w-28 border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y border-border-light">
@@ -734,7 +998,7 @@ export default function Tools() {
                                 onClick={() => toggleGroupCollapse(group.key)}
                                 className="bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors cursor-pointer select-none border-y border-border-light font-medium"
                               >
-                                <td colSpan={canManage ? 8 : 7} className="py-2 px-3">
+                                <td colSpan={8} className="py-2 px-3">
                                   <div className="flex items-center justify-between gap-3">
                                     <div className="flex items-center gap-2">
                                       <span className="w-5 h-5 rounded-md bg-white/80 dark:bg-slate-700 flex items-center justify-center text-text-muted shadow-2xs">
@@ -817,13 +1081,32 @@ export default function Tools() {
                                     <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums font-semibold text-text-primary`}>
                                       {tool.stok} <span className="font-sans text-xs font-normal text-text-muted">{tool.satuan}</span>
                                     </td>
-                                    {/* Lokasi */}
+                                    {/* Lokasi & Bin */}
                                     <td className={`${DENSITY_CONFIG[tableDensity].td} text-text-secondary`}>
-                                      {tool.lokasi ? (
-                                        <span className="inline-flex items-center gap-1 truncate">
-                                          <MapPin size={12} className="text-text-muted shrink-0" />
-                                          {tool.lokasi}
-                                        </span>
+                                      {tool.warehouseId && typeof tool.warehouseId === 'object' ? (
+                                        <div className="flex flex-col min-w-0">
+                                          <span className="inline-flex items-center gap-1 font-semibold text-xs text-cyan-700 dark:text-cyan-400 truncate">
+                                            <WarehouseIcon size={12} className="shrink-0" />
+                                            {tool.warehouseId.name}
+                                          </span>
+                                          {tool.binRef && (
+                                            <span className="text-[10px] font-mono text-text-muted truncate">
+                                              {tool.binRef}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : tool.lokasi ? (
+                                        <div className="flex flex-col min-w-0">
+                                          <span className="inline-flex items-center gap-1 truncate text-xs">
+                                            <MapPin size={12} className="text-text-muted shrink-0" />
+                                            {tool.lokasi}
+                                          </span>
+                                          {tool.binRef && (
+                                            <span className="text-[10px] font-mono text-text-muted truncate">
+                                              {tool.binRef}
+                                            </span>
+                                          )}
+                                        </div>
                                       ) : '-'}
                                     </td>
                                     {/* Assigned User / Project */}
@@ -847,26 +1130,44 @@ export default function Tools() {
                                       {tool.lastChecked ? formatDateDisplay(tool.lastChecked) : '-'}
                                     </td>
                                     {/* Sticky Aksi */}
-                                    {canManage && (
-                                      <td className={`${DENSITY_CONFIG[tableDensity].td} sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
-                                        <div className="flex items-center justify-end gap-1">
-                                          <button
-                                            onClick={() => openEditModal(tool)}
-                                            className="p-1.5 rounded hover:bg-primary-bg hover:text-primary text-text-muted transition-colors cursor-pointer"
-                                            title={t('tools.actions.edit')}
-                                          >
-                                            <Edit3 size={15} />
-                                          </button>
-                                          <button
-                                            onClick={() => handleDelete(tool)}
-                                            className="p-1.5 rounded hover:bg-danger-bg hover:text-danger text-text-muted transition-colors cursor-pointer"
-                                            title={t('tools.actions.delete')}
-                                          >
-                                            <Trash2 size={15} />
-                                          </button>
-                                        </div>
-                                      </td>
-                                    )}
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
+                                      <div className="flex items-center justify-end gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => openMovementModal(tool)}
+                                          className="p-1.5 rounded hover:bg-cyan-50 dark:hover:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400 transition-colors cursor-pointer"
+                                          title="Gerakkan / Pindahkan Alat (Watermark Foto)"
+                                        >
+                                          <Camera size={14} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => openHistoryDrawer(tool)}
+                                          className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer"
+                                          title="Lihat Riwayat Pergerakan & Bukti Foto"
+                                        >
+                                          <History size={14} />
+                                        </button>
+                                        {canManage && (
+                                          <>
+                                            <button
+                                              onClick={() => openEditModal(tool)}
+                                              className="p-1.5 rounded hover:bg-primary-bg hover:text-primary text-text-muted transition-colors cursor-pointer"
+                                              title={t('tools.actions.edit')}
+                                            >
+                                              <Edit3 size={14} />
+                                            </button>
+                                            <button
+                                              onClick={() => handleDelete(tool)}
+                                              className="p-1.5 rounded hover:bg-danger-bg hover:text-danger text-text-muted transition-colors cursor-pointer"
+                                              title={t('tools.actions.delete')}
+                                            >
+                                              <Trash2 size={14} />
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </td>
                                   </tr>
                                 );
                               })}
@@ -961,12 +1262,17 @@ export default function Tools() {
                                         <Archive size={12} />
                                         {tool.stok} {tool.satuan}
                                       </span>
-                                      {tool.lokasi && (
+                                      {tool.warehouseId && typeof tool.warehouseId === 'object' ? (
+                                        <span className="flex items-center gap-1 text-cyan-700 dark:text-cyan-400 font-semibold whitespace-nowrap">
+                                          <WarehouseIcon size={12} />
+                                          {tool.warehouseId.name} {tool.binRef ? `• ${tool.binRef}` : ''}
+                                        </span>
+                                      ) : tool.lokasi ? (
                                         <span className="flex items-center gap-1 text-text-muted whitespace-nowrap">
                                           <MapPin size={12} />
-                                          {tool.lokasi}
+                                          {tool.lokasi} {tool.binRef ? `• ${tool.binRef}` : ''}
                                         </span>
-                                      )}
+                                      ) : null}
                                       {tool.assignedTo && (
                                         <span className="flex items-center gap-1 whitespace-nowrap !text-primary font-medium">
                                           <User size={12} />
@@ -988,16 +1294,42 @@ export default function Tools() {
                                     </div>
                                   </div>
 
-                                  {canManage && (
-                                    <div className="flex gap-1.5 shrink-0">
-                                      <button className="w-7 h-7 rounded border border-border-light bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-primary hover:!border-primary hover:!bg-primary-bg" onClick={() => openEditModal(tool)} title={t('tools.actions.edit')}>
-                                        <Edit3 size={14} />
-                                      </button>
-                                      <button className="w-7 h-7 rounded border border-border-light bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-danger hover:!border-danger hover:!bg-danger-bg" onClick={() => handleDelete(tool)} title={t('tools.actions.delete')}>
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </div>
-                                  )}
+                                  <div className="flex gap-1.5 shrink-0">
+                                    <button
+                                      type="button"
+                                      className="w-7 h-7 rounded border border-cyan-500/30 bg-cyan-500/10 flex items-center justify-center cursor-pointer text-cyan-600 dark:text-cyan-400 transition-all hover:bg-cyan-500/20"
+                                      onClick={() => openMovementModal(tool)}
+                                      title="Gerakkan / Pindahkan Alat (Watermark Foto)"
+                                    >
+                                      <Camera size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="w-7 h-7 rounded border border-border-light bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all hover:text-text-primary hover:bg-bg-secondary"
+                                      onClick={() => openHistoryDrawer(tool)}
+                                      title="Riwayat Audit & Watermark"
+                                    >
+                                      <History size={13} />
+                                    </button>
+                                    {canManage && (
+                                      <>
+                                        <button
+                                          className="w-7 h-7 rounded border border-border-light bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-primary hover:!border-primary hover:!bg-primary-bg"
+                                          onClick={() => openEditModal(tool)}
+                                          title={t('tools.actions.edit')}
+                                        >
+                                          <Edit3 size={13} />
+                                        </button>
+                                        <button
+                                          className="w-7 h-7 rounded border border-border-light bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-danger hover:!border-danger hover:!bg-danger-bg"
+                                          onClick={() => handleDelete(tool)}
+                                          title={t('tools.actions.delete')}
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
                               </Card>
                             );
@@ -1010,10 +1342,12 @@ export default function Tools() {
               </div>
             )
           )}
+          </div>
         </div>
-      </div>
+      </>
+    )}
 
-      {/* Add/Edit Modal */}
+    {/* Add/Edit Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => { setShowAddModal(false); setEditingTool(null); }}>
           <div 
@@ -1082,14 +1416,38 @@ export default function Tools() {
                   />
                 </div>
                 <div className="flex flex-col gap-2 flex-1">
-                  <label className="text-sm font-semibold text-text-primary">{t('tools.modal.location')}</label>
-                  <input
-                    className="w-full p-3 px-4 border border-border rounded-md text-base text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
-                    value={formData.lokasi}
-                    onChange={e => setFormData(p => ({ ...p, lokasi: e.target.value }))}
-                    placeholder={t('tools.modal.locationPlaceholder')}
-                  />
+                  <label className="text-sm font-semibold text-text-primary">Fasilitas Gudang</label>
+                  <select
+                    className="w-full p-3 px-4 border border-border rounded-md text-sm text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 cursor-pointer"
+                    value={formData.warehouseId}
+                    onChange={(e) => {
+                      const whId = e.target.value;
+                      const wh = warehouses.find(w => w._id === whId);
+                      setFormData(p => ({
+                        ...p,
+                        warehouseId: whId,
+                        lokasi: wh ? wh.name : p.lokasi,
+                      }));
+                    }}
+                  >
+                    <option value="">-- Pilih Fasilitas Gudang --</option>
+                    {warehouses.map((w) => (
+                      <option key={w._id} value={w._id}>
+                        {w.name} {w.isDefault ? '(Head Office)' : `[${w.code}]`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-2 mb-4">
+                <label className="text-sm font-semibold text-text-primary">Posisi Rak / Bin Penyimpanan (Opsional)</label>
+                <input
+                  className="w-full p-3 px-4 border border-border rounded-md text-sm text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
+                  value={formData.binRef}
+                  onChange={e => setFormData(p => ({ ...p, binRef: e.target.value }))}
+                  placeholder="Contoh: Zona A / Rak 1 / B-02"
+                />
               </div>
 
               <div className="flex gap-3 max-sm:flex-col mb-4">
@@ -1404,6 +1762,45 @@ export default function Tools() {
         onSuccess={(msg) => {
           fetchData();
           setToastMessage({ type: 'success', text: msg });
+        }}
+      />
+
+      {/* Tool Movement Modal (Check-out, Return, Hand-over, Transfer, Relocation, Service) */}
+      <ToolMovementModal
+        isOpen={movementModalOpen}
+        onClose={() => {
+          setMovementModalOpen(false);
+          setSelectedToolForMovement(null);
+        }}
+        tool={selectedToolForMovement}
+        warehouses={warehouses}
+        users={usersList}
+        projects={projectsList}
+        defaultAction={movementDefaultAction}
+        onSuccess={(updatedTool, msg) => {
+          fetchData();
+          setToastMessage({ type: 'success', text: msg });
+        }}
+      />
+
+      {/* Tool Movement History & Audit Drawer */}
+      <ToolMovementsDrawer
+        isOpen={historyDrawerOpen}
+        onClose={() => {
+          setHistoryDrawerOpen(false);
+          setSelectedToolForHistory(null);
+        }}
+        tool={selectedToolForHistory}
+      />
+
+      {/* Warehouse Master Data Modal */}
+      <WarehouseManagementModal
+        isOpen={warehouseModalOpen}
+        onClose={() => setWarehouseModalOpen(false)}
+        warehouses={warehouses}
+        onRefresh={() => {
+          fetchData();
+          setToastMessage({ type: 'success', text: 'Data gudang berhasil disinkronkan' });
         }}
       />
 

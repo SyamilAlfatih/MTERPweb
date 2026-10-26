@@ -35,6 +35,7 @@ const {
   localPurchaseRoutes,
   spklRoutes,
   approvalConfigRoutes,
+  warehouseRoutes,
 } = require('./routes');
 const updatesRoutes = require('./routes/updates');
 const dashboardRoutes = require('./routes/dashboard');
@@ -139,6 +140,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/attendance-session', attendanceSessionRoutes);
 app.use('/api/spkl', spklRoutes);
 app.use('/api/approval-config', approvalConfigRoutes);
+app.use('/api/warehouses', warehouseRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

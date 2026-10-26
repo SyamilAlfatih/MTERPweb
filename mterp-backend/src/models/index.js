@@ -23,6 +23,8 @@ const SPKL = require('./SPKL');
 const SPKLBatch = require('./SPKLBatch');
 const ProcurementConfig = require('./ProcurementConfig');
 const SPKLConfig = require('./SPKLConfig');
+const Warehouse = require('./Warehouse');
+const ToolMovement = require('./ToolMovement');
 
 module.exports = {
   User,
@@ -50,6 +52,8 @@ module.exports = {
   SPKLBatch,
   ProcurementConfig,
   SPKLConfig,
+  Warehouse,
+  ToolMovement,
 };
 
 

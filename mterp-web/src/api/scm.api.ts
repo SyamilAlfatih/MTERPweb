@@ -5,6 +5,9 @@ import {
   AddProjectSupplyDTO,
   ProcurementAuthorizersResponse,
   ProcurementConfigResponse,
+  Tool,
+  Warehouse,
+  ToolMovement,
 } from '../types';
 
 // === TOOL MANAGEMENT API ===
@@ -103,6 +106,61 @@ export const parseToolsExcel = async (file: File) => {
 
 export const commitToolsImport = async (rows: any[], mode: 'skip' | 'update' | 'insert') => {
   const response = await api.post('/tools/import-excel', { rows, mode });
+  return response.data;
+};
+
+// === WAREHOUSE MASTER DATA API ===
+
+export const getWarehouses = async (params?: { active?: boolean; search?: string }): Promise<Warehouse[]> => {
+  const queryParams = new URLSearchParams();
+  if (params?.active) queryParams.append('active', 'true');
+  if (params?.search) queryParams.append('search', params.search);
+  const response = await api.get(`/warehouses?${queryParams.toString()}`);
+  return response.data;
+};
+
+export const getWarehouse = async (id: string): Promise<Warehouse> => {
+  const response = await api.get(`/warehouses/${id}`);
+  return response.data;
+};
+
+export const createWarehouse = async (data: Partial<Warehouse>): Promise<Warehouse> => {
+  const response = await api.post('/warehouses', data);
+  return response.data;
+};
+
+export const updateWarehouse = async (id: string, data: Partial<Warehouse>): Promise<Warehouse> => {
+  const response = await api.put(`/warehouses/${id}`, data);
+  return response.data;
+};
+
+export const deleteWarehouse = async (id: string): Promise<{ msg: string }> => {
+  const response = await api.delete(`/warehouses/${id}`);
+  return response.data;
+};
+
+// === TOOL MOVEMENT & AUDIT API ===
+
+export const getMyTools = async (): Promise<Tool[]> => {
+  const response = await api.get('/tools/my-tools');
+  return response.data;
+};
+
+export const getToolMovements = async (toolId: string): Promise<ToolMovement[]> => {
+  const response = await api.get(`/tools/${toolId}/movements`);
+  return response.data;
+};
+
+export const recordToolMovement = async (formData: FormData): Promise<{
+  success: boolean;
+  msg: string;
+  tool: Tool;
+  movement: ToolMovement;
+  purgedCount: number;
+}> => {
+  const response = await api.post('/tools/movement', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
   return response.data;
 };
 

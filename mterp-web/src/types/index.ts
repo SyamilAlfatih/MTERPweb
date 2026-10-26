@@ -416,6 +416,89 @@ export interface MaterialRequest {
   updatedAt?: string;
 }
 
+export interface WarehouseBin {
+  _id?: string;
+  label: string;
+  capacity?: number;
+  notes?: string;
+}
+
+export interface WarehouseRack {
+  _id?: string;
+  name: string;
+  bins: WarehouseBin[];
+}
+
+export interface WarehouseZone {
+  _id?: string;
+  name: string;
+  code?: string;
+  racks: WarehouseRack[];
+}
+
+export interface Warehouse {
+  _id: string;
+  name: string;
+  code: string;
+  type: 'head_office' | 'central_warehouse' | 'project_site' | 'workshop' | 'transit';
+  address?: string;
+  geo?: {
+    lat: number;
+    lng: number;
+    radiusMeters?: number;
+  };
+  projectId?: { _id: string; nama: string; code?: string } | null;
+  managerId?: { _id: string; fullName: string; username?: string; role?: string; phone?: string } | null;
+  zones?: WarehouseZone[];
+  isDefault?: boolean;
+  isActive?: boolean;
+  toolsCount?: number;
+  toolsUnits?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ToolMovementEvidence {
+  photo?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  accuracy?: number | null;
+  capturedAt?: string | null;
+  serverTime?: string;
+  isManualGpsOverride?: boolean;
+  notes?: string;
+  photoPurged?: boolean;
+  photoPurgedAt?: string | null;
+}
+
+export interface ToolMovement {
+  _id: string;
+  toolId: string | any;
+  fromWarehouseId?: { _id: string; name: string; code: string } | null;
+  fromBin?: string;
+  fromLokasi?: string;
+  toWarehouseId?: { _id: string; name: string; code: string } | null;
+  toBin?: string;
+  toLokasi?: string;
+  action:
+    | 'check_out'
+    | 'return'
+    | 'hand_over'
+    | 'transfer'
+    | 'relocation'
+    | 'maintenance_in'
+    | 'maintenance_out'
+    | 'condition_change'
+    | 'initial_register';
+  qty: number;
+  byUserId: { _id: string; fullName: string; username?: string; role?: string };
+  assignedTo?: { _id: string; fullName: string; username?: string; role?: string } | null;
+  projectId?: { _id: string; nama: string; code?: string } | null;
+  condition?: string;
+  evidence: ToolMovementEvidence;
+  createdAt: string;
+}
+
 export interface Tool {
   _id: string;
   nama: string;
@@ -424,14 +507,18 @@ export interface Tool {
   satuan: string;
   kondisi?: string;
   lokasi?: string;
+  warehouseId?: Warehouse | string | null;
+  binRef?: string;
+  lastMovedAt?: string;
   qrCode?: string;
-  assignedTo?: { _id: string; fullName: string };
-  projectId?: { _id: string; nama: string };
+  assignedTo?: { _id: string; fullName: string; username?: string; role?: string; phone?: string };
+  projectId?: { _id: string; nama: string; code?: string };
   lastChecked?: string;
   photo?: string;
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
+  lastMovement?: ToolMovement | null;
 }
 
 export interface ApprovalItem {

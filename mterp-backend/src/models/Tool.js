@@ -25,6 +25,19 @@ const toolSchema = new mongoose.Schema({
     default: 'Baik',
   },
   lokasi: String,
+  warehouseId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Warehouse',
+    default: null,
+  },
+  binRef: {
+    type: String,
+    trim: true,
+  },
+  lastMovedAt: {
+    type: Date,
+    default: null,
+  },
   qrCode: String,
   photo: String,
   assignedTo: {
