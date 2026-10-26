@@ -62,8 +62,22 @@ const slipGajiSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['draft', 'authorized', 'issued'],
+        enum: ['draft', 'authorized', 'issued', 'paid'],
         default: 'draft',
+    },
+    paymentProof: {
+        fileUrl: { type: String, default: '' },
+        fileName: { type: String, default: '' },
+        uploadedAt: { type: Date },
+        uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        notes: { type: String, default: '' },
+        amountPaid: { type: Number },
+        paymentDate: { type: Date },
+    },
+    paidAt: { type: Date },
+    paidBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
     },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -77,5 +91,6 @@ const slipGajiSchema = new mongoose.Schema({
 });
 
 slipGajiSchema.index({ workerId: 1, projectId: 1, 'period.startDate': 1, 'period.endDate': 1 }, { unique: true });
+slipGajiSchema.index({ status: 1 });
 
 module.exports = mongoose.model('SlipGaji', slipGajiSchema);

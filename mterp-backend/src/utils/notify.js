@@ -13,6 +13,7 @@ function resolveNotificationUrl(doc) {
   if (doc.data?.taskId) return `/tasks?id=${doc.data.taskId}`;
   if (doc.data?.requestId) return `/requests`;
   if (doc.data?.kasbonId) return `/kasbon`;
+  if (doc.data?.slipId || doc.type === 'payroll') return '/my-payments';
   if (doc.data?.reportId && doc.data?.projectId) return `/projects/${doc.data.projectId}/reports`;
   if (doc.data?.projectId) return `/projects/${doc.data.projectId}`;
   return '/notifications';

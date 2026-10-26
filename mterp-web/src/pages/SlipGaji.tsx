@@ -35,6 +35,7 @@ import {
     Building,
     Users,
     RefreshCw,
+    FileCheck2,
 } from 'lucide-react';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -54,7 +55,8 @@ import {
     SlipGajiDetailModal, 
     SlipData, 
     STATUS_BADGE, 
-    exportSlipPdfHelper 
+    exportSlipPdfHelper,
+    FinalizePaymentModal,
 } from '../components/payroll';
 import { formatRupiah as formatRp } from '../utils/currency';
 import { Worker } from '../types';
@@ -85,6 +87,7 @@ const matchesSlipSearch = (s: SlipData, query: string, status: string = 'all') =
         if (status === 'draft' && s.status !== 'draft') return false;
         if (status === 'authorized' && s.status !== 'authorized') return false;
         if (status === 'issued' && s.status !== 'issued') return false;
+        if (status === 'paid' && s.status !== 'paid') return false;
     }
     const q = query.trim().toLowerCase();
     if (!q) return true;
@@ -135,7 +138,7 @@ export default function SlipGaji() {
     const [filterEnd, setFilterEnd] = useState(initialWeekly.endDate);
     const [filterProject, setFilterProject] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'authorized' | 'issued'>('all');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'authorized' | 'issued' | 'paid'>('all');
     const searchInputRef = useRef<HTMLInputElement>(null);
     const filterStartRef = useRef<HTMLInputElement>(null);
     const filterEndRef = useRef<HTMLInputElement>(null);
@@ -205,6 +208,10 @@ export default function SlipGaji() {
     // Detail modal
     const [detailModal, setDetailModal] = useState(false);
     const [selectedSlip, setSelectedSlip] = useState<SlipData | null>(null);
+
+    // Finalize payment modal
+    const [finalizeModal, setFinalizeModal] = useState(false);
+    const [finalizeSlip, setFinalizeSlip] = useState<SlipData | null>(null);
 
     // Auth modal
     const [authModal, setAuthModal] = useState(false);
@@ -672,9 +679,37 @@ export default function SlipGaji() {
         setAuthModal(true);
     };
     const canSign = (slip: SlipData) => {
+        if (slip.status === 'paid') return false;
         if (['director', 'president_director', 'operational_director'].includes(role) && !slip.authorization.directorPassphrase) return true;
         if (role === 'owner' && !slip.authorization.ownerPassphrase) return true;
         return false;
+    };
+
+    const canFinalize = (slip: SlipData) => {
+        if (slip.status !== 'authorized' && slip.status !== 'issued') return false;
+        return PAYROLL_ALLOWED_ROLES.includes(role);
+    };
+
+    const openFinalize = (slip: SlipData) => {
+        setFinalizeSlip(slip);
+        setFinalizeModal(true);
+    };
+
+    const handleFinalizeSuccess = (updatedSlip: SlipData) => {
+        setSlips(prev => prev.map(s => s._id === updatedSlip._id ? updatedSlip : s));
+        if (selectedSlip?._id === updatedSlip._id) {
+            setSelectedSlip(updatedSlip);
+        }
+        setAlertData({
+            visible: true,
+            type: 'success',
+            title: t('slipGaji.messages.finalizeSuccess', 'Pembayaran Lunas (SSOT)'),
+            message: t(
+                'slipGaji.messages.finalizeSuccessDesc',
+                'Slip gaji berhasil difinalisasi sebagai LUNAS dan kehadiran terkait otomatis ditandai Paid (SSOT).'
+            ),
+        });
+        fetchSlips();
     };
 
     const handleExportPdf = exportSlipPdfHelper;
@@ -711,8 +746,9 @@ export default function SlipGaji() {
     const draftSlipsCount = useMemo(() => slips.filter(s => s.status === 'draft').length, [slips]);
     const approvedSlipsCount = useMemo(() => slips.filter(s => s.status === 'authorized').length, [slips]);
     const issuedSlipsCount = useMemo(() => slips.filter(s => s.status === 'issued').length, [slips]);
+    const paidSlipsCount = useMemo(() => slips.filter(s => s.status === 'paid').length, [slips]);
 
-    const filteredSlips = useMemo(() => {
+    const basePeriodSlips = useMemo(() => {
         return slips.filter(s => {
             if (filterProject !== 'all') {
                 if (filterProject === 'unassigned') {
@@ -727,9 +763,13 @@ export default function SlipGaji() {
             } else if (payrollCategory === 'management') {
                 if (!isManagementRole(s.workerId?.role) && !isSupervisorRole(s.workerId?.role)) return false;
             }
-            return matchesSlipSearch(s, searchQuery, statusFilter);
+            return true;
         });
-    }, [slips, searchQuery, statusFilter, filterProject, payrollCategory]);
+    }, [slips, filterProject, payrollCategory]);
+
+    const filteredSlips = useMemo(() => {
+        return basePeriodSlips.filter(s => matchesSlipSearch(s, searchQuery, statusFilter));
+    }, [basePeriodSlips, searchQuery, statusFilter]);
 
     const { gridProps, getRowProps, getCellProps } = useDataGridKeyboard(
         filteredSlips.length,
@@ -759,21 +799,28 @@ export default function SlipGaji() {
     }, [filteredSlips.length, selectedSlipIds.length]);
 
     const payrollSummaryMetrics = useMemo(() => {
-        const totalNetPay = filteredSlips.reduce((sum, s) => sum + (s.earnings?.netPay || 0), 0);
-        const issuedSlips = filteredSlips.filter(s => s.status === 'issued');
-        const totalPaid = issuedSlips.reduce((sum, s) => sum + (s.earnings?.netPay || 0), 0);
-        const draftCount = filteredSlips.filter(s => s.status === 'draft').length;
-        const authorizedCount = filteredSlips.filter(s => s.status === 'authorized').length;
-        const totalOvertimeHours = filteredSlips.reduce((sum, s) => sum + (s.attendanceSummary?.totalOvertimeHours || 0), 0);
+        const totalNetPay = basePeriodSlips.reduce((sum, s) => sum + (s.earnings?.netPay || 0), 0);
+        const paidSlips = basePeriodSlips.filter(s => s.status === 'paid');
+        const totalPaidRealization = paidSlips.reduce((sum, s) => sum + (s.earnings?.netPay || 0), 0);
+        const issuedSlips = basePeriodSlips.filter(s => s.status === 'issued');
+        const totalIssued = issuedSlips.reduce((sum, s) => sum + (s.earnings?.netPay || 0), 0);
+        const draftCount = basePeriodSlips.filter(s => s.status === 'draft').length;
+        const authorizedCount = basePeriodSlips.filter(s => s.status === 'authorized').length;
+        const totalOvertimeHours = basePeriodSlips.reduce((sum, s) => sum + (s.attendanceSummary?.totalOvertimeHours || 0), 0);
+        const realizationPercent = totalNetPay > 0 ? Math.round((totalPaidRealization / totalNetPay) * 100) : 0;
         return {
             totalNetPay,
-            totalPaid,
-            paidCount: issuedSlips.length,
+            totalPaidRealization,
+            totalPaid: totalPaidRealization,
+            paidCount: paidSlips.length,
+            issuedCount: issuedSlips.length,
+            totalIssued,
             draftCount,
             authorizedCount,
             totalOvertimeHours,
+            realizationPercent,
         };
-    }, [filteredSlips]);
+    }, [basePeriodSlips]);
 
     return (
         <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 space-y-3.5">
@@ -808,7 +855,7 @@ export default function SlipGaji() {
                             {formatRp(payrollSummaryMetrics.totalNetPay)}
                         </div>
                         <span className="text-[11px] text-text-secondary mt-0.5 block">
-                            {filteredSlips.length} slip pada periode ini
+                            {basePeriodSlips.length} slip pada periode ini
                         </span>
                     </div>
                     <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 border border-teal-200/60 flex items-center justify-center shrink-0">
@@ -818,12 +865,12 @@ export default function SlipGaji() {
 
                 <Card className="!p-4 border border-border-light bg-bg-white shadow-xs rounded-xl flex items-center justify-between hover:border-emerald-300 transition-colors">
                     <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Sudah Diterbitkan (Issued)</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Realisasi Pembayaran (Lunas)</span>
                         <div className="text-xl font-bold font-mono tabular-nums text-emerald-600 mt-0.5">
-                            {formatRp(payrollSummaryMetrics.totalPaid)}
+                            {formatRp(payrollSummaryMetrics.totalPaidRealization)}
                         </div>
                         <span className="text-[11px] text-emerald-700/80 mt-0.5 block">
-                            {payrollSummaryMetrics.paidCount} slip siap transfer
+                            {payrollSummaryMetrics.paidCount} slip lunas ({payrollSummaryMetrics.realizationPercent}%){payrollSummaryMetrics.issuedCount > 0 ? ` • ${payrollSummaryMetrics.issuedCount} siap bayar` : ''}
                         </span>
                     </div>
                     <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200/60 flex items-center justify-center shrink-0">
@@ -833,12 +880,12 @@ export default function SlipGaji() {
 
                 <Card className="!p-4 border border-border-light bg-bg-white shadow-xs rounded-xl flex items-center justify-between hover:border-amber-300 transition-colors">
                     <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Menunggu Otorisasi</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Menunggu Otorisasi / Pembayaran</span>
                         <div className="text-xl font-bold font-mono tabular-nums text-amber-600 mt-0.5">
                             {payrollSummaryMetrics.draftCount} <span className="text-xs font-semibold text-text-muted">Draft</span>
                         </div>
                         <span className="text-[11px] text-text-secondary mt-0.5 block">
-                            {payrollSummaryMetrics.authorizedCount} slip terotorisasi
+                            {payrollSummaryMetrics.authorizedCount} diotorisasi • {payrollSummaryMetrics.issuedCount} diterbitkan
                         </span>
                     </div>
                     <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200/60 flex items-center justify-center shrink-0">
@@ -1133,6 +1180,7 @@ export default function SlipGaji() {
                             { id: 'draft', label: 'Draft', count: draftSlipsCount },
                             { id: 'authorized', label: 'Disetujui', count: approvedSlipsCount },
                             { id: 'issued', label: 'Terbit', count: issuedSlipsCount },
+                            { id: 'paid', label: 'Lunas', count: paidSlipsCount },
                         ].map(tab => (
                             <button
                                 key={tab.id}
@@ -1205,6 +1253,7 @@ export default function SlipGaji() {
             ) : (() => {
                 const draftSlips = filteredSlips.filter(s => s.status === 'draft');
                 const approvedSlips = filteredSlips.filter(s => s.status === 'authorized' || s.status === 'issued');
+                const paidSlips = filteredSlips.filter(s => s.status === 'paid');
 
                 const renderSlipCard = (slip: SlipData) => {
                     const badge = STATUS_BADGE[slip.status] || STATUS_BADGE.draft;
@@ -1252,6 +1301,19 @@ export default function SlipGaji() {
                                 <span>{formatDateRange(slip.period.startDate, slip.period.endDate)}</span>
                             </div>
 
+                            {/* Paid Proof Banner on Card */}
+                            {slip.status === 'paid' && (
+                                <div className="my-2 p-2 rounded-lg bg-emerald-50/90 border border-emerald-200 flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-1.5 text-emerald-800 font-bold truncate">
+                                        <FileCheck2 size={13} className="text-emerald-600 shrink-0" />
+                                        <span className="truncate">LUNAS (Bukti Terlampir)</span>
+                                    </div>
+                                    <span className="text-[10px] text-emerald-700 font-semibold font-mono shrink-0">
+                                        {slip.paidAt ? formatWIBDate(slip.paidAt, { day: 'numeric', month: 'short' }) : 'SSOT'}
+                                    </span>
+                                </div>
+                            )}
+
                             <div className="flex items-center gap-4 pb-3 border-b border-border-light mb-3">
                                 <div className="flex items-center gap-1 text-xs text-text-secondary">
                                     <Clock size={12} />
@@ -1288,6 +1350,11 @@ export default function SlipGaji() {
                                     {canSign(slip) && (
                                         <button className="w-7 h-7 border border-border bg-bg-white rounded-sm flex items-center justify-center cursor-pointer transition-all text-[#0D9488] hover:bg-[#CCFBF1] hover:border-[#0D9488]" onClick={() => openAuth(slip._id)} title="Sign">
                                             <Lock size={14} />
+                                        </button>
+                                    )}
+                                    {canFinalize(slip) && (
+                                        <button className="w-7 h-7 border border-emerald-300 bg-emerald-50 rounded-sm flex items-center justify-center cursor-pointer transition-all text-emerald-700 hover:bg-emerald-100 hover:border-emerald-500 shadow-xs" onClick={() => openFinalize(slip)} title="Finalisasi Pembayaran (Upload Bukti)">
+                                            <FileCheck2 size={14} />
                                         </button>
                                     )}
                                     {slip.status === 'draft' && (
@@ -1492,6 +1559,15 @@ export default function SlipGaji() {
                                                                         <Lock size={14} />
                                                                     </button>
                                                                 )}
+                                                                {canFinalize(slip) && (
+                                                                    <button
+                                                                        onClick={() => openFinalize(slip)}
+                                                                        className="p-1 rounded text-emerald-600 hover:bg-emerald-50 transition-colors"
+                                                                        title="Finalisasi Pembayaran (Upload Bukti)"
+                                                                    >
+                                                                        <FileCheck2 size={14} />
+                                                                    </button>
+                                                                )}
                                                                 <button
                                                                     onClick={() => handleExportPdf(slip)}
                                                                     className="p-1 rounded text-text-muted hover:text-primary hover:bg-primary-bg transition-colors"
@@ -1548,7 +1624,7 @@ export default function SlipGaji() {
                 }
 
                 return (
-                    <div className="grid grid-cols-2 gap-5 items-start">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
                         {/* Draft Column */}
                         <div className="flex flex-col gap-3">
                             <div className="flex items-center gap-2 pb-2 border-b-2 border-dashed border-[#D97706]">
@@ -1576,14 +1652,14 @@ export default function SlipGaji() {
 
                         {/* Approved (Signed) Column */}
                         <div className="flex flex-col gap-3">
-                            <div className="flex items-center gap-2 pb-2 border-b-2 border-dashed border-[#059669]">
-                                <div className="w-7 h-7 rounded-md bg-[#D1FAE5] flex items-center justify-center shrink-0">
-                                    <CheckCircle2 size={14} color="#059669" />
+                            <div className="flex items-center gap-2 pb-2 border-b-2 border-dashed border-[#0D9488]">
+                                <div className="w-7 h-7 rounded-md bg-[#CCFBF1] flex items-center justify-center shrink-0">
+                                    <CheckCircle2 size={14} color="#0D9488" />
                                 </div>
-                                <span className="text-xs font-bold text-[#059669] uppercase tracking-[0.4px]">
+                                <span className="text-xs font-bold text-[#0D9488] uppercase tracking-[0.4px]">
                                     {t('slipGaji.columns.approved', 'Approved (Signed)')}
                                 </span>
-                                <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D1FAE5] text-[#059669]">
+                                <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#CCFBF1] text-[#0D9488]">
                                     {approvedSlips.length}
                                 </span>
                             </div>
@@ -1596,6 +1672,31 @@ export default function SlipGaji() {
                                 </div>
                             ) : (
                                 approvedSlips.map(renderSlipCard)
+                            )}
+                        </div>
+
+                        {/* Paid Column (SSOT) */}
+                        <div className="flex flex-col gap-3">
+                            <div className="flex items-center gap-2 pb-2 border-b-2 border-dashed border-[#059669]">
+                                <div className="w-7 h-7 rounded-md bg-[#D1FAE5] flex items-center justify-center shrink-0">
+                                    <FileCheck2 size={14} color="#059669" />
+                                </div>
+                                <span className="text-xs font-bold text-[#059669] uppercase tracking-[0.4px]">
+                                    {t('slipGaji.columns.paid', 'Lunas (Terbayar)')}
+                                </span>
+                                <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D1FAE5] text-[#059669]">
+                                    {paidSlips.length}
+                                </span>
+                            </div>
+                            {paidSlips.length === 0 ? (
+                                <div className="flex flex-col items-center gap-2 py-8 text-text-muted text-center border border-dashed border-border-light rounded-lg bg-bg-secondary">
+                                    <FileCheck2 size={28} color="var(--text-muted)" />
+                                    <span className="text-xs">
+                                        {searchQuery ? `Tidak ada hasil untuk "${searchQuery}"` : t('slipGaji.columns.noPaid', 'Belum ada slip yang lunas')}
+                                    </span>
+                                </div>
+                            ) : (
+                                paidSlips.map(renderSlipCard)
                             )}
                         </div>
                     </div>
@@ -2053,7 +2154,17 @@ export default function SlipGaji() {
                 onClose={() => setDetailModal(false)}
                 canSign={canSign}
                 onOpenAuth={openAuth}
+                canFinalize={canFinalize}
+                onOpenFinalize={openFinalize}
                 userRole={role}
+            />
+
+            {/* ===== Finalize Payment Modal ===== */}
+            <FinalizePaymentModal
+                isOpen={finalizeModal}
+                slip={finalizeSlip}
+                onClose={() => setFinalizeModal(false)}
+                onSuccess={handleFinalizeSuccess}
             />
 
             {/* ===== Authorization Modal ===== */}

@@ -25,6 +25,8 @@ const storage = multer.diskStorage({
       fn.includes('certificate') ||
       fn.includes('educationproof') ||
       fn.includes('evidence') ||
+      fn.includes('payment') ||
+      fn.includes('proof') ||
       fn.includes('suratjalan') ||
       fn.includes('nota') ||
       fn.includes('file')

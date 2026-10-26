@@ -1058,7 +1058,8 @@
     "status": {
       "draft": "Draf",
       "authorized": "Disetujui",
-      "issued": "Terbit"
+      "issued": "Terbit",
+      "paid": "Lunas"
     },
     "modals": {
       "generate": {
@@ -1114,6 +1115,20 @@
         "btnCancel": "Batal",
         "btnAuthorize": "Setujui",
         "btnAuthorizing": "Menyetujui..."
+      },
+      "finalize": {
+        "title": "Finalisasi Pembayaran",
+        "subtitle": "Unggah bukti transfer bank untuk menandai slip LUNAS",
+        "uploadPrompt": "Pilih atau seret screenshot bukti transfer bank",
+        "uploadHint": "Format file: JPG, PNG, WEBP, atau PDF (maks. 10MB)",
+        "amountToPay": "Jumlah Ditransfer (Gaji Bersih)",
+        "destinationBank": "Rekening Tujuan",
+        "notesLabel": "Catatan Transfer / Ref No.",
+        "notesPlaceholder": "Contoh: Transfer via BCA Mobile No. Ref 88291039",
+        "ssotNotice": "Status LUNAS akan menjadi Single Source of Truth (SSOT). Status kehadiran pekerja pada periode ini akan otomatis diperbarui menjadi 'Paid'.",
+        "btnSubmit": "Finalisasi & Tandai Lunas",
+        "btnSubmitting": "Mengunggah & Memproses...",
+        "btnCancel": "Batal"
       }
     },
     "messages": {
@@ -1128,13 +1143,19 @@
       "delSuccess": "Dihapus",
       "delSuccessDesc": "Draf slip telah dihapus.",
       "delError": "Error",
-      "delErrorDesc": "Gagal menghapus"
+      "delErrorDesc": "Gagal menghapus",
+      "finalizeSuccess": "Pembayaran Lunas",
+      "finalizeSuccessDesc": "Slip gaji berhasil difinalisasi sebagai LUNAS dan kehadiran terkait otomatis ditandai Paid (SSOT).",
+      "finalizeError": "Finalisasi Gagal",
+      "finalizeErrorDesc": "Gagal memfinalisasi pembayaran slip gaji."
     },
     "columns": {
       "draft": "Draf",
       "noDraft": "Tidak ada slip draf",
       "approved": "Disetujui (Ditandatangani)",
-      "noApproved": "Tidak ada slip yang disetujui"
+      "noApproved": "Tidak ada slip yang disetujui",
+      "paid": "Lunas (Terbayar)",
+      "noPaid": "Tidak ada slip yang lunas"
     }
   },
   "profile": {

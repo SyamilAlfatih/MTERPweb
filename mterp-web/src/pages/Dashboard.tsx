@@ -96,6 +96,13 @@ interface DashboardData {
     todayWorkers: WorkerEntry[];
     weeklyTrend: WeeklyTrendEntry[];
     wageSummary: WageSummary;
+    payrollRealization?: {
+        totalPaid: number;
+        paidCount: number;
+        totalPending: number;
+        pendingCount: number;
+        realizationRate: number;
+    };
     totalWorkers: number;
 }
 
@@ -467,7 +474,7 @@ export default function Dashboard() {
                     </div>
                     <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-text-muted font-medium">
                         <span>Kontrol Anggaran</span>
-                        <span className="font-bold text-slate-700 dark:text-slate-300">WorkItems + Supplies</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-300">WorkItems + Supplies + Upah</span>
                     </div>
                 </Card>
 
@@ -879,13 +886,27 @@ export default function Dashboard() {
                         {/* Wage Breakdown Cards */}
                         <div className="space-y-2 text-xs">
                             <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40">
-                                <span className="font-semibold text-emerald-900 dark:text-emerald-200">Realisasi Dibayar</span>
+                                <div>
+                                    <span className="font-semibold text-emerald-900 dark:text-emerald-200 block">Realisasi Dibayar</span>
+                                    {data.payrollRealization && data.payrollRealization.paidCount > 0 && (
+                                        <span className="text-[10px] text-emerald-700 dark:text-emerald-300">
+                                            {data.payrollRealization.paidCount} slip lunas ({data.payrollRealization.realizationRate}%)
+                                        </span>
+                                    )}
+                                </div>
                                 <span className="font-mono font-black text-emerald-800 dark:text-emerald-300">
                                     {formatCurrency(data.wageSummary.totalPaid)}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-50/60 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40">
-                                <span className="font-semibold text-rose-900 dark:text-rose-200">Menunggu Pembayaran</span>
+                                <div>
+                                    <span className="font-semibold text-rose-900 dark:text-rose-200 block">Menunggu Pembayaran</span>
+                                    {data.payrollRealization && data.payrollRealization.pendingCount > 0 && (
+                                        <span className="text-[10px] text-rose-700 dark:text-rose-300">
+                                            {data.payrollRealization.pendingCount} slip belum lunas
+                                        </span>
+                                    )}
+                                </div>
                                 <span className="font-mono font-black text-rose-800 dark:text-rose-300">
                                     {formatCurrency(data.wageSummary.totalUnpaid)}
                                 </span>
@@ -903,7 +924,7 @@ export default function Dashboard() {
 
                     <button
                         type="button"
-                        onClick={() => handleNavigate('/my-payments')}
+                        onClick={() => handleNavigate(['owner', 'director', 'operational_director', 'admin_project', 'supervisor'].includes(user?.role || '') ? '/slip-gaji' : '/my-payments')}
                         className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-primary hover:underline cursor-pointer"
                     >
                         <span>Kelola Pembayaran & Slip</span>

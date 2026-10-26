@@ -106,3 +106,13 @@ export const sendTaskReminder = async (taskId: string) => {
   const response = await api.post(`/tasks/${taskId}/remind`);
   return response.data;
 };
+
+// === PAYROLL & SLIP GAJI FINALIZATION API ===
+
+export const finalizeSlipGajiPayment = async (slipId: string, formData: FormData) => {
+  const response = await api.post(`/slipgaji/${slipId}/finalize-payment`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+

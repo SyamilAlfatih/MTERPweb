@@ -1048,7 +1048,8 @@
     "status": {
       "draft": "Draft",
       "authorized": "Authorized",
-      "issued": "Issued"
+      "issued": "Issued",
+      "paid": "Paid"
     },
     "modals": {
       "generate": {
@@ -1104,6 +1105,20 @@
         "btnCancel": "Cancel",
         "btnAuthorize": "Authorize",
         "btnAuthorizing": "Authorizing..."
+      },
+      "finalize": {
+        "title": "Finalize Payment",
+        "subtitle": "Upload bank transfer proof to mark salary slip as PAID",
+        "uploadPrompt": "Select or drag bank transfer screenshot",
+        "uploadHint": "Accepted formats: JPG, PNG, WEBP, or PDF (max 10MB)",
+        "amountToPay": "Transfer Amount (Net Pay)",
+        "destinationBank": "Target Bank Account",
+        "notesLabel": "Transfer Notes / Ref No.",
+        "notesPlaceholder": "e.g. Bank transfer ref 88291039 via BCA Mobile",
+        "ssotNotice": "The PAID status is the Single Source of Truth (SSOT). All associated attendance records for this period will automatically be marked 'Paid'.",
+        "btnSubmit": "Finalize & Mark as Paid",
+        "btnSubmitting": "Uploading & Processing...",
+        "btnCancel": "Cancel"
       }
     },
     "messages": {
@@ -1118,7 +1133,19 @@
       "delSuccess": "Deleted",
       "delSuccessDesc": "Draft slip has been deleted.",
       "delError": "Error",
-      "delErrorDesc": "Failed to delete"
+      "delErrorDesc": "Failed to delete",
+      "finalizeSuccess": "Payment Finalized",
+      "finalizeSuccessDesc": "Salary slip marked as PAID and attendance records synchronized as Paid (SSOT).",
+      "finalizeError": "Finalization Failed",
+      "finalizeErrorDesc": "Failed to finalize salary slip payment."
+    },
+    "columns": {
+      "draft": "Draft",
+      "noDraft": "No draft slips",
+      "approved": "Approved (Signed)",
+      "noApproved": "No approved slips",
+      "paid": "Paid",
+      "noPaid": "No paid slips"
     }
   },
   "profile": {

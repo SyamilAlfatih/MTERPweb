@@ -1,5 +1,5 @@
 const express = require('express');
-const { Project, Task, Attendance, Request, User, Supply, DailyReport } = require('../models');
+const { Project, Task, Attendance, Request, User, Supply, DailyReport, SlipGaji } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 
 const router = express.Router();
@@ -42,6 +42,7 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
         if (projectId) unpaidQuery.projectId = projectId;
         const reqQuery = { status: 'Pending' };
         if (projectId) reqQuery.projectId = projectId;
+        const slipQuery = projectId ? { projectId } : {};
 
         const thirtyDaysAgo = new Date(todayStart);
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 35);
@@ -54,7 +55,8 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             monthlyWageRecords,
             totalWorkers,
             unpaidAgg,
-            pendingRequests
+            pendingRequests,
+            projectSlips
         ] = await Promise.all([
             Project.find().select('_id nama status progress totalBudget workItems startDate endDate').sort({ createdAt: -1 }).lean(),
             Task.find(taskQuery).select('status priority').lean(),
@@ -73,7 +75,8 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
                     }
                 }
             ]),
-            Request.countDocuments(reqQuery)
+            Request.countDocuments(reqQuery),
+            SlipGaji.find(slipQuery).select('status earnings period paidAt projectId').lean()
         ]);
 
         const projectList = allProjects.map(p => ({ _id: p._id, nama: p.nama }));
@@ -94,6 +97,19 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
         const statusCounts = { Planning: 0, 'In Progress': 0, Completed: 0, 'On Hold': 0 };
         projects.forEach(p => { statusCounts[p.status] = (statusCounts[p.status] || 0) + 1; });
 
+        // SlipGaji Realization Metrics (SSOT for verified payroll payments)
+        const paidSlips = projectSlips.filter(s => s.status === 'paid');
+        const pendingSlips = projectSlips.filter(s => s.status !== 'paid');
+        const totalPaidSlipsNetPay = paidSlips.reduce((sum, s) => sum + (s.earnings?.netPay || 0), 0);
+        const totalPendingSlipsNetPay = pendingSlips.reduce((sum, s) => sum + (s.earnings?.netPay || 0), 0);
+
+        // Paid slips disbursed or covering this month
+        const monthlyPaidSlips = paidSlips.filter(s => {
+            const pDate = s.paidAt ? new Date(s.paidAt) : (s.period?.endDate ? new Date(s.period.endDate) : null);
+            return pDate && pDate >= monthStart && pDate <= todayEnd;
+        });
+        const monthlyPaidSlipsNetPay = monthlyPaidSlips.reduce((sum, s) => sum + (s.earnings?.netPay || 0), 0);
+
         // Budget calculation
         let totalBudget = 0;
         let actualSpend = 0;
@@ -102,6 +118,8 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             (p.workItems || []).forEach(w => { actualSpend += w.actualCost || 0; });
         });
         allSupplies.forEach(s => { actualSpend += s.actualCost || 0; });
+        // Realized labor/payroll cost
+        actualSpend += totalPaidSlipsNetPay;
 
         // Average progress
         const avgProgress = projects.length
@@ -177,6 +195,22 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             }
         });
 
+        // Synchronize wage realization with SSOT SlipGaji payments
+        const effectivePaidWages = Math.max(
+            wageSummary.totalPaid,
+            monthlyPaidSlipsNetPay,
+            totalPaidSlipsNetPay > 0 && wageSummary.totalPaid === 0 ? totalPaidSlipsNetPay : 0
+        );
+        wageSummary.totalPaid = effectivePaidWages;
+        wageSummary.recordsPaid = Math.max(
+            wageSummary.recordsPaid,
+            monthlyPaidSlips.length > 0 ? monthlyPaidSlips.length : paidSlips.length
+        );
+
+        if (wageSummary.totalPaid > wageSummary.totalWages) {
+            wageSummary.totalWages = wageSummary.totalPaid + wageSummary.totalUnpaid;
+        }
+
         const totalUnpaid = unpaidAgg[0]?.total || 0;
 
         // Progress timeline
@@ -218,11 +252,20 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             totalUnpaid,
             pendingRequests,
             progressTimeline,
-            // Enhanced attendance
+            // Enhanced attendance & payroll realization
             todayWorkers,
             weeklyTrend,
             wageSummary,
             totalWorkers,
+            payrollRealization: {
+                totalPaid: totalPaidSlipsNetPay,
+                paidCount: paidSlips.length,
+                totalPending: totalPendingSlipsNetPay,
+                pendingCount: pendingSlips.length,
+                realizationRate: (totalPaidSlipsNetPay + totalPendingSlipsNetPay) > 0
+                    ? Math.round((totalPaidSlipsNetPay / (totalPaidSlipsNetPay + totalPendingSlipsNetPay)) * 100)
+                    : 0,
+            },
         });
     } catch (error) {
         console.error('Dashboard error:', error);

@@ -49,6 +49,8 @@ interface SlipPdfData {
     ownerName?: string;
     ownerSignedAt?: string;
   };
+  status?: string;
+  paidAt?: string;
   notes?: string;
 }
 
@@ -120,6 +122,23 @@ export async function exportSlipToPdf(data: SlipPdfData) {
   doc.setTextColor(...LIGHT);
   doc.text(data.slipNumber, pw / 2, y, { align: 'center' });
   y += 4;
+
+  // Paid Badge / Stamp
+  if (data.status === 'paid') {
+    doc.setFillColor(209, 250, 229);
+    doc.setDrawColor(5, 150, 105);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(pw - mx - 38, 14, 38, 12, 1.5, 1.5, 'FD');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(5, 150, 105);
+    doc.text('LUNAS / PAID', pw - mx - 19, 20, { align: 'center' });
+    if (data.paidAt) {
+      doc.setFontSize(5.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(formatDate(data.paidAt, { day: 'numeric', month: 'short', year: 'numeric' }), pw - mx - 19, 24, { align: 'center' });
+    }
+  }
 
   // Header line
   doc.setDrawColor(...GREEN);

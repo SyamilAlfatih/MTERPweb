@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, Clock, TrendingUp, Plus, ChevronDown, ChevronUp, AlertCircle,
   Inbox, User, Wallet, Receipt, X, Calendar, CreditCard, Shield,
-  CheckCircle2, Lock, Unlock, FileText, Briefcase, Download,
+  CheckCircle2, Lock, Unlock, FileText, Briefcase, Download, FileCheck2, ExternalLink, Eye,
 } from 'lucide-react';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { exportSlipToPdf } from '../utils/exportSlipPdf';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
 import { formatRupiah as formatRp } from '../utils/currency';
+import { resolveImageUrl } from '../utils/image';
 import { KasbonRecord } from '../types';
 
 interface WageRecord {
@@ -69,6 +70,13 @@ interface MySlip {
     ownerPassphrase: string;
   };
   status: string;
+  paymentProof?: {
+    fileUrl: string;
+    fileName?: string;
+    uploadedAt?: string;
+    notes?: string;
+  };
+  paidAt?: string;
   notes: string;
   createdAt: string;
 }
@@ -517,8 +525,8 @@ export default function MyPayments() {
                       {fmtPeriod(slip.period)}
                     </span>
                     <Badge
-                      label={slip.status.toUpperCase()}
-                      variant={slip.status === 'authorized' ? 'success' : 'primary'}
+                      label={slip.status === 'paid' ? 'LUNAS' : slip.status.toUpperCase()}
+                      variant={slip.status === 'paid' || slip.status === 'authorized' ? 'success' : 'primary'}
                       size="small"
                     />
                   </div>
@@ -679,6 +687,47 @@ export default function MyPayments() {
                   </div>
                 ))}
               </div>
+
+              {/* Paid Evidence Preview (for worker) */}
+              {selectedSlip.status === 'paid' && selectedSlip.paymentProof?.fileUrl && (
+                <div style={{ padding: 14, background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#065F46', fontWeight: 700, fontSize: '0.85em' }}>
+                      <FileCheck2 size={16} color="#059669" />
+                      <span>Bukti Transfer Bank (Lunas)</span>
+                    </div>
+                    {selectedSlip.paidAt && (
+                      <span style={{ fontSize: '0.75em', color: '#059669', fontWeight: 600, marginLeft: 'auto' }}>
+                        {formatWIBDate(selectedSlip.paidAt, { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
+                  {selectedSlip.paymentProof.notes && (
+                    <div style={{ fontSize: '0.75em', fontStyle: 'italic', color: '#047857', marginBottom: 8 }}>
+                      "{selectedSlip.paymentProof.notes}"
+                    </div>
+                  )}
+                  <a
+                    href={resolveImageUrl(selectedSlip.paymentProof.fileUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: 'block', borderRadius: 8, overflow: 'hidden', border: '1px solid #6EE7B7', background: '#fff', textAlign: 'center', textDecoration: 'none' }}
+                  >
+                    {selectedSlip.paymentProof.fileUrl.toLowerCase().endsWith('.pdf') ? (
+                      <div style={{ padding: 16, color: '#059669', fontSize: '0.8em', fontWeight: 600 }}>
+                        <FileText size={32} style={{ margin: '0 auto 6px' }} /><br />
+                        Buka Dokumen PDF Bukti Transfer ↗
+                      </div>
+                    ) : (
+                      <img
+                        src={resolveImageUrl(selectedSlip.paymentProof.fileUrl)}
+                        alt="Bukti Transfer Bank"
+                        style={{ maxWidth: '100%', maxHeight: 220, objectFit: 'contain', display: 'block', margin: '0 auto' }}
+                      />
+                    )}
+                  </a>
+                </div>
+              )}
 
               {selectedSlip.notes && (
                 <div style={{ fontSize: '0.85em', color: 'var(--text-secondary)', padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>

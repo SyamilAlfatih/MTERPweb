@@ -3,8 +3,11 @@ const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const { User, Attendance, Kasbon, SlipGaji, Project } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
+const upload = require('../middleware/upload');
+const { notify } = require('../utils/notify');
 const { wibDayRange, nowWIB, getProjectWeekRange } = require('../utils/date');
 const { deduplicateAttendanceRecords, calculateStandardOvertime } = require('../utils/attendanceSSOT');
+const { tagPreviousWeeksPaid } = require('../scripts/tagPreviousWeeksPaid');
 
 const router = express.Router();
 
@@ -27,6 +30,9 @@ const router = express.Router();
             await SlipGaji.collection.dropIndex(oldNoProject.name);
             console.log('[SlipGaji] Dropped old slip index without projectId:', oldNoProject.name);
         }
+
+        // Production settlement migration: tag all previous weeks prior to this week as paid
+        await tagPreviousWeeksPaid({ autoClose: false });
     } catch (e) {
         // Ignore if collection doesn't exist yet
     }
@@ -172,6 +178,8 @@ router.get('/', auth, authorize(...PAYROLL_ADMIN_ROLES), async (req, res) => {
         const slips = await SlipGaji.find(query)
             .populate('workerId', 'fullName role position paymentInfo email phone')
             .populate('projectId', 'nama lokasi payrollConfig')
+            .populate('paymentProof.uploadedBy', 'fullName role')
+            .populate('paidBy', 'fullName role')
             .populate('createdBy', 'fullName')
             .sort({ createdAt: -1 });
 
@@ -205,10 +213,12 @@ router.get('/my', auth, async (req, res) => {
     try {
         const slips = await SlipGaji.find({
             workerId: req.user._id,
-            status: { $in: ['draft', 'authorized', 'issued'] },
+            status: { $in: ['draft', 'authorized', 'issued', 'paid'] },
         })
             .populate('workerId', 'fullName role position paymentInfo email phone')
             .populate('projectId', 'nama lokasi')
+            .populate('paymentProof.uploadedBy', 'fullName role')
+            .populate('paidBy', 'fullName role')
             .populate('createdBy', 'fullName')
             .sort({ createdAt: -1 });
 
@@ -400,6 +410,8 @@ router.get('/:id', auth, authorize(...PAYROLL_ADMIN_ROLES), async (req, res) => 
         const slip = await SlipGaji.findById(req.params.id)
             .populate('workerId', 'fullName role position paymentInfo email phone')
             .populate('projectId', 'nama lokasi payrollConfig')
+            .populate('paymentProof.uploadedBy', 'fullName role')
+            .populate('paidBy', 'fullName role')
             .populate('createdBy', 'fullName');
 
         if (!slip) return res.status(404).json({ msg: 'Slip not found' });
@@ -617,12 +629,120 @@ router.post('/:id/authorize', auth, authorize('owner', 'director', 'president_di
         const populated = await SlipGaji.findById(slip._id)
             .populate('workerId', 'fullName role position paymentInfo email phone')
             .populate('projectId', 'nama lokasi payrollConfig')
+            .populate('paymentProof.uploadedBy', 'fullName role')
+            .populate('paidBy', 'fullName role')
             .populate('createdBy', 'fullName');
 
         res.json(populated);
     } catch (error) {
         console.error('Authorize slip error:', error);
         res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// POST /api/slipgaji/:id/finalize-payment — Finalize payment with transfer proof & mark SSOT paid
+router.post('/:id/finalize-payment', auth, authorize(...PAYROLL_ADMIN_ROLES), upload.single('paymentProof'), async (req, res) => {
+    try {
+        const slip = await SlipGaji.findById(req.params.id);
+        if (!slip) return res.status(404).json({ msg: 'Slip gaji tidak ditemukan' });
+        if (slip.status === 'paid') return res.status(400).json({ msg: 'Slip gaji sudah berstatus LUNAS (paid)' });
+        if (!['authorized', 'issued'].includes(slip.status)) {
+            return res.status(400).json({ msg: 'Hanya slip gaji yang sudah diotorisasi yang dapat difinalisasi pembayarannya' });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ msg: 'Bukti transfer pembayaran (screenshot transfer) wajib diunggah' });
+        }
+
+        const fileUrl = `/uploads/documents/${req.file.filename}`;
+        const paymentTime = nowWIB();
+
+        slip.status = 'paid';
+        slip.paidAt = paymentTime;
+        slip.paidBy = req.user._id;
+        slip.paymentProof = {
+            fileUrl,
+            fileName: req.file.originalname,
+            uploadedAt: paymentTime,
+            uploadedBy: req.user._id,
+            notes: (req.body.notes || req.body.paymentNotes || '').trim(),
+            amountPaid: slip.earnings?.netPay || 0,
+            paymentDate: req.body.paymentDate ? new Date(req.body.paymentDate) : paymentTime,
+        };
+
+        await slip.save();
+
+        // === SINGLE SOURCE OF TRUTH (SSOT) SYNCHRONIZATION ===
+        // 1. Mark corresponding Attendance records as 'Paid'
+        const startRange = wibDayRange(slip.period.startDate);
+        const endRange = wibDayRange(slip.period.endDate);
+        const dateStart = startRange ? startRange.start : new Date(slip.period.startDate);
+        const dateEnd = endRange ? endRange.end : new Date(new Date(slip.period.endDate).setHours(23, 59, 59, 999));
+
+        const attendanceFilter = {
+            userId: slip.workerId,
+            date: { $gte: dateStart, $lte: dateEnd },
+        };
+        if (slip.projectId) {
+            attendanceFilter.$or = [
+                { projectId: slip.projectId },
+                { overtimeProjectId: slip.projectId },
+            ];
+        } else {
+            attendanceFilter.projectId = { $in: [null, undefined] };
+        }
+
+        await Attendance.updateMany(
+            attendanceFilter,
+            {
+                $set: {
+                    paymentStatus: 'Paid',
+                    paidAt: paymentTime,
+                },
+            }
+        );
+
+        // 2. Mark deducted Kasbon records as 'Paid' if any kasbon was deducted
+        if (slip.earnings?.kasbonDeduction > 0) {
+            await Kasbon.updateMany(
+                {
+                    userId: slip.workerId,
+                    status: 'Approved',
+                    createdAt: { $gte: slip.period.startDate, $lte: slip.period.endDate },
+                },
+                {
+                    $set: {
+                        status: 'Paid',
+                        paidAt: paymentTime,
+                    },
+                }
+            );
+        }
+
+        // 3. Fire-and-forget notification to worker
+        try {
+            notify({
+                recipient: slip.workerId,
+                type: 'payroll',
+                title: 'Slip Gaji Lunas (Transfer Berhasil)',
+                message: `Gaji Anda sebesar Rp ${(slip.earnings?.netPay || 0).toLocaleString('id-ID')} telah ditransfer dan bukti transfer telah diunggah.`,
+                data: { slipId: slip._id },
+            }).catch(err => console.warn('[Notify Payroll Error]:', err.message));
+        } catch (notifErr) {
+            console.warn('[Notify Payroll Error]:', notifErr.message);
+        }
+
+        const populated = await SlipGaji.findById(slip._id)
+            .populate('workerId', 'fullName role position paymentInfo email phone')
+            .populate('projectId', 'nama lokasi payrollConfig')
+            .populate('paymentProof.uploadedBy', 'fullName role')
+            .populate('paidBy', 'fullName role')
+            .populate('createdBy', 'fullName');
+
+        res.json(populated);
+    } catch (error) {
+        console.error('Finalize slip payment error:', error);
+        res.status(500).json({ msg: 'Gagal memfinalisasi pembayaran slip gaji', error: error.message });
     }
 });
 
@@ -638,6 +758,17 @@ router.delete('/:id', auth, authorize(...PAYROLL_ADMIN_ROLES), async (req, res) 
     } catch (error) {
         console.error('Delete slip error:', error);
         res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// POST /api/slipgaji/admin/tag-previous-weeks-paid — Manually trigger previous weeks settlement
+router.post('/admin/tag-previous-weeks-paid', auth, authorize('owner', 'director', 'operational_director'), async (req, res) => {
+    try {
+        const result = await tagPreviousWeeksPaid({ autoClose: false });
+        res.json({ msg: 'Berhasil menandai slip & upah minggu sebelumnya sebagai Lunas', result });
+    } catch (error) {
+        console.error('Tag previous weeks paid error:', error);
+        res.status(500).json({ msg: 'Gagal memperbarui status minggu sebelumnya', error: error.message });
     }
 });
 

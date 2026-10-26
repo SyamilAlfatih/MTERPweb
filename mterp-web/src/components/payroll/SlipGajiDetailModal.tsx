@@ -10,6 +10,9 @@ import {
     Unlock,
     Lock,
     Download,
+    FileCheck2,
+    ExternalLink,
+    Eye,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
@@ -17,7 +20,18 @@ import { exportSlipToPdf } from '../../utils/exportSlipPdf';
 import { formatRupiah as formatRp } from '../../utils/currency';
 import { formatDate as formatWIBDate } from '../../utils/date';
 import { getRoleBadge } from '../../utils/roleClassifier';
+import { resolveImageUrl } from '../../utils/image';
 import { Worker } from '../../types';
+
+export interface SlipPaymentProof {
+    fileUrl: string;
+    fileName?: string;
+    uploadedAt?: string;
+    uploadedBy?: { _id?: string; fullName?: string; role?: string };
+    notes?: string;
+    amountPaid?: number;
+    paymentDate?: string;
+}
 
 export interface SlipData {
     _id: string;
@@ -59,7 +73,10 @@ export interface SlipData {
         directorPassphrase: string;
         ownerPassphrase: string;
     };
-    status: 'draft' | 'authorized' | 'issued';
+    status: 'draft' | 'authorized' | 'issued' | 'paid';
+    paymentProof?: SlipPaymentProof;
+    paidAt?: string;
+    paidBy?: { _id?: string; fullName?: string; role?: string };
     createdBy?: { fullName: string };
     notes: string;
     createdAt: string;
@@ -67,8 +84,9 @@ export interface SlipData {
 
 export const STATUS_BADGE: Record<string, { color: string; bg: string; labelKey: string }> = {
     draft: { color: '#D97706', bg: '#FEF3C7', labelKey: 'draft' },
-    authorized: { color: '#059669', bg: '#D1FAE5', labelKey: 'authorized' },
+    authorized: { color: '#0D9488', bg: '#CCFBF1', labelKey: 'authorized' },
     issued: { color: '#6366F1', bg: '#EEF2FF', labelKey: 'issued' },
+    paid: { color: '#059669', bg: '#D1FAE5', labelKey: 'paid' },
 };
 
 export async function exportSlipPdfHelper(slip: SlipData): Promise<void> {
@@ -97,6 +115,8 @@ export async function exportSlipPdfHelper(slip: SlipData): Promise<void> {
             ownerName: slip.authorization.ownerName,
             ownerSignedAt: slip.authorization.ownerSignedAt || undefined,
         },
+        status: slip.status,
+        paidAt: slip.paidAt,
         notes: slip.notes,
     });
 }
@@ -110,6 +130,8 @@ export interface SlipGajiDetailModalProps {
     onClose: () => void;
     canSign?: (slip: SlipData) => boolean;
     onOpenAuth?: (slipId: string) => void;
+    canFinalize?: (slip: SlipData) => boolean;
+    onOpenFinalize?: (slip: SlipData) => void;
     userRole?: string;
 }
 
@@ -119,6 +141,8 @@ export const SlipGajiDetailModal: React.FC<SlipGajiDetailModalProps> = ({
     onClose,
     canSign,
     onOpenAuth,
+    canFinalize,
+    onOpenFinalize,
     userRole = '',
 }) => {
     const { t } = useTranslation();
@@ -336,6 +360,101 @@ export const SlipGajiDetailModal: React.FC<SlipGajiDetailModalProps> = ({
                         </div>
                     </div>
 
+                    {/* Paid Payment Proof (SSOT) */}
+                    {slip.status === 'paid' && (
+                        <div className="p-4 bg-emerald-50/80 rounded-xl border border-emerald-200">
+                            <div className="flex items-center justify-between mb-2.5">
+                                <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs uppercase tracking-wider">
+                                    <FileCheck2 size={16} className="text-emerald-700" />
+                                    <span>Bukti Pembayaran (Transfer Bank)</span>
+                                </div>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white flex items-center gap-1">
+                                    <CheckCircle2 size={11} /> LUNAS (SSOT)
+                                </span>
+                            </div>
+
+                            <div className="text-xs text-text-secondary flex flex-col gap-1 mb-3">
+                                {(slip.paidAt || slip.paymentProof?.uploadedAt) && (
+                                    <div>
+                                        <span className="text-text-muted">Waktu Pembayaran: </span>
+                                        <strong className="text-text-primary">
+                                            {formatWIBDate((slip.paidAt || slip.paymentProof?.uploadedAt) as string, {
+                                                day: 'numeric',
+                                                month: 'short',
+                                                year: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                            })}
+                                        </strong>
+                                    </div>
+                                )}
+                                {slip.paymentProof?.uploadedBy?.fullName && (
+                                    <div>
+                                        <span className="text-text-muted">Diproses Oleh: </span>
+                                        <strong className="text-text-primary">{slip.paymentProof.uploadedBy.fullName}</strong>
+                                    </div>
+                                )}
+                                {slip.paymentProof?.notes && (
+                                    <div className="italic text-text-secondary bg-white/80 p-2.5 rounded-lg border border-emerald-100 mt-1">
+                                        "{slip.paymentProof.notes}"
+                                    </div>
+                                )}
+                            </div>
+
+                            {slip.paymentProof?.fileUrl && (
+                                <a
+                                    href={resolveImageUrl(slip.paymentProof.fileUrl)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="group relative block rounded-xl overflow-hidden border border-emerald-200 bg-white shadow-xs hover:border-emerald-500 hover:shadow-md transition-all text-center"
+                                >
+                                    {slip.paymentProof.fileUrl.toLowerCase().endsWith('.pdf') ? (
+                                        <div className="p-6 flex flex-col items-center justify-center gap-2 text-emerald-700 group-hover:text-emerald-800">
+                                            <FileText size={36} />
+                                            <span className="text-xs font-bold">Lihat Dokumen PDF Bukti Transfer</span>
+                                            <span className="text-[10px] text-text-muted flex items-center gap-1">
+                                                Klik untuk membuka di tab baru <ExternalLink size={11} />
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <div className="relative">
+                                            <img
+                                                src={resolveImageUrl(slip.paymentProof.fileUrl)}
+                                                alt="Bukti Transfer Bank"
+                                                className="w-full max-h-60 object-contain bg-slate-50 py-2"
+                                            />
+                                            <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-semibold backdrop-blur-[1px]">
+                                                <Eye size={15} /> Buka Ukuran Penuh <ExternalLink size={13} />
+                                            </div>
+                                        </div>
+                                    )}
+                                </a>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Ready to Finalize Payment Banner */}
+                    {(slip.status === 'authorized' || slip.status === 'issued') && onOpenFinalize && (
+                        <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <div className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                                    <FileCheck2 size={16} className="text-emerald-700" />
+                                    <span>Slip Siap Ditransfer & Difinalisasi</span>
+                                </div>
+                                <p className="text-[11px] text-emerald-700 m-0 mt-0.5">
+                                    Otorisasi lengkap. Unggah screenshot bukti transfer untuk menandai slip LUNAS dan sinkronisasi SSOT kehadiran.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => onOpenFinalize(slip)}
+                                className="flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer shadow-sm transition-all hover:shadow-md"
+                            >
+                                <FileCheck2 size={14} /> Finalisasi Pembayaran
+                            </button>
+                        </div>
+                    )}
+
                     {slip.notes && (
                         <div className="p-3 bg-bg-secondary rounded-xl text-sm text-text-secondary border border-border mt-1">
                             <strong className="text-text-primary mr-1">{t('slipGaji.modals.detail.notes')}</strong> {slip.notes}
@@ -343,7 +462,7 @@ export const SlipGajiDetailModal: React.FC<SlipGajiDetailModalProps> = ({
                     )}
                 </div>
 
-                <div className="flex justify-end gap-3 px-5 pb-5 pt-0">
+                <div className="flex justify-end gap-3 px-5 pb-5 pt-0 flex-wrap">
                     <button className="px-5 py-2.5 border border-border bg-bg-white rounded-md text-sm font-semibold text-text-secondary cursor-pointer transition-colors hover:bg-bg-secondary" onClick={onClose}>
                         {t('slipGaji.modals.detail.btnClose')}
                     </button>
@@ -353,6 +472,15 @@ export const SlipGajiDetailModal: React.FC<SlipGajiDetailModalProps> = ({
                     {canSign && canSign(slip) && onOpenAuth && (
                         <button className="flex items-center gap-1.5 px-6 py-2.5 border-none rounded-md bg-gradient-to-br from-indigo-500 to-indigo-400 text-white text-sm font-semibold cursor-pointer shadow-[0_3px_12px_rgba(99,102,241,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_5px_18px_rgba(99,102,241,0.35)] disabled:opacity-60 disabled:cursor-not-allowed" onClick={() => onOpenAuth(slip._id)}>
                             <Lock size={16} /> {t('slipGaji.modals.detail.btnAuthorize')}
+                        </button>
+                    )}
+                    {(slip.status === 'authorized' || slip.status === 'issued') && onOpenFinalize && (
+                        <button
+                            type="button"
+                            className="flex items-center gap-1.5 px-6 py-2.5 border-none rounded-md bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-sm font-bold cursor-pointer shadow-[0_3px_12px_rgba(5,150,105,0.3)] transition-all hover:-translate-y-[1px] hover:shadow-[0_5px_18px_rgba(5,150,105,0.35)]"
+                            onClick={() => onOpenFinalize(slip)}
+                        >
+                            <FileCheck2 size={16} /> Finalisasi Pembayaran
                         </button>
                     )}
                 </div>
