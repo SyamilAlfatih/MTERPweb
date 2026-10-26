@@ -201,7 +201,7 @@ const TOOL_EXPORT_COLUMNS = {
 // GET /api/tools/export-excel - Export tools inventory to formatted Excel (.xlsx) (MUST be before /:id)
 router.get('/export-excel', auth, async (req, res) => {
   try {
-    const { search, kondisi, projectId, columns, headers } = req.query;
+    const { search, kondisi, projectId, columns, headers, toolIds } = req.query;
 
     const allTools = await Tool.find()
       .populate('assignedTo', 'fullName')
@@ -211,6 +211,14 @@ router.get('/export-excel', auth, async (req, res) => {
 
     // Filter tools based on query params
     const filteredTools = allTools.filter(t => {
+      // Specific tool IDs filter (for bulk export)
+      if (toolIds) {
+        const idList = Array.isArray(toolIds) ? toolIds : toolIds.split(',');
+        if (!idList.includes(t._id.toString())) {
+          return false;
+        }
+      }
+
       // Project filter
       if (projectId && (!t.projectId || t.projectId._id.toString() !== projectId)) {
         return false;
@@ -827,6 +835,96 @@ router.get('/my-tools', auth, async (req, res) => {
   } catch (error) {
     console.error('Get my-tools error:', error);
     res.status(500).json({ msg: 'Server error saat mengambil data alat saya' });
+  }
+});
+
+// POST /api/tools/bulk-delete - Delete multiple tools and purge physical photos
+router.post('/bulk-delete', auth, authorize('owner', 'asset_admin'), async (req, res) => {
+  try {
+    const { toolIds } = req.body;
+    if (!Array.isArray(toolIds) || toolIds.length === 0) {
+      return res.status(400).json({ msg: 'Pilih setidaknya satu alat untuk dihapus' });
+    }
+    const tools = await Tool.find({ _id: { $in: toolIds } });
+    for (const t of tools) {
+      if (t.photo) deletePhysicalFile(t.photo);
+    }
+    await Tool.deleteMany({ _id: { $in: toolIds } });
+    res.json({ msg: `${tools.length} alat berhasil dihapus`, count: tools.length });
+  } catch (error) {
+    console.error('Bulk delete tools error:', error);
+    res.status(500).json({ msg: 'Server error saat menghapus alat massal' });
+  }
+});
+
+// POST /api/tools/bulk-update-condition - Update condition for multiple tools
+router.post('/bulk-update-condition', auth, authorize('owner', 'director', 'asset_admin', 'supervisor'), async (req, res) => {
+  try {
+    const { toolIds, kondisi, notes } = req.body;
+    if (!Array.isArray(toolIds) || toolIds.length === 0) {
+      return res.status(400).json({ msg: 'Pilih setidaknya satu alat' });
+    }
+    if (!['Baik', 'Maintenance', 'Rusak'].includes(kondisi)) {
+      return res.status(400).json({ msg: 'Kondisi tidak valid (Baik, Maintenance, Rusak)' });
+    }
+    await Tool.updateMany(
+      { _id: { $in: toolIds } },
+      { $set: { kondisi, lastChecked: new Date() } }
+    );
+    res.json({ msg: `Kondisi ${toolIds.length} alat berhasil diperbarui ke ${kondisi}`, count: toolIds.length });
+  } catch (error) {
+    console.error('Bulk update condition error:', error);
+    res.status(500).json({ msg: 'Server error saat mengubah kondisi massal' });
+  }
+});
+
+// POST /api/tools/bulk-relocate - Relocate multiple tools to warehouse/bin or project
+router.post('/bulk-relocate', auth, authorize('owner', 'director', 'asset_admin', 'supervisor'), async (req, res) => {
+  try {
+    const { toolIds, warehouseId, binLocation, projectId, notes } = req.body;
+    if (!Array.isArray(toolIds) || toolIds.length === 0) {
+      return res.status(400).json({ msg: 'Pilih setidaknya satu alat' });
+    }
+    const updateFields = { lastChecked: new Date() };
+    if (warehouseId) {
+      updateFields.warehouseId = warehouseId;
+      const wh = await Warehouse.findById(warehouseId).lean();
+      if (wh) updateFields.lokasi = wh.name;
+    }
+    if (binLocation !== undefined) {
+      updateFields.binLocation = binLocation;
+      updateFields.binRef = binLocation;
+    }
+    if (projectId !== undefined) {
+      updateFields.projectId = projectId || null;
+    }
+
+    await Tool.updateMany(
+      { _id: { $in: toolIds } },
+      { $set: updateFields }
+    );
+
+    // Record movement history for tracking
+    const movementDocs = toolIds.map(id => ({
+      toolId: id,
+      action: projectId ? 'deploy_project' : 'warehouse_transfer',
+      toWarehouseId: warehouseId || null,
+      toBinLocation: binLocation || '',
+      toProjectId: projectId || null,
+      notes: notes || 'Relokasi massal via dashboard',
+      performedBy: req.user._id,
+      evidence: { serverTime: new Date() }
+    }));
+    try {
+      await ToolMovement.insertMany(movementDocs);
+    } catch (mErr) {
+      console.warn('Failed inserting bulk movement docs:', mErr.message);
+    }
+
+    res.json({ msg: `${toolIds.length} alat berhasil direlokasi`, count: toolIds.length });
+  } catch (error) {
+    console.error('Bulk relocate tools error:', error);
+    res.status(500).json({ msg: 'Server error saat relokasi massal' });
   }
 });
 

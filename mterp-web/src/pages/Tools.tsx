@@ -13,6 +13,9 @@ import api, {
   createTool,
   updateTool,
   deleteTool,
+  bulkDeleteTools,
+  bulkUpdateToolCondition,
+  bulkRelocateTools,
   exportToolsExcel,
   getWarehouses,
   getMyTools,
@@ -197,10 +200,23 @@ export default function Tools() {
   // Export states
   const [showExportModal, setShowExportModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [exportScope, setExportScope] = useState<'current' | 'all'>('current');
+  const [exportScope, setExportScope] = useState<'current' | 'all' | 'selected'>('current');
   const [selectedExportColumns, setSelectedExportColumns] = useState<string[]>(DEFAULT_EXPORT_COLUMNS);
   const [includeExportHeaders, setIncludeExportHeaders] = useState(true);
   const [exportSuccess, setExportSuccess] = useState(false);
+
+  // Bulk selection & action states
+  const [selectedToolIds, setSelectedToolIds] = useState<string[]>([]);
+  const [bulkActionModal, setBulkActionModal] = useState<{
+    isOpen: boolean;
+    type: 'condition' | 'relocate' | 'delete' | null;
+  }>({ isOpen: false, type: null });
+  const [bulkCondition, setBulkCondition] = useState<'Baik' | 'Maintenance' | 'Rusak'>('Baik');
+  const [bulkWarehouseId, setBulkWarehouseId] = useState<string>('');
+  const [bulkBinLocation, setBulkBinLocation] = useState<string>('');
+  const [bulkProjectId, setBulkProjectId] = useState<string>('');
+  const [bulkNotes, setBulkNotes] = useState<string>('');
+  const [bulkSubmitting, setBulkSubmitting] = useState<boolean>(false);
 
   const toolModalRef = useRef<HTMLDivElement>(null);
   useFocusTrap(toolModalRef, { 
@@ -357,6 +373,36 @@ export default function Tools() {
     setCollapsedGroups(allCollapsed);
   };
 
+  // Bulk selection states & memos
+  const visibleToolIds = useMemo(() => filteredTools.map((t) => t._id), [filteredTools]);
+
+  const isAllSelected = useMemo(() => {
+    return visibleToolIds.length > 0 && visibleToolIds.every((id) => selectedToolIds.includes(id));
+  }, [visibleToolIds, selectedToolIds]);
+
+  const isSomeSelected = useMemo(() => {
+    return visibleToolIds.some((id) => selectedToolIds.includes(id)) && !isAllSelected;
+  }, [visibleToolIds, selectedToolIds, isAllSelected]);
+
+  const handleToggleSelectTool = (id: string, e?: React.MouseEvent | React.ChangeEvent) => {
+    if (e && 'stopPropagation' in e) e.stopPropagation();
+    setSelectedToolIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedToolIds((prev) => prev.filter((id) => !visibleToolIds.includes(id)));
+    } else {
+      setSelectedToolIds((prev) => Array.from(new Set([...prev, ...visibleToolIds])));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedToolIds([]);
+  };
+
   const pieData = stats ? [
     { name: t('tools.filter.available'), value: stats.available || 0 },
     { name: t('tools.filter.inUse'), value: stats.inUse || 0 },
@@ -473,6 +519,94 @@ export default function Tools() {
       await fetchData();
     } catch (err: any) {
       alert(err.response?.data?.msg || t('tools.messages.deleteFailed'));
+    }
+  };
+
+  const handleBulkExecuteCondition = async () => {
+    if (selectedToolIds.length === 0) return;
+    setBulkSubmitting(true);
+    try {
+      await bulkUpdateToolCondition(selectedToolIds, bulkCondition, bulkNotes);
+      setToastMessage({
+        type: 'success',
+        text: `Kondisi ${selectedToolIds.length} alat berhasil diubah ke ${bulkCondition}`,
+      });
+      setBulkActionModal({ isOpen: false, type: null });
+      setBulkNotes('');
+      setSelectedToolIds([]);
+      await fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.msg || 'Gagal mengubah kondisi alat massal');
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
+  const handleBulkExecuteRelocate = async () => {
+    if (selectedToolIds.length === 0) return;
+    setBulkSubmitting(true);
+    try {
+      await bulkRelocateTools({
+        toolIds: selectedToolIds,
+        warehouseId: bulkWarehouseId || undefined,
+        binLocation: bulkBinLocation || undefined,
+        projectId: bulkProjectId || undefined,
+        notes: bulkNotes,
+      });
+      setToastMessage({
+        type: 'success',
+        text: `${selectedToolIds.length} alat berhasil direlokasi`,
+      });
+      setBulkActionModal({ isOpen: false, type: null });
+      setBulkWarehouseId('');
+      setBulkBinLocation('');
+      setBulkProjectId('');
+      setBulkNotes('');
+      setSelectedToolIds([]);
+      await fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.msg || 'Gagal merelokasi alat massal');
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
+  const handleBulkExecuteDelete = async () => {
+    if (selectedToolIds.length === 0) return;
+    setBulkSubmitting(true);
+    try {
+      await bulkDeleteTools(selectedToolIds);
+      setToastMessage({
+        type: 'success',
+        text: `${selectedToolIds.length} alat berhasil dihapus`,
+      });
+      setBulkActionModal({ isOpen: false, type: null });
+      setSelectedToolIds([]);
+      await fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.msg || 'Gagal menghapus alat massal');
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
+  const handleBulkExportSelected = async () => {
+    if (selectedToolIds.length === 0) return;
+    setIsExporting(true);
+    try {
+      await exportToolsExcel({
+        toolIds: selectedToolIds,
+        columns: selectedExportColumns,
+        headers: includeExportHeaders,
+      });
+      setToastMessage({
+        type: 'success',
+        text: `${selectedToolIds.length} alat terpilih berhasil diekspor ke Excel`,
+      });
+    } catch (err: any) {
+      alert('Gagal mengekspor alat terpilih');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -905,6 +1039,19 @@ export default function Tools() {
 
           {/* View Mode & Density Switcher */}
           <div className="flex items-center justify-between sm:justify-end gap-2 max-sm:w-full">
+            {selectedToolIds.length > 0 && (
+              <div className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs font-bold animate-in fade-in">
+                <span>{selectedToolIds.length} dipilih</span>
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  className="p-0.5 hover:bg-primary/20 rounded text-primary transition-colors cursor-pointer"
+                  title="Batalkan pilihan"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-xl border border-border-light">
               <button
                 onClick={() => handleSetViewMode('table')}
@@ -1036,6 +1183,28 @@ export default function Tools() {
               <div className="w-full max-w-full bg-bg-white dark:bg-slate-900 rounded-xl border border-border-light overflow-hidden shadow-2xs">
                 {/* 1. Mobile Dense Table (sm:hidden) - ZERO Horizontal Scrolling */}
                 <div className="sm:hidden divide-y divide-border-light">
+                  {/* Mobile Select-All Bar */}
+                  <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between border-b border-border-light">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-text-primary select-none">
+                      <input
+                        type="checkbox"
+                        aria-label="Pilih semua alat"
+                        className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer"
+                        checked={isAllSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = isSomeSelected;
+                        }}
+                        onChange={handleToggleSelectAll}
+                      />
+                      <span>Pilih Semua ({filteredTools.length})</span>
+                    </label>
+                    {selectedToolIds.length > 0 && (
+                      <span className="text-[11px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10">
+                        {selectedToolIds.length} terpilih
+                      </span>
+                    )}
+                  </div>
+
                   {groupedTools.map((group) => {
                     const isCollapsed = Boolean(collapsedGroups[group.key]);
 
@@ -1069,14 +1238,27 @@ export default function Tools() {
                             return (
                               <div
                                 key={tool._id}
-                                className="p-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors flex flex-col gap-2"
+                                className={`p-3 transition-colors flex flex-col gap-2 ${
+                                  selectedToolIds.includes(tool._id)
+                                    ? 'bg-blue-50/70 dark:bg-blue-950/20 border-l-4 border-l-primary'
+                                    : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                                }`}
                               >
-                                {/* Row Top: Index + Photo + Title & Category + Condition Badge + Stock */}
+                                {/* Row Top: Checkbox + Index + Photo + Title & Category + Condition Badge + Stock */}
                                 <div className="flex items-start justify-between gap-2">
-                                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                                    <span className="text-[10px] font-mono text-text-muted w-3.5 pt-0.5 shrink-0 text-center">
-                                      {index + 1}
-                                    </span>
+                                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+                                      <input
+                                        type="checkbox"
+                                        aria-label={`Pilih ${tool.nama}`}
+                                        className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer shrink-0"
+                                        checked={selectedToolIds.includes(tool._id)}
+                                        onChange={(e) => handleToggleSelectTool(tool._id, e)}
+                                      />
+                                      <span className="text-[10px] font-mono text-text-muted w-3.5 text-center">
+                                        {index + 1}
+                                      </span>
+                                    </div>
                                     <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-border-light bg-bg-secondary flex items-center justify-center">
                                       {tool.photo ? (
                                         <PhotoView src={getImageUrl(tool.photo)}>
@@ -1203,8 +1385,22 @@ export default function Tools() {
                   <table role="grid" aria-rowcount={filteredTools.length} className="w-full border-collapse text-left">
                     <thead>
                       <tr role="row" className="bg-slate-50/80 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold">
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-0 z-20 bg-slate-50 w-12 text-center border-r border-border-light`}>#</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-12 z-20 bg-slate-50 min-w-[180px] sm:min-w-[200px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Alat / Mesin</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-0 z-30 bg-slate-50 w-11 text-center border-r border-border-light`}>
+                          <div className="flex items-center justify-center">
+                            <input
+                              type="checkbox"
+                              aria-label="Pilih semua alat"
+                              className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer transition-colors"
+                              checked={isAllSelected}
+                              ref={(el) => {
+                                if (el) el.indeterminate = isSomeSelected;
+                              }}
+                              onChange={handleToggleSelectAll}
+                            />
+                          </div>
+                        </th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-11 z-20 bg-slate-50 w-12 text-center border-r border-border-light`}>#</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-[92px] z-20 bg-slate-50 min-w-[180px] sm:min-w-[200px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Alat / Mesin</th>
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px]`}>Kondisi</th>
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[110px] text-right`}>Stok</th>
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px]`}>Lokasi</th>
@@ -1225,7 +1421,7 @@ export default function Tools() {
                                 onClick={() => toggleGroupCollapse(group.key)}
                                 className="bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors cursor-pointer select-none border-y border-border-light font-medium"
                               >
-                                <td colSpan={8} className="py-2 px-3">
+                                <td colSpan={9} className="py-2 px-3">
                                   <div className="flex items-center justify-between gap-3">
                                     <div className="flex items-center gap-2">
                                       <span className="w-5 h-5 rounded-md bg-white/80 dark:bg-slate-700 flex items-center justify-center text-text-muted shadow-2xs">
@@ -1269,13 +1465,34 @@ export default function Tools() {
                                 const condStyle = getConditionStyle(tool.kondisi);
                                 const CondIcon = condStyle.icon;
                                 return (
-                                  <tr role="row" aria-rowindex={index + 1} key={tool._id} className="hover:bg-slate-50/80 transition-colors group">
+                                  <tr
+                                    role="row"
+                                    aria-rowindex={index + 1}
+                                    key={tool._id}
+                                    className={`transition-colors group ${
+                                      selectedToolIds.includes(tool._id)
+                                        ? 'bg-blue-50/70 hover:bg-blue-50/90 dark:bg-blue-950/20'
+                                        : 'hover:bg-slate-50/80'
+                                    }`}
+                                  >
+                                    {/* Sticky Checkbox */}
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-0 z-20 bg-white group-hover:bg-slate-50 text-center border-r border-border-light ${selectedToolIds.includes(tool._id) ? '!bg-blue-50/80' : ''}`}>
+                                      <div className="flex items-center justify-center">
+                                        <input
+                                          type="checkbox"
+                                          aria-label={`Pilih ${tool.nama}`}
+                                          className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer"
+                                          checked={selectedToolIds.includes(tool._id)}
+                                          onChange={(e) => handleToggleSelectTool(tool._id, e)}
+                                        />
+                                      </div>
+                                    </td>
                                     {/* Sticky # */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-0 z-10 bg-white group-hover:bg-slate-50 text-center text-text-muted font-mono tabular-nums border-r border-border-light`}>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-11 z-10 bg-white group-hover:bg-slate-50 text-center text-text-muted font-mono tabular-nums border-r border-border-light ${selectedToolIds.includes(tool._id) ? '!bg-blue-50/80' : ''}`}>
                                       {index + 1}
                                     </td>
                                     {/* Sticky Photo + Name + Category */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-12 z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-[92px] z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] ${selectedToolIds.includes(tool._id) ? '!bg-blue-50/80' : ''}`}>
                                       <div className="flex items-center gap-2.5">
                                         <div className="w-9 h-9 rounded-md overflow-hidden shrink-0 border border-border-light bg-bg-secondary flex items-center justify-center">
                                           {tool.photo ? (
@@ -1445,14 +1662,27 @@ export default function Tools() {
                             return (
                               <Card
                                 key={tool._id}
-                                className="group p-3 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-xs"
+                                className={`group p-3 !transition-all !duration-150 hover:-translate-y-[2px] hover:shadow-xs relative ${
+                                  selectedToolIds.includes(tool._id)
+                                    ? 'ring-2 ring-primary bg-primary/[0.02]'
+                                    : ''
+                                }`}
                                 style={{
                                   borderLeft: `4px solid ${condStyle.color}`,
                                 }}
                               >
                                 <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-3">
                                   {/* Info Container */}
-                                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                    <div className="pt-1 shrink-0">
+                                      <input
+                                        type="checkbox"
+                                        aria-label={`Pilih ${tool.nama}`}
+                                        className="w-4 h-4 rounded border-slate-300 text-primary accent-primary cursor-pointer shrink-0"
+                                        checked={selectedToolIds.includes(tool._id)}
+                                        onChange={(e) => handleToggleSelectTool(tool._id, e)}
+                                      />
+                                    </div>
                                     <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden shrink-0 border border-border-light bg-bg-secondary flex items-center justify-center">
                                       {tool.photo ? (
                                         <PhotoView src={getImageUrl(tool.photo)}>
@@ -1796,7 +2026,29 @@ export default function Tools() {
                 <label className="text-xs font-bold uppercase tracking-wider text-text-muted block mb-2">
                   {t('tools.export.scope')}
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className={`grid grid-cols-1 ${selectedToolIds.length > 0 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2.5`}>
+                  {selectedToolIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setExportScope('selected')}
+                      className={`flex flex-col text-left p-3 rounded-lg border text-xs transition-all cursor-pointer ${
+                        exportScope === 'selected'
+                          ? 'border-emerald-500 bg-emerald-50/60 text-text-primary ring-1 ring-emerald-500 shadow-xs'
+                          : 'border-border-light bg-bg-white text-text-secondary hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold text-text-primary">
+                        <span>Hanya Terpilih</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">
+                          {selectedToolIds.length}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-text-muted mt-1 leading-snug">
+                        Item yang dicentang di tabel/kartu
+                      </span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setExportScope('current')}
@@ -1946,12 +2198,15 @@ export default function Tools() {
                       kondisi?: string;
                       columns: string[];
                       headers: boolean;
+                      toolIds?: string[];
                     } = {
                       columns: selectedExportColumns,
                       headers: includeExportHeaders,
                     };
 
-                    if (exportScope === 'current') {
+                    if (exportScope === 'selected') {
+                      params.toolIds = selectedToolIds;
+                    } else if (exportScope === 'current') {
                       if (search.trim()) params.search = search.trim();
                       if (filter !== 'all') params.kondisi = filter;
                     }
@@ -2059,6 +2314,293 @@ export default function Tools() {
         <div className="fixed bottom-6 right-6 z-[1100] flex items-center gap-2.5 bg-slate-900 text-white py-3 px-4 rounded-xl shadow-2xl border border-slate-700 animate-[fade-in-up_0.2s_ease_both]">
           <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
           <span className="text-xs font-bold">{t('tools.export.successMsg')}</span>
+        </div>
+      )}
+
+      {/* ── FLOATING BULK ACTION BAR ── */}
+      {selectedToolIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-auto max-w-[95vw] bg-slate-950/95 text-white border border-slate-700/80 shadow-2xl rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3 backdrop-blur-md animate-in fade-in slide-in-from-bottom-5">
+          <div className="flex items-center gap-2 pr-2.5 border-r border-slate-700/80">
+            <div className="w-7 h-7 rounded-lg bg-primary/20 text-blue-300 flex items-center justify-center font-black text-xs font-mono">
+              {selectedToolIds.length}
+            </div>
+            <div className="hidden sm:block">
+              <span className="text-xs font-black text-white">Dipilih</span>
+              <span className="text-[10px] text-slate-400 block font-medium">Bulk Action</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-0.5">
+            {/* Ubah Kondisi */}
+            <button
+              type="button"
+              onClick={() => setBulkActionModal({ isOpen: true, type: 'condition' })}
+              className="flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+            >
+              <Settings size={14} />
+              <span>Kondisi</span>
+            </button>
+
+            {/* Pindah Gudang / Relokasi */}
+            <button
+              type="button"
+              onClick={() => setBulkActionModal({ isOpen: true, type: 'relocate' })}
+              className="flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+            >
+              <ArrowRightLeft size={14} />
+              <span>Relokasi</span>
+            </button>
+
+            {/* Export Excel */}
+            <button
+              type="button"
+              onClick={handleBulkExportSelected}
+              disabled={isExporting}
+              className="flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer whitespace-nowrap disabled:opacity-50"
+            >
+              <FileSpreadsheet size={14} />
+              <span>{isExporting ? 'Ekspor...' : 'Ekspor Excel'}</span>
+            </button>
+
+            {/* Hapus Massal (Owner/Asset Admin) */}
+            {canManage && (
+              <button
+                type="button"
+                onClick={() => setBulkActionModal({ isOpen: true, type: 'delete' })}
+                className="flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+              >
+                <Trash2 size={14} />
+                <span>Hapus</span>
+              </button>
+            )}
+
+            {/* Clear Selection */}
+            <button
+              type="button"
+              onClick={handleClearSelection}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer ml-1"
+              title="Batal Pilih Semua"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── BULK ACTION MODAL ── */}
+      {bulkActionModal.isOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[1050] backdrop-blur-[3px]"
+          onClick={() => !bulkSubmitting && setBulkActionModal({ isOpen: false, type: null })}
+        >
+          <div
+            className="bg-bg-white dark:bg-slate-900 rounded-2xl w-full max-w-[480px] shadow-2xl border border-border-light overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-border-light bg-slate-50/70 dark:bg-slate-800/50">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                  bulkActionModal.type === 'condition'
+                    ? 'bg-amber-500/15 text-amber-600 border-amber-300'
+                    : bulkActionModal.type === 'relocate'
+                    ? 'bg-cyan-500/15 text-cyan-600 border-cyan-300'
+                    : 'bg-rose-500/15 text-rose-600 border-rose-300'
+                }`}>
+                  {bulkActionModal.type === 'condition' && <Settings size={20} />}
+                  {bulkActionModal.type === 'relocate' && <ArrowRightLeft size={20} />}
+                  {bulkActionModal.type === 'delete' && <Trash2 size={20} />}
+                </div>
+                <div>
+                  <h3 className="m-0 font-bold text-base text-text-primary">
+                    {bulkActionModal.type === 'condition' && 'Ubah Kondisi Massal'}
+                    {bulkActionModal.type === 'relocate' && 'Relokasi Alat Massal'}
+                    {bulkActionModal.type === 'delete' && 'Hapus Alat Massal'}
+                  </h3>
+                  <p className="m-0 text-xs text-text-muted mt-0.5">
+                    Menargetkan <span className="font-bold text-text-primary">{selectedToolIds.length} alat</span> yang dipilih
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={bulkSubmitting}
+                onClick={() => setBulkActionModal({ isOpen: false, type: null })}
+                className="p-1.5 text-text-muted hover:text-text-primary rounded-lg hover:bg-bg-secondary transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 flex flex-col gap-4 text-xs">
+              {/* CONDITION MODAL */}
+              {bulkActionModal.type === 'condition' && (
+                <>
+                  <div>
+                    <label className="font-bold text-text-secondary block mb-2">Pilih Kondisi Baru:</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['Baik', 'Maintenance', 'Rusak'] as const).map((kondisi) => {
+                        const style = getConditionStyle(kondisi);
+                        const Icon = style.icon;
+                        const isSelected = bulkCondition === kondisi;
+                        return (
+                          <button
+                            key={kondisi}
+                            type="button"
+                            onClick={() => setBulkCondition(kondisi)}
+                            className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-primary ring-2 ring-primary/20 bg-primary/5 font-bold text-text-primary'
+                                : 'border-border-light hover:border-slate-300 bg-bg-secondary/40 text-text-secondary'
+                            }`}
+                          >
+                            <span className="w-8 h-8 rounded-lg flex items-center justify-center mb-1.5" style={{ backgroundColor: style.bg, color: style.color }}>
+                              <Icon size={16} />
+                            </span>
+                            <span className="text-xs">{style.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-text-secondary block mb-1.5">Catatan Perubahan (Opsional):</label>
+                    <textarea
+                      value={bulkNotes}
+                      onChange={(e) => setBulkNotes(e.target.value)}
+                      placeholder="Contoh: Pengecekan rutin bulanan / telah diservis"
+                      rows={3}
+                      className="w-full p-2.5 rounded-xl border border-border-light bg-bg-white text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* RELOCATE MODAL */}
+              {bulkActionModal.type === 'relocate' && (
+                <>
+                  <div>
+                    <label className="font-bold text-text-secondary block mb-1.5">Pilih Gudang Tujuan:</label>
+                    <select
+                      value={bulkWarehouseId}
+                      onChange={(e) => setBulkWarehouseId(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-border-light bg-bg-white text-text-primary font-medium focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                    >
+                      <option value="">-- Tetap di Gudang Saat Ini --</option>
+                      {warehouses.map((w) => (
+                        <option key={w._id} value={w._id}>
+                          {w.name} ({w.code || w.type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-text-secondary block mb-1.5">Lokasi Rak / Bin (Opsional):</label>
+                    <input
+                      type="text"
+                      value={bulkBinLocation}
+                      onChange={(e) => setBulkBinLocation(e.target.value)}
+                      placeholder="Contoh: Rak A-02 / Zona Barat"
+                      className="w-full p-2.5 rounded-xl border border-border-light bg-bg-white text-text-primary focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-text-secondary block mb-1.5">Tugaskan ke Proyek (Opsional):</label>
+                    <select
+                      value={bulkProjectId}
+                      onChange={(e) => setBulkProjectId(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-border-light bg-bg-white text-text-primary font-medium focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                    >
+                      <option value="">-- Tidak Terkait Proyek / Gudang Utama --</option>
+                      {projectsList.map((p) => (
+                        <option key={p._id} value={p._id}>
+                          {p.nama} {p.code ? `(${p.code})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-text-secondary block mb-1.5">Catatan Relokasi (Opsional):</label>
+                    <textarea
+                      value={bulkNotes}
+                      onChange={(e) => setBulkNotes(e.target.value)}
+                      placeholder="Alasan transfer atau penugasan massal..."
+                      rows={2}
+                      className="w-full p-2.5 rounded-xl border border-border-light bg-bg-white text-text-primary focus:outline-none focus:ring-2 focus:ring-cyan-500/20 resize-none"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* DELETE MODAL */}
+              {bulkActionModal.type === 'delete' && (
+                <div className="flex flex-col gap-3">
+                  <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 flex items-start gap-3">
+                    <AlertTriangle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+                    <div className="text-xs text-rose-900 dark:text-rose-200 leading-relaxed">
+                      <p className="font-bold m-0 mb-1">Peringatan: Penghapusan Permanen</p>
+                      <p className="m-0">
+                        Anda akan menghapus <strong className="font-black text-rose-700 dark:text-rose-400">{selectedToolIds.length} data alat</strong> beserta file foto fisiknya dari server. Data yang telah dihapus tidak dapat dipulihkan kembali.
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-text-muted text-[11px] m-0">
+                    Klik tombol konfirmasi di bawah untuk memproses penghapusan massal.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2.5 p-4 border-t border-border-light bg-slate-50/70 dark:bg-slate-800/50">
+              <button
+                type="button"
+                disabled={bulkSubmitting}
+                onClick={() => setBulkActionModal({ isOpen: false, type: null })}
+                className="py-2 px-3.5 rounded-xl text-xs font-bold text-text-secondary hover:bg-bg-secondary border border-border-light transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+
+              {bulkActionModal.type === 'condition' && (
+                <button
+                  type="button"
+                  disabled={bulkSubmitting}
+                  onClick={handleBulkExecuteCondition}
+                  className="py-2 px-4 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  {bulkSubmitting ? 'Memproses...' : `Perbarui ${selectedToolIds.length} Alat`}
+                </button>
+              )}
+
+              {bulkActionModal.type === 'relocate' && (
+                <button
+                  type="button"
+                  disabled={bulkSubmitting}
+                  onClick={handleBulkExecuteRelocate}
+                  className="py-2 px-4 rounded-xl text-xs font-bold bg-cyan-700 hover:bg-cyan-600 active:bg-cyan-800 text-white transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  {bulkSubmitting ? 'Memproses...' : `Pindahkan ${selectedToolIds.length} Alat`}
+                </button>
+              )}
+
+              {bulkActionModal.type === 'delete' && (
+                <button
+                  type="button"
+                  disabled={bulkSubmitting}
+                  onClick={handleBulkExecuteDelete}
+                  className="py-2 px-4 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  {bulkSubmitting ? 'Menghapus...' : `Hapus Permanen (${selectedToolIds.length})`}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

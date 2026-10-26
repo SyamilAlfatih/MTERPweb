@@ -47,12 +47,34 @@ export const deleteTool = async (id: string) => {
   return response.data;
 };
 
+export const bulkDeleteTools = async (toolIds: string[]) => {
+  const response = await api.post('/tools/bulk-delete', { toolIds });
+  return response.data;
+};
+
+export const bulkUpdateToolCondition = async (toolIds: string[], kondisi: string, notes?: string) => {
+  const response = await api.post('/tools/bulk-update-condition', { toolIds, kondisi, notes });
+  return response.data;
+};
+
+export const bulkRelocateTools = async (data: {
+  toolIds: string[];
+  warehouseId?: string;
+  binLocation?: string;
+  projectId?: string;
+  notes?: string;
+}) => {
+  const response = await api.post('/tools/bulk-relocate', data);
+  return response.data;
+};
+
 export const exportToolsExcel = async (params?: {
   search?: string;
   kondisi?: string;
   projectId?: string;
   columns?: string[];
   headers?: boolean;
+  toolIds?: string[];
 }): Promise<void> => {
   const queryParams = new URLSearchParams();
   if (params?.search) queryParams.append('search', params.search);
@@ -60,6 +82,7 @@ export const exportToolsExcel = async (params?: {
   if (params?.projectId) queryParams.append('projectId', params.projectId);
   if (params?.columns && params.columns.length > 0) queryParams.append('columns', params.columns.join(','));
   if (params?.headers !== undefined) queryParams.append('headers', params.headers ? 'true' : 'false');
+  if (params?.toolIds && params.toolIds.length > 0) queryParams.append('toolIds', params.toolIds.join(','));
 
   const response = await api.get(`/tools/export-excel?${queryParams.toString()}`, {
     responseType: 'blob',
