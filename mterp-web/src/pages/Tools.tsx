@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import {
   Search, Wrench, Plus, Package, MapPin, User,
-  Calendar, Edit3, Trash2, X, ChevronDown, ChevronRight, AlertTriangle,
+  Calendar, Edit3, Trash2, X, ChevronDown, ChevronUp, ChevronRight, AlertTriangle,
   CheckCircle2, Settings, Archive, Camera, UserX, Warehouse as WarehouseIcon,
   LayoutGrid, List, FileSpreadsheet, Download, UploadCloud, Layers, Filter, Check,
-  History, Compass, ShieldCheck, ArrowRightLeft, Building2
+  History, Compass, ShieldCheck, ArrowRightLeft, Building2, PieChart as PieChartIcon
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -116,9 +116,12 @@ export default function Tools() {
   const [groupBy, setGroupBy] = useState<GroupByOption>('none');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<'card' | 'table'>(() => {
-    return (localStorage.getItem('tools_view_mode') as 'card' | 'table') || 'table';
+    const saved = localStorage.getItem('tools_view_mode');
+    if (saved === 'card' || saved === 'table') return saved;
+    return typeof window !== 'undefined' && window.innerWidth < 768 ? 'card' : 'table';
   });
   const [tableDensity, setTableDensity] = useState<'compact' | 'normal' | 'comfortable'>('normal');
+  const [showChartOnMobile, setShowChartOnMobile] = useState(false);
 
   // Navigation tab
   const [activeTab, setActiveTab] = useState<'inventory' | 'my_tools' | 'map'>('inventory');
@@ -479,17 +482,16 @@ export default function Tools() {
             <p className="text-xs text-text-muted m-0">{t('tools.subtitle')}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 max-sm:w-full max-sm:overflow-x-auto max-sm:pb-1 no-scrollbar">
           {canManage && (
             <button
               type="button"
               onClick={() => setWarehouseModalOpen(true)}
-              className="flex items-center gap-1.5 py-1.5 px-3 bg-cyan-700 hover:bg-cyan-600 active:bg-cyan-800 text-white rounded-lg text-xs font-semibold transition-all shadow-2xs active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 py-2 px-3 bg-cyan-700 hover:bg-cyan-600 active:bg-cyan-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap min-h-[38px] shrink-0"
               title="Kelola Fasilitas Gudang & Lokasi Bin"
             >
               <WarehouseIcon size={15} />
-              <span className="max-sm:hidden">Kelola Gudang</span>
-              <span className="hidden max-sm:inline">Gudang</span>
+              <span>Kelola Gudang</span>
             </button>
           )}
 
@@ -497,12 +499,11 @@ export default function Tools() {
             <button
               type="button"
               onClick={() => setShowImportModal(true)}
-              className="flex items-center gap-1.5 py-1.5 px-3 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white rounded-lg text-xs font-semibold transition-all shadow-2xs active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 py-2 px-3 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap min-h-[38px] shrink-0"
               title="Impor Alat dari Excel (.xlsx / .csv)"
             >
               <UploadCloud size={15} />
-              <span className="max-sm:hidden">Impor Excel</span>
-              <span className="hidden max-sm:inline">Impor</span>
+              <span>Impor Excel</span>
             </button>
           )}
 
@@ -513,7 +514,7 @@ export default function Tools() {
               setShowExportModal(true);
             }}
             disabled={tools.length === 0 || isExporting}
-            className="flex items-center gap-1.5 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-semibold transition-all shadow-2xs active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="flex items-center gap-1.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap min-h-[38px] shrink-0"
             title={t('tools.actions.exportExcel')}
           >
             {isExporting ? (
@@ -521,17 +522,18 @@ export default function Tools() {
             ) : (
               <FileSpreadsheet size={15} />
             )}
-            <span className="max-sm:hidden">{t('tools.actions.exportExcel')}</span>
-            <span className="hidden max-sm:inline">.xlsx</span>
+            <span>Export .xlsx</span>
           </button>
 
           {canManage && (
-            <Button
-              title={t('tools.actions.add')}
-              icon={Plus}
+            <button
+              type="button"
               onClick={openAddModal}
-              variant="primary"
-            />
+              className="flex items-center gap-1.5 py-2 px-3.5 bg-primary hover:bg-primary-dark active:bg-primary text-white rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap min-h-[38px] shrink-0"
+            >
+              <Plus size={15} />
+              <span>{t('tools.actions.add')}</span>
+            </button>
           )}
         </div>
       </div>
@@ -541,7 +543,7 @@ export default function Tools() {
         <button
           type="button"
           onClick={() => setActiveTab('inventory')}
-          className={`flex items-center gap-2 py-2 px-3.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`flex items-center gap-2 py-2.5 px-3.5 sm:px-4 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap min-h-[42px] active:scale-95 shrink-0 ${
             activeTab === 'inventory'
               ? 'bg-primary text-white shadow-xs'
               : 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'
@@ -550,7 +552,7 @@ export default function Tools() {
           <Package size={15} />
           <span>Semua Inventaris</span>
           <span
-            className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+            className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
               activeTab === 'inventory' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-text-primary'
             }`}
           >
@@ -561,7 +563,7 @@ export default function Tools() {
         <button
           type="button"
           onClick={() => setActiveTab('my_tools')}
-          className={`flex items-center gap-2 py-2 px-3.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`flex items-center gap-2 py-2.5 px-3.5 sm:px-4 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap min-h-[42px] active:scale-95 shrink-0 ${
             activeTab === 'my_tools'
               ? 'bg-primary text-white shadow-xs'
               : 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'
@@ -570,7 +572,7 @@ export default function Tools() {
           <User size={15} />
           <span>Alat Saya (Peminjaman)</span>
           <span
-            className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+            className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
               myTools.length > 0
                 ? activeTab === 'my_tools'
                   ? 'bg-emerald-400 text-slate-900'
@@ -587,7 +589,7 @@ export default function Tools() {
         <button
           type="button"
           onClick={() => setActiveTab('map')}
-          className={`flex items-center gap-2 py-2 px-3.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`flex items-center gap-2 py-2.5 px-3.5 sm:px-4 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap min-h-[42px] active:scale-95 shrink-0 ${
             activeTab === 'map'
               ? 'bg-primary text-white shadow-xs'
               : 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'
@@ -596,7 +598,7 @@ export default function Tools() {
           <Compass size={15} />
           <span>Peta Lokasi & Geofence</span>
           <span
-            className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+            className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
               activeTab === 'map' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-text-primary'
             }`}
           >
@@ -773,56 +775,58 @@ export default function Tools() {
             />
           </div>
 
-          {/* Category Dropdown */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-xs text-text-muted flex items-center gap-1">
-              <Filter size={13} />
-              <span className="hidden sm:inline">Kategori:</span>
-            </span>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="py-2 px-2.5 text-xs font-semibold rounded-lg border border-border-light bg-bg-secondary text-text-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
-            >
-              <option value="all">Semua Kategori ({tools.length})</option>
-              {categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat} ({tools.filter((t) => t.kategori === cat).length})
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2.5">
+            {/* Category Dropdown */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-xs text-text-muted hidden md:flex items-center gap-1 shrink-0">
+                <Filter size={13} />
+                <span>Kategori:</span>
+              </span>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="w-full min-h-[38px] py-2 px-2.5 text-xs font-semibold rounded-xl border border-border-light bg-bg-secondary text-text-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer truncate"
+              >
+                <option value="all">Semua Kategori ({tools.length})</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat} ({tools.filter((t) => t.kategori === cat).length})
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Group By Selector */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-xs text-text-muted flex items-center gap-1">
-              <Layers size={13} />
-              <span className="hidden sm:inline">Pengelompokan:</span>
-            </span>
-            <select
-              value={groupBy}
-              onChange={(e) => {
-                setGroupBy(e.target.value as GroupByOption);
-                setCollapsedGroups({});
-              }}
-              className="py-2 px-2.5 text-xs font-semibold rounded-lg border border-primary/30 bg-primary/[0.04] text-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
-            >
-              <option value="none">Tanpa Pengelompokan (Flat)</option>
-              <option value="lokasi">Grup: Lokasi Penyimpanan</option>
-              <option value="kategori">Grup: Kategori Alat</option>
-              <option value="kondisi">Grup: Kondisi Fisik</option>
-              <option value="project">Grup: Proyek / Pengguna</option>
-              <option value="status">Grup: Status Penggunaan</option>
-            </select>
+            {/* Group By Selector */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-xs text-text-muted hidden md:flex items-center gap-1 shrink-0">
+                <Layers size={13} />
+                <span>Grup:</span>
+              </span>
+              <select
+                value={groupBy}
+                onChange={(e) => {
+                  setGroupBy(e.target.value as GroupByOption);
+                  setCollapsedGroups({});
+                }}
+                className="w-full min-h-[38px] py-2 px-2.5 text-xs font-semibold rounded-xl border border-primary/30 bg-primary/[0.04] text-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer truncate"
+              >
+                <option value="none">Tanpa Grup (Flat)</option>
+                <option value="lokasi">Grup: Lokasi / Gudang</option>
+                <option value="kategori">Grup: Kategori</option>
+                <option value="kondisi">Grup: Kondisi</option>
+                <option value="project">Grup: Proyek</option>
+                <option value="status">Grup: Status</option>
+              </select>
+            </div>
           </div>
 
           {/* Expand / Collapse All (When Grouped) */}
           {groupBy !== 'none' && (
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0 max-sm:w-full">
               <button
                 type="button"
                 onClick={expandAllGroups}
-                className="py-1 px-2 text-[11px] font-semibold rounded border border-border-light bg-bg-secondary text-text-secondary hover:text-text-primary cursor-pointer"
+                className="flex-1 sm:flex-initial py-1.5 px-3 min-h-[34px] text-xs font-bold rounded-xl border border-border-light bg-bg-secondary text-text-secondary hover:text-text-primary cursor-pointer active:scale-95 text-center transition-all"
                 title="Buka semua grup"
               >
                 Buka Semua
@@ -830,7 +834,7 @@ export default function Tools() {
               <button
                 type="button"
                 onClick={collapseAllGroups}
-                className="py-1 px-2 text-[11px] font-semibold rounded border border-border-light bg-bg-secondary text-text-secondary hover:text-text-primary cursor-pointer"
+                className="flex-1 sm:flex-initial py-1.5 px-3 min-h-[34px] text-xs font-bold rounded-xl border border-border-light bg-bg-secondary text-text-secondary hover:text-text-primary cursor-pointer active:scale-95 text-center transition-all"
                 title="Tutup semua grup"
               >
                 Tutup Semua
@@ -840,8 +844,8 @@ export default function Tools() {
         </div>
 
         {/* Bottom Control Bar: Status Filter Pills & View Mode */}
-        <div className="flex items-center justify-between gap-3 flex-wrap pt-2 border-t border-border-light/60">
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar max-sm:gap-1">
+        <div className="flex items-center justify-between gap-2.5 flex-wrap pt-2 border-t border-border-light/60">
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar max-sm:w-full">
             {FILTERS.map(f => {
               const Icon = f.icon;
               const filterLabelMapping: Record<string, string> = {
@@ -854,7 +858,7 @@ export default function Tools() {
               return (
                 <button
                   key={f.key}
-                  className={`flex items-center gap-1.5 py-1.5 px-3 border border-border-light rounded-lg bg-bg-secondary/60 text-text-secondary text-xs font-semibold cursor-pointer whitespace-nowrap transition-all duration-150 hover:border-primary-light hover:text-primary ${filter === f.key ? '!bg-primary !text-white !border-primary shadow-xs' : ''}`}
+                  className={`flex items-center gap-1.5 py-2 px-3 border border-border-light rounded-xl bg-bg-secondary/60 text-text-secondary text-xs font-bold cursor-pointer whitespace-nowrap transition-all min-h-[38px] active:scale-95 shrink-0 ${filter === f.key ? '!bg-primary !text-white !border-primary shadow-xs' : 'hover:border-primary-light hover:text-primary'}`}
                   onClick={() => setFilter(f.key)}
                 >
                   <Icon size={13} />
@@ -866,13 +870,13 @@ export default function Tools() {
           </div>
 
           {/* View Mode & Density Switcher */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-lg border border-border-light">
+          <div className="flex items-center justify-between sm:justify-end gap-2 max-sm:w-full">
+            <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-xl border border-border-light">
               <button
                 onClick={() => { setViewMode('table'); localStorage.setItem('tools_view_mode', 'table'); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-lg text-xs font-bold transition-all ${
                   viewMode === 'table'
-                    ? 'bg-bg-white text-primary shadow-sm'
+                    ? 'bg-bg-white text-primary shadow-xs'
                     : 'text-text-muted hover:text-text-primary'
                 }`}
               >
@@ -881,9 +885,9 @@ export default function Tools() {
               </button>
               <button
                 onClick={() => { setViewMode('card'); localStorage.setItem('tools_view_mode', 'card'); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-lg text-xs font-bold transition-all ${
                   viewMode === 'card'
-                    ? 'bg-bg-white text-primary shadow-sm'
+                    ? 'bg-bg-white text-primary shadow-xs'
                     : 'text-text-muted hover:text-text-primary'
                 }`}
               >
@@ -893,14 +897,14 @@ export default function Tools() {
             </div>
 
             {viewMode === 'table' && (
-              <div className="flex items-center gap-1">
+              <div className="hidden sm:flex items-center gap-1">
                 {(['compact', 'normal', 'comfortable'] as const).map((density) => (
                   <button
                     key={density}
                     onClick={() => setTableDensity(density)}
-                    className={`px-2 py-1 text-xs font-medium rounded border transition-all ${
+                    className={`px-2 py-1 text-xs font-medium rounded-lg border transition-all ${
                       tableDensity === density
-                        ? 'border-primary bg-primary/10 text-primary font-semibold'
+                        ? 'border-primary bg-primary/10 text-primary font-bold'
                         : 'border-border-light bg-bg-white text-text-secondary hover:bg-bg-secondary'
                     }`}
                   >
@@ -915,48 +919,72 @@ export default function Tools() {
 
       {/* Content: Chart + List */}
       <div className="flex gap-5 items-start max-lg:flex-col">
-        {/* Donut Chart Side Panel */}
+        {/* Donut Chart Side Panel (Collapsible Accordion on Mobile/Tablet) */}
         {stats && (stats.total || 0) > 0 && (
-          <Card className="w-[260px] shrink-0 p-5 sticky top-4 max-lg:w-full max-lg:static">
-            <h3 className="text-base font-bold text-text-primary m-0 mb-3">{t('tools.overview')}</h3>
-            <div className="mx-auto max-lg:max-w-[220px]">
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={75}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {pieData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: 'var(--bg-white)',
-                      borderRadius: '12px',
-                      border: '1px solid var(--border)',
-                      boxShadow: 'var(--shadow-md)',
-                      fontSize: '12px',
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex flex-col gap-2 pt-3 border-t border-border-light mt-3 max-sm:flex-row max-sm:flex-wrap max-sm:gap-3">
-              {pieData.map((entry, i) => (
-                <div key={i} className="flex items-center gap-2 max-sm:min-w-[calc(50%-0.5rem)]">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[i] }} />
-                  <span className="text-sm text-text-secondary flex-1">{entry.name}</span>
-                  <span className="text-sm font-bold text-text-primary">{entry.value}</span>
+          <div className="w-full lg:w-[260px] lg:shrink-0 lg:sticky lg:top-4">
+            {/* Mobile/Tablet Accordion Header */}
+            <button
+              type="button"
+              onClick={() => setShowChartOnMobile(!showChartOnMobile)}
+              className="lg:hidden w-full flex items-center justify-between p-3 rounded-xl border border-border-light bg-bg-white dark:bg-slate-900 shadow-2xs text-xs font-bold text-text-primary mb-2 cursor-pointer transition-colors hover:bg-bg-secondary active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-2">
+                <PieChartIcon size={16} className="text-primary" />
+                <span>Statistik & Ringkasan Kondisi</span>
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-primary/10 text-primary font-mono font-bold">
+                  {stats.total || 0} Unit
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-text-muted">
+                <span className="text-[11px] font-medium">{showChartOnMobile ? 'Tutup' : 'Lihat Grafik'}</span>
+                {showChartOnMobile ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </div>
+            </button>
+
+            {/* Chart Body: Visible always on desktop (lg:block), collapsible on mobile */}
+            <div className={`${showChartOnMobile ? 'block' : 'hidden lg:block'}`}>
+              <Card className="w-full p-4 lg:p-5">
+                <h3 className="text-sm lg:text-base font-bold text-text-primary m-0 mb-3">{t('tools.overview')}</h3>
+                <div className="mx-auto max-w-[200px] lg:max-w-none">
+                  <ResponsiveContainer width="100%" height={170}>
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={46}
+                        outerRadius={70}
+                        paddingAngle={4}
+                        dataKey="value"
+                      >
+                        {pieData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          background: 'var(--bg-white)',
+                          borderRadius: '12px',
+                          border: '1px solid var(--border)',
+                          boxShadow: 'var(--shadow-md)',
+                          fontSize: '12px',
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
+                <div className="grid grid-cols-2 lg:flex lg:flex-col gap-2 pt-3 border-t border-border-light mt-3">
+                  {pieData.map((entry, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[i] }} />
+                      <span className="text-xs text-text-secondary flex-1 truncate">{entry.name}</span>
+                      <span className="text-xs font-bold text-text-primary">{entry.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
             </div>
-          </Card>
+          </div>
         )}
 
         {/* Tool List */}
@@ -976,14 +1004,14 @@ export default function Tools() {
                   <table role="grid" aria-rowcount={filteredTools.length} className="w-full border-collapse text-left">
                     <thead>
                       <tr role="row" className="bg-slate-50/80 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold">
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky left-0 z-20 bg-slate-50 w-12 text-center border-r border-border-light`}>#</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky left-12 z-20 bg-slate-50 min-w-[200px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Alat / Mesin</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-0 z-20 bg-slate-50 w-12 text-center border-r border-border-light`}>#</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-12 z-20 bg-slate-50 min-w-[180px] sm:min-w-[200px] border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Alat / Mesin</th>
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px]`}>Kondisi</th>
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[110px] text-right`}>Stok</th>
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px]`}>Lokasi</th>
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[150px]`}>Pengguna / Proyek</th>
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px]`}>Pengecekan</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sticky right-0 z-20 bg-slate-50 text-right w-28 border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Aksi</th>
+                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:right-0 z-20 bg-slate-50 text-right w-28 border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y border-border-light">
@@ -1044,11 +1072,11 @@ export default function Tools() {
                                 return (
                                   <tr role="row" aria-rowindex={index + 1} key={tool._id} className="hover:bg-slate-50/80 transition-colors group">
                                     {/* Sticky # */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sticky left-0 z-10 bg-white group-hover:bg-slate-50 text-center text-text-muted font-mono tabular-nums border-r border-border-light`}>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-0 z-10 bg-white group-hover:bg-slate-50 text-center text-text-muted font-mono tabular-nums border-r border-border-light`}>
                                       {index + 1}
                                     </td>
                                     {/* Sticky Photo + Name + Category */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sticky left-12 z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-12 z-10 bg-white group-hover:bg-slate-50 border-r border-border-light shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
                                       <div className="flex items-center gap-2.5">
                                         <div className="w-9 h-9 rounded-md overflow-hidden shrink-0 border border-border-light bg-bg-secondary flex items-center justify-center">
                                           {tool.photo ? (
@@ -1130,12 +1158,12 @@ export default function Tools() {
                                       {tool.lastChecked ? formatDateDisplay(tool.lastChecked) : '-'}
                                     </td>
                                     {/* Sticky Aksi */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
+                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-border-light shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)]`}>
                                       <div className="flex items-center justify-end gap-1">
                                         <button
                                           type="button"
                                           onClick={() => openMovementModal(tool)}
-                                          className="p-1.5 rounded hover:bg-cyan-50 dark:hover:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400 transition-colors cursor-pointer"
+                                          className="p-2 min-w-[32px] min-h-[32px] rounded-lg hover:bg-cyan-50 dark:hover:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400 transition-colors active:scale-95 cursor-pointer flex items-center justify-center"
                                           title="Gerakkan / Pindahkan Alat (Watermark Foto)"
                                         >
                                           <Camera size={14} />
@@ -1143,7 +1171,7 @@ export default function Tools() {
                                         <button
                                           type="button"
                                           onClick={() => openHistoryDrawer(tool)}
-                                          className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer"
+                                          className="p-2 min-w-[32px] min-h-[32px] rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors active:scale-95 cursor-pointer flex items-center justify-center"
                                           title="Lihat Riwayat Pergerakan & Bukti Foto"
                                         >
                                           <History size={14} />
@@ -1152,14 +1180,14 @@ export default function Tools() {
                                           <>
                                             <button
                                               onClick={() => openEditModal(tool)}
-                                              className="p-1.5 rounded hover:bg-primary-bg hover:text-primary text-text-muted transition-colors cursor-pointer"
+                                              className="p-2 min-w-[32px] min-h-[32px] rounded-lg hover:bg-primary-bg hover:text-primary text-text-muted transition-colors active:scale-95 cursor-pointer flex items-center justify-center"
                                               title={t('tools.actions.edit')}
                                             >
                                               <Edit3 size={14} />
                                             </button>
                                             <button
                                               onClick={() => handleDelete(tool)}
-                                              className="p-1.5 rounded hover:bg-danger-bg hover:text-danger text-text-muted transition-colors cursor-pointer"
+                                              className="p-2 min-w-[32px] min-h-[32px] rounded-lg hover:bg-danger-bg hover:text-danger text-text-muted transition-colors active:scale-95 cursor-pointer flex items-center justify-center"
                                               title={t('tools.actions.delete')}
                                             >
                                               <Trash2 size={14} />
@@ -1223,27 +1251,30 @@ export default function Tools() {
                                   borderLeft: `4px solid ${condStyle.color}`,
                                 }}
                               >
-                                <div className="flex items-start gap-3.5 max-sm:flex-col">
-                                  <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 border border-border-light max-sm:w-full max-sm:h-36">
-                                    {tool.photo ? (
-                                      <PhotoView src={getImageUrl(tool.photo)}>
-                                        <img 
-                                          src={getImageUrl(tool.photo)} 
-                                          alt={tool.nama} 
-                                          className="w-full h-full object-cover cursor-pointer"
-                                        />
-                                      </PhotoView>
-                                    ) : (
-                                      <div className="w-full h-full bg-bg-secondary flex items-center justify-center">
-                                        <Wrench size={20} className="text-text-muted" />
-                                      </div>
-                                    )}
-                                  </div>
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-3">
+                                  {/* Info Container */}
+                                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden shrink-0 border border-border-light bg-bg-secondary flex items-center justify-center">
+                                      {tool.photo ? (
+                                        <PhotoView src={getImageUrl(tool.photo)}>
+                                          <img 
+                                            src={getImageUrl(tool.photo)} 
+                                            alt={tool.nama} 
+                                            className="w-full h-full object-cover cursor-pointer"
+                                          />
+                                        </PhotoView>
+                                      ) : (
+                                        <div className="w-full h-full bg-bg-secondary flex items-center justify-center">
+                                          <Wrench size={22} className="text-text-muted" />
+                                        </div>
+                                      )}
+                                    </div>
 
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                      <h3 className="text-sm font-bold text-text-primary m-0">{tool.nama}</h3>
-                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                        <h3 className="text-sm font-bold text-text-primary m-0 truncate max-w-[200px] sm:max-w-none">{tool.nama}</h3>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 flex-wrap mb-2">
                                         {tool.kategori && (
                                           <span className="text-[10px] font-semibold text-text-secondary bg-bg-secondary py-[1px] px-2 rounded-full">{tool.kategori}</span>
                                         )}
@@ -1255,77 +1286,79 @@ export default function Tools() {
                                           {condStyle.label}
                                         </span>
                                       </div>
-                                    </div>
 
-                                    <div className="flex flex-wrap gap-2.5 text-xs">
-                                      <span className="flex items-center gap-1 text-text-muted whitespace-nowrap">
-                                        <Archive size={12} />
-                                        {tool.stok} {tool.satuan}
-                                      </span>
-                                      {tool.warehouseId && typeof tool.warehouseId === 'object' ? (
-                                        <span className="flex items-center gap-1 text-cyan-700 dark:text-cyan-400 font-semibold whitespace-nowrap">
-                                          <WarehouseIcon size={12} />
-                                          {tool.warehouseId.name} {tool.binRef ? `• ${tool.binRef}` : ''}
+                                      <div className="flex flex-wrap gap-1.5 sm:gap-2 text-xs">
+                                        <span className="flex items-center gap-1 text-text-muted whitespace-nowrap bg-bg-secondary/60 py-0.5 px-2 rounded-md">
+                                          <Archive size={12} />
+                                          <span className="font-semibold text-text-primary">{tool.stok}</span> {tool.satuan}
                                         </span>
-                                      ) : tool.lokasi ? (
-                                        <span className="flex items-center gap-1 text-text-muted whitespace-nowrap">
-                                          <MapPin size={12} />
-                                          {tool.lokasi} {tool.binRef ? `• ${tool.binRef}` : ''}
-                                        </span>
-                                      ) : null}
-                                      {tool.assignedTo && (
-                                        <span className="flex items-center gap-1 whitespace-nowrap !text-primary font-medium">
-                                          <User size={12} />
-                                          {tool.assignedTo.fullName}
-                                        </span>
-                                      )}
-                                      {tool.projectId && (
-                                        <span className="flex items-center gap-1 whitespace-nowrap !text-info font-medium">
-                                          <Package size={12} />
-                                          {tool.projectId.nama}
-                                        </span>
-                                      )}
-                                      {tool.lastChecked && (
-                                        <span className="flex items-center gap-1 text-text-muted whitespace-nowrap">
-                                          <Calendar size={12} />
-                                          {formatDateDisplay(tool.lastChecked)}
-                                        </span>
-                                      )}
+                                        {tool.warehouseId && typeof tool.warehouseId === 'object' ? (
+                                          <span className="flex items-center gap-1 text-cyan-700 dark:text-cyan-400 font-semibold whitespace-nowrap bg-cyan-500/10 py-0.5 px-2 rounded-md">
+                                            <WarehouseIcon size={12} />
+                                            {tool.warehouseId.name} {tool.binRef ? `• ${tool.binRef}` : ''}
+                                          </span>
+                                        ) : tool.lokasi ? (
+                                          <span className="flex items-center gap-1 text-text-muted whitespace-nowrap bg-bg-secondary/60 py-0.5 px-2 rounded-md">
+                                            <MapPin size={12} />
+                                            {tool.lokasi} {tool.binRef ? `• ${tool.binRef}` : ''}
+                                          </span>
+                                        ) : null}
+                                        {tool.assignedTo && (
+                                          <span className="flex items-center gap-1 whitespace-nowrap !text-primary font-medium bg-primary/10 py-0.5 px-2 rounded-md">
+                                            <User size={12} />
+                                            {tool.assignedTo.fullName}
+                                          </span>
+                                        )}
+                                        {tool.projectId && (
+                                          <span className="flex items-center gap-1 whitespace-nowrap !text-info font-medium bg-info/10 py-0.5 px-2 rounded-md">
+                                            <Package size={12} />
+                                            {tool.projectId.nama}
+                                          </span>
+                                        )}
+                                        {tool.lastChecked && (
+                                          <span className="flex items-center gap-1 text-text-muted whitespace-nowrap py-0.5 px-1.5">
+                                            <Calendar size={12} />
+                                            {formatDateDisplay(tool.lastChecked)}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
 
-                                  <div className="flex gap-1.5 shrink-0">
+                                  {/* Action Buttons: Prominent and Thumb-Friendly */}
+                                  <div className="flex items-center gap-2 pt-2.5 border-t border-border-light sm:border-t-0 sm:pt-0 sm:shrink-0 max-sm:w-full">
                                     <button
                                       type="button"
-                                      className="w-7 h-7 rounded border border-cyan-500/30 bg-cyan-500/10 flex items-center justify-center cursor-pointer text-cyan-600 dark:text-cyan-400 transition-all hover:bg-cyan-500/20"
                                       onClick={() => openMovementModal(tool)}
+                                      className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-xs font-bold transition-all shadow-xs min-h-[38px] active:scale-95 cursor-pointer"
                                       title="Gerakkan / Pindahkan Alat (Watermark Foto)"
                                     >
-                                      <Camera size={13} />
+                                      <Camera size={14} />
+                                      <span>Gerakkan</span>
                                     </button>
                                     <button
                                       type="button"
-                                      className="w-7 h-7 rounded border border-border-light bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all hover:text-text-primary hover:bg-bg-secondary"
                                       onClick={() => openHistoryDrawer(tool)}
+                                      className="p-2 min-h-[38px] min-w-[38px] rounded-xl border border-border-light bg-bg-white hover:bg-bg-secondary text-text-secondary flex items-center justify-center cursor-pointer transition-colors active:scale-95"
                                       title="Riwayat Audit & Watermark"
                                     >
-                                      <History size={13} />
+                                      <History size={15} />
                                     </button>
                                     {canManage && (
                                       <>
                                         <button
-                                          className="w-7 h-7 rounded border border-border-light bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-primary hover:!border-primary hover:!bg-primary-bg"
                                           onClick={() => openEditModal(tool)}
+                                          className="p-2 min-h-[38px] min-w-[38px] rounded-xl border border-border-light bg-bg-white hover:bg-primary-bg hover:text-primary text-text-muted flex items-center justify-center cursor-pointer transition-colors active:scale-95"
                                           title={t('tools.actions.edit')}
                                         >
-                                          <Edit3 size={13} />
+                                          <Edit3 size={14} />
                                         </button>
                                         <button
-                                          className="w-7 h-7 rounded border border-border-light bg-bg-white flex items-center justify-center cursor-pointer text-text-muted transition-all duration-150 hover:!text-danger hover:!border-danger hover:!bg-danger-bg"
                                           onClick={() => handleDelete(tool)}
+                                          className="p-2 min-h-[38px] min-w-[38px] rounded-xl border border-border-light bg-bg-white hover:bg-danger-bg hover:text-danger text-text-muted flex items-center justify-center cursor-pointer transition-colors active:scale-95"
                                           title={t('tools.actions.delete')}
                                         >
-                                          <Trash2 size={13} />
+                                          <Trash2 size={14} />
                                         </button>
                                       </>
                                     )}

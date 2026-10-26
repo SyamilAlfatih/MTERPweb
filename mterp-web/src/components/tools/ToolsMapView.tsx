@@ -182,21 +182,21 @@ export default function ToolsMapView({
   return (
     <div className="relative w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-md bg-white dark:bg-slate-900">
       {/* Map Header Toolbar */}
-      <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800 text-xs">
-        <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
-          <MapPin size={16} className="text-cyan-500" />
-          <span>Pemetaan Geografis Inventaris Alat (GPS & Geofence)</span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-4 py-3 bg-slate-50 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800 text-xs">
+        <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200 min-w-0">
+          <MapPin size={16} className="text-cyan-500 shrink-0" />
+          <span className="truncate">Pemetaan Geografis Alat (GPS & Geofence)</span>
         </div>
-        <div className="flex items-center gap-4 text-slate-500 dark:text-slate-400">
-          <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar text-slate-500 dark:text-slate-400 text-[11px] pb-0.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
             <span>Head Office</span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
             <span>Gudang Proyek</span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
             <span>Workshop</span>
           </div>
@@ -204,7 +204,7 @@ export default function ToolsMapView({
       </div>
 
       {/* Leaflet Container */}
-      <div ref={mapContainerRef} className="w-full h-[360px] sm:h-[440px] z-10" />
+      <div ref={mapContainerRef} className="w-full h-[320px] sm:h-[440px] z-10" />
     </div>
   );
 }
