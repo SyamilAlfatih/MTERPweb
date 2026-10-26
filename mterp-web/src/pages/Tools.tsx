@@ -5,7 +5,7 @@ import {
   CheckCircle2, Settings, Archive, Camera, UserX, Warehouse as WarehouseIcon,
   LayoutGrid, List, FileSpreadsheet, Download, UploadCloud, Layers, Filter, Check,
   History, Compass, ShieldCheck, ArrowRightLeft, Building2, PieChart as PieChartIcon,
-  RefreshCw, Database
+  RefreshCw, Database, Columns3
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -73,6 +73,34 @@ const EXPORTABLE_TOOL_COLUMNS = [
 const DEFAULT_EXPORT_COLUMNS = EXPORTABLE_TOOL_COLUMNS.filter(c => c.default).map(c => c.key);
 const COMPACT_EXPORT_COLUMNS = ['no', 'nama', 'kondisi', 'stok', 'lokasi', 'status'];
 
+export interface ToolTableColumn {
+  id: string;
+  label: string;
+  minWidth: string;
+  defaultVisible: boolean;
+}
+
+const TOOL_TABLE_COLUMNS: ToolTableColumn[] = [
+  { id: 'no', label: 'No', minWidth: 'w-12 text-center', defaultVisible: true },
+  { id: 'nama', label: 'Nama Alat / Mesin', minWidth: 'min-w-[180px] sm:min-w-[200px]', defaultVisible: true },
+  { id: 'kategori', label: 'Kategori', minWidth: 'min-w-[120px]', defaultVisible: true },
+  { id: 'kondisi', label: 'Kondisi', minWidth: 'min-w-[120px]', defaultVisible: true },
+  { id: 'stok', label: 'Stok', minWidth: 'min-w-[90px] text-right', defaultVisible: true },
+  { id: 'satuan', label: 'Satuan', minWidth: 'min-w-[90px]', defaultVisible: true },
+  { id: 'lokasi', label: 'Lokasi Penyimpanan', minWidth: 'min-w-[140px]', defaultVisible: true },
+  { id: 'status', label: 'Status Penggunaan', minWidth: 'min-w-[130px]', defaultVisible: true },
+  { id: 'assignedTo', label: 'Penanggung Jawab', minWidth: 'min-w-[150px]', defaultVisible: true },
+  { id: 'project', label: 'Proyek Terkait', minWidth: 'min-w-[140px]', defaultVisible: true },
+  { id: 'lastChecked', label: 'Pengecekan Terakhir', minWidth: 'min-w-[130px]', defaultVisible: true },
+  { id: 'createdAt', label: 'Tanggal Terdaftar', minWidth: 'min-w-[130px]', defaultVisible: false },
+  { id: 'notes', label: 'Catatan', minWidth: 'min-w-[160px]', defaultVisible: false },
+];
+
+const DEFAULT_VISIBLE_COLUMNS: Record<string, boolean> = TOOL_TABLE_COLUMNS.reduce((acc, col) => {
+  acc[col.id] = col.defaultVisible;
+  return acc;
+}, {} as Record<string, boolean>);
+
 const EMPTY_FORM = {
   nama: '',
   kategori: '',
@@ -131,6 +159,65 @@ export default function Tools() {
   });
   const [tableDensity, setTableDensity] = useState<'compact' | 'normal' | 'comfortable'>('normal');
   const [showChartOnMobile, setShowChartOnMobile] = useState(false);
+
+  // Table column customization
+  const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
+  const columnDropdownRef = useRef<HTMLDivElement>(null);
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tools_visible_columns');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return { ...DEFAULT_VISIBLE_COLUMNS, ...parsed };
+        }
+      } catch (e) {
+        console.error('Failed to parse saved tools_visible_columns', e);
+      }
+    }
+    return DEFAULT_VISIBLE_COLUMNS;
+  });
+
+  const handleToggleColumn = (colId: string) => {
+    setVisibleColumns((prev) => {
+      const updated = { ...prev, [colId]: !prev[colId] };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tools_visible_columns', JSON.stringify(updated));
+      }
+      return updated;
+    });
+  };
+
+  const handleSelectAllColumns = () => {
+    const allTrue: Record<string, boolean> = {};
+    TOOL_TABLE_COLUMNS.forEach(c => (allTrue[c.id] = true));
+    setVisibleColumns(allTrue);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tools_visible_columns', JSON.stringify(allTrue));
+    }
+  };
+
+  const handleResetColumns = () => {
+    setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tools_visible_columns', JSON.stringify(DEFAULT_VISIBLE_COLUMNS));
+    }
+  };
+
+  // Click-outside listener for Column Visibility dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (columnDropdownRef.current && !columnDropdownRef.current.contains(event.target as Node)) {
+        setIsColumnDropdownOpen(false);
+      }
+    };
+    if (isColumnDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isColumnDropdownOpen]);
 
   // Automatically default to Card view whenever viewport is or switches to mobile (<768px)
   useEffect(() => {
@@ -1111,20 +1198,84 @@ export default function Tools() {
             </div>
 
             {viewMode === 'table' && (
-              <div className="hidden sm:flex items-center gap-1">
-                {(['compact', 'normal', 'comfortable'] as const).map((density) => (
+              <div className="hidden sm:flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
+                  {(['compact', 'normal', 'comfortable'] as const).map((density) => (
+                    <button
+                      key={density}
+                      onClick={() => setTableDensity(density)}
+                      className={`px-2 py-1 text-xs font-medium rounded-lg border transition-all ${
+                        tableDensity === density
+                          ? 'border-primary bg-primary/10 text-primary font-bold'
+                          : 'border-border-light bg-bg-white text-text-secondary hover:bg-bg-secondary'
+                      }`}
+                    >
+                      {density === 'compact' ? 'Rapat' : density === 'normal' ? 'Standar' : 'Lapang'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Column selector */}
+                <div className="relative" ref={columnDropdownRef}>
                   <button
-                    key={density}
-                    onClick={() => setTableDensity(density)}
-                    className={`px-2 py-1 text-xs font-medium rounded-lg border transition-all ${
-                      tableDensity === density
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border-light bg-bg-white text-text-secondary hover:bg-bg-secondary'
+                    type="button"
+                    onClick={() => setIsColumnDropdownOpen(prev => !prev)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                      isColumnDropdownOpen 
+                        ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-700 dark:border-slate-700' 
+                        : 'bg-white dark:bg-slate-900 text-text-primary border-border-light hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
+                    title="Kelola Kolom yang Ditampilkan"
                   >
-                    {density === 'compact' ? 'Rapat' : density === 'normal' ? 'Standar' : 'Lapang'}
+                    <Columns3 size={14} />
+                    <span>Kolom</span>
+                    <span className="font-mono tabular-nums text-[10px] bg-primary/20 text-primary px-1.5 py-0.2 rounded font-black">
+                      {Object.values(visibleColumns).filter(Boolean).length}/{TOOL_TABLE_COLUMNS.length}
+                    </span>
+                    <ChevronDown size={12} className={`transition-transform duration-200 ${isColumnDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
-                ))}
+
+                  {isColumnDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-1.5 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-xl border-2 border-border-light p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-border-light">
+                        <span className="text-xs font-black text-text-primary uppercase tracking-wider">Tampilan Kolom</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={handleSelectAllColumns}
+                            className="text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                          >
+                            Semua
+                          </button>
+                          <span className="text-text-muted text-[10px]">•</span>
+                          <button
+                            type="button"
+                            onClick={handleResetColumns}
+                            className="text-[10px] font-bold text-text-muted hover:text-text-primary cursor-pointer"
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                        {TOOL_TABLE_COLUMNS.map((col) => (
+                          <label
+                            key={col.id}
+                            className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-xs font-medium text-text-primary select-none transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={visibleColumns[col.id] !== false}
+                              onChange={() => handleToggleColumn(col.id)}
+                              className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer accent-primary"
+                            />
+                            <span>{col.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1434,13 +1585,45 @@ export default function Tools() {
                             />
                           </div>
                         </th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-11 z-20 bg-slate-900 text-slate-300 w-12 text-center border-r border-slate-800`}>#</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-[92px] z-20 bg-slate-900 text-white min-w-[180px] sm:min-w-[200px] border-r border-slate-800 shadow-[4px_0_8px_-3px_rgba(0,0,0,0.3)]`}>Alat / Mesin</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px] text-white`}>Kondisi</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[110px] text-right text-white`}>Stok</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-white`}>Lokasi</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[150px] text-white`}>Pengguna / Proyek</th>
-                        <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-white`}>Pengecekan</th>
+                        {visibleColumns.no && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-11 z-20 bg-slate-900 text-slate-300 w-12 text-center border-r border-slate-800`}>#</th>
+                        )}
+                        {visibleColumns.nama && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky ${visibleColumns.no ? 'sm:left-[92px]' : 'sm:left-11'} z-20 bg-slate-900 text-white min-w-[180px] sm:min-w-[200px] border-r border-slate-800 shadow-[4px_0_8px_-3px_rgba(0,0,0,0.3)]`}>Alat / Mesin</th>
+                        )}
+                        {visibleColumns.kategori && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px] text-white`}>Kategori</th>
+                        )}
+                        {visibleColumns.kondisi && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[120px] text-white`}>Kondisi</th>
+                        )}
+                        {visibleColumns.stok && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[90px] text-right text-white`}>Stok</th>
+                        )}
+                        {visibleColumns.satuan && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[90px] text-white`}>Satuan</th>
+                        )}
+                        {visibleColumns.lokasi && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[140px] text-white`}>Lokasi Penyimpanan</th>
+                        )}
+                        {visibleColumns.status && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-white`}>Status Penggunaan</th>
+                        )}
+                        {visibleColumns.assignedTo && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[150px] text-white`}>Penanggung Jawab</th>
+                        )}
+                        {visibleColumns.project && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[140px] text-white`}>Proyek Terkait</th>
+                        )}
+                        {visibleColumns.lastChecked && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-white`}>Pengecekan Terakhir</th>
+                        )}
+                        {visibleColumns.createdAt && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[130px] text-white`}>Tanggal Terdaftar</th>
+                        )}
+                        {visibleColumns.notes && (
+                          <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} min-w-[160px] text-white`}>Catatan</th>
+                        )}
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:right-0 z-20 bg-slate-900 text-white text-right w-28 border-l border-slate-800 shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.3)]`}>Aksi</th>
                       </tr>
                     </thead>
@@ -1456,7 +1639,7 @@ export default function Tools() {
                                 onClick={() => toggleGroupCollapse(group.key)}
                                 className="bg-slate-100 hover:bg-slate-200/80 transition-colors cursor-pointer select-none border-y-2 border-slate-300 font-medium"
                               >
-                                <td colSpan={9} className="py-2.5 px-3.5">
+                                <td colSpan={2 + Object.values(visibleColumns).filter(Boolean).length} className="py-2.5 px-3.5">
                                   <div className="flex items-center justify-between gap-3">
                                     <div className="flex items-center gap-2.5">
                                       <span className="w-5 h-5 rounded-md bg-white border border-slate-300 text-slate-700 flex items-center justify-center shadow-2xs">
@@ -1523,91 +1706,161 @@ export default function Tools() {
                                       </div>
                                     </td>
                                     {/* Sticky # */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-11 z-10 text-center text-slate-500 font-mono tabular-nums font-bold border-r border-slate-200 ${selectedToolIds.includes(tool._id) ? '!bg-blue-50 group-hover:!bg-blue-100/80' : 'bg-white group-hover:bg-slate-50'}`}>
-                                      {index + 1}
-                                    </td>
-                                    {/* Sticky Photo + Name + Category */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-[92px] z-10 border-r border-slate-200 shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] ${selectedToolIds.includes(tool._id) ? '!bg-blue-50 group-hover:!bg-blue-100/80' : 'bg-white group-hover:bg-slate-50'}`}>
-                                      <div className="flex items-center gap-2.5">
-                                        <div className="w-9 h-9 rounded-md overflow-hidden shrink-0 border border-slate-200 bg-slate-100 flex items-center justify-center">
-                                          {tool.photo ? (
-                                            <PhotoView src={getImageUrl(tool.photo)}>
-                                              <img src={getImageUrl(tool.photo)} alt={tool.nama} className="w-full h-full object-cover cursor-pointer" />
-                                            </PhotoView>
-                                          ) : (
-                                            <Wrench size={16} className="text-slate-400" />
-                                          )}
+                                    {visibleColumns.no && (
+                                      <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:left-11 z-10 text-center text-slate-500 font-mono tabular-nums font-bold border-r border-slate-200 ${selectedToolIds.includes(tool._id) ? '!bg-blue-50 group-hover:!bg-blue-100/80' : 'bg-white group-hover:bg-slate-50'}`}>
+                                        {index + 1}
+                                      </td>
+                                    )}
+                                    {/* Sticky Photo + Name */}
+                                    {visibleColumns.nama && (
+                                      <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky ${visibleColumns.no ? 'sm:left-[92px]' : 'sm:left-11'} z-10 border-r border-slate-200 shadow-[4px_0_8px_-3px_rgba(0,0,0,0.06)] ${selectedToolIds.includes(tool._id) ? '!bg-blue-50 group-hover:!bg-blue-100/80' : 'bg-white group-hover:bg-slate-50'}`}>
+                                        <div className="flex items-center gap-2.5">
+                                          <div className="w-9 h-9 rounded-md overflow-hidden shrink-0 border border-slate-200 bg-slate-100 flex items-center justify-center">
+                                            {tool.photo ? (
+                                              <PhotoView src={getImageUrl(tool.photo)}>
+                                                <img src={getImageUrl(tool.photo)} alt={tool.nama} className="w-full h-full object-cover cursor-pointer" />
+                                              </PhotoView>
+                                            ) : (
+                                              <Wrench size={16} className="text-slate-400" />
+                                            )}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <div className="font-bold text-slate-900 truncate text-xs sm:text-sm">{tool.nama}</div>
+                                            {!visibleColumns.kategori && tool.kategori && (
+                                              <span className="text-[11px] text-slate-600 font-medium">{tool.kategori}</span>
+                                            )}
+                                          </div>
                                         </div>
-                                        <div className="min-w-0">
-                                          <div className="font-bold text-slate-900 truncate text-xs sm:text-sm">{tool.nama}</div>
-                                          {tool.kategori && (
-                                            <span className="text-[11px] text-slate-600 font-medium">{tool.kategori}</span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </td>
+                                      </td>
+                                    )}
+                                    {/* Kategori */}
+                                    {visibleColumns.kategori && (
+                                      <td className={`${DENSITY_CONFIG[tableDensity].td} text-slate-700 font-medium`}>
+                                        {tool.kategori ? (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+                                            {tool.kategori}
+                                          </span>
+                                        ) : (
+                                          <span className="text-xs text-slate-400">-</span>
+                                        )}
+                                      </td>
+                                    )}
                                     {/* Kondisi Badge */}
-                                    <td className={DENSITY_CONFIG[tableDensity].td}>
-                                      <span
-                                        className="text-xs font-black py-0.5 px-2.5 rounded-full inline-flex items-center gap-1 border"
-                                        style={{ backgroundColor: condStyle.bg, color: condStyle.color, borderColor: `${condStyle.color}40` }}
-                                      >
-                                        <CondIcon size={12} />
-                                        {condStyle.label}
-                                      </span>
-                                    </td>
+                                    {visibleColumns.kondisi && (
+                                      <td className={DENSITY_CONFIG[tableDensity].td}>
+                                        <span
+                                          className="text-xs font-black py-0.5 px-2.5 rounded-full inline-flex items-center gap-1 border whitespace-nowrap"
+                                          style={{ backgroundColor: condStyle.bg, color: condStyle.color, borderColor: `${condStyle.color}40` }}
+                                        >
+                                          <CondIcon size={12} />
+                                          {condStyle.label}
+                                        </span>
+                                      </td>
+                                    )}
                                     {/* Stok */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums font-black text-slate-900`}>
-                                      {tool.stok} <span className="font-sans text-xs font-semibold text-slate-500">{tool.satuan}</span>
-                                    </td>
+                                    {visibleColumns.stok && (
+                                      <td className={`${DENSITY_CONFIG[tableDensity].td} text-right font-mono tabular-nums font-black text-slate-900`}>
+                                        {tool.stok}
+                                      </td>
+                                    )}
+                                    {/* Satuan */}
+                                    {visibleColumns.satuan && (
+                                      <td className={`${DENSITY_CONFIG[tableDensity].td} font-medium text-slate-600 text-xs`}>
+                                        {tool.satuan || 'unit'}
+                                      </td>
+                                    )}
                                     {/* Lokasi & Bin */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-slate-700 font-medium`}>
-                                      {tool.warehouseId && typeof tool.warehouseId === 'object' ? (
-                                        <div className="flex flex-col min-w-0">
-                                          <span className="inline-flex items-center gap-1 font-bold text-xs text-cyan-800 truncate">
-                                            <WarehouseIcon size={12} className="shrink-0" />
-                                            {tool.warehouseId.name}
-                                          </span>
-                                          {tool.binRef && (
-                                            <span className="text-[10px] font-mono text-slate-600 font-semibold truncate">
-                                              {tool.binRef}
+                                    {visibleColumns.lokasi && (
+                                      <td className={`${DENSITY_CONFIG[tableDensity].td} text-slate-700 font-medium`}>
+                                        {tool.warehouseId && typeof tool.warehouseId === 'object' ? (
+                                          <div className="flex flex-col min-w-0">
+                                            <span className="inline-flex items-center gap-1 font-bold text-xs text-cyan-800 truncate">
+                                              <WarehouseIcon size={12} className="shrink-0" />
+                                              {tool.warehouseId.name}
                                             </span>
-                                          )}
-                                        </div>
-                                      ) : tool.lokasi ? (
-                                        <div className="flex flex-col min-w-0">
-                                          <span className="inline-flex items-center gap-1 truncate text-xs font-semibold text-slate-800">
-                                            <MapPin size={12} className="text-slate-500 shrink-0" />
-                                            {tool.lokasi}
-                                          </span>
-                                          {tool.binRef && (
-                                            <span className="text-[10px] font-mono text-slate-600 font-semibold truncate">
-                                              {tool.binRef}
+                                            {tool.binRef && (
+                                              <span className="text-[10px] font-mono text-slate-600 font-semibold truncate">
+                                                {tool.binRef}
+                                              </span>
+                                            )}
+                                          </div>
+                                        ) : tool.lokasi ? (
+                                          <div className="flex flex-col min-w-0">
+                                            <span className="inline-flex items-center gap-1 truncate text-xs font-semibold text-slate-800">
+                                              <MapPin size={12} className="text-slate-500 shrink-0" />
+                                              {tool.lokasi}
                                             </span>
-                                          )}
-                                        </div>
-                                      ) : '-'}
-                                    </td>
-                                    {/* Assigned User / Project */}
-                                    <td className={DENSITY_CONFIG[tableDensity].td}>
-                                      {tool.assignedTo ? (
-                                        <span className="inline-flex items-center gap-1 text-blue-900 font-bold text-xs truncate">
-                                          <User size={12} className="shrink-0" />
-                                          {tool.assignedTo.fullName}
-                                        </span>
-                                      ) : tool.projectId ? (
-                                        <span className="inline-flex items-center gap-1 text-cyan-900 font-bold text-xs truncate">
-                                          <Package size={12} className="shrink-0" />
-                                          {tool.projectId.nama}
-                                        </span>
-                                      ) : (
-                                        <span className="text-xs text-slate-500 font-medium">Tersedia</span>
-                                      )}
-                                    </td>
+                                            {tool.binRef && (
+                                              <span className="text-[10px] font-mono text-slate-600 font-semibold truncate">
+                                                {tool.binRef}
+                                              </span>
+                                            )}
+                                          </div>
+                                        ) : '-'}
+                                      </td>
+                                    )}
+                                    {/* Status Penggunaan */}
+                                    {visibleColumns.status && (
+                                      <td className={DENSITY_CONFIG[tableDensity].td}>
+                                        {tool.assignedTo ? (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200 whitespace-nowrap">
+                                            Digunakan
+                                          </span>
+                                        ) : tool.projectId ? (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-cyan-100 text-cyan-800 border border-cyan-200 whitespace-nowrap">
+                                            Di Proyek
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 whitespace-nowrap">
+                                            Tersedia
+                                          </span>
+                                        )}
+                                      </td>
+                                    )}
+                                    {/* Assigned User */}
+                                    {visibleColumns.assignedTo && (
+                                      <td className={DENSITY_CONFIG[tableDensity].td}>
+                                        {tool.assignedTo ? (
+                                          <span className="inline-flex items-center gap-1 text-blue-900 font-bold text-xs truncate">
+                                            <User size={12} className="shrink-0" />
+                                            {tool.assignedTo.fullName}
+                                          </span>
+                                        ) : (
+                                          <span className="text-xs text-slate-400 font-medium">-</span>
+                                        )}
+                                      </td>
+                                    )}
+                                    {/* Proyek Terkait */}
+                                    {visibleColumns.project && (
+                                      <td className={DENSITY_CONFIG[tableDensity].td}>
+                                        {tool.projectId ? (
+                                          <span className="inline-flex items-center gap-1 text-cyan-900 font-bold text-xs truncate">
+                                            <Package size={12} className="shrink-0" />
+                                            {tool.projectId.nama}
+                                          </span>
+                                        ) : (
+                                          <span className="text-xs text-slate-400 font-medium">-</span>
+                                        )}
+                                      </td>
+                                    )}
                                     {/* Pengecekan Terakhir */}
-                                    <td className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-slate-700 font-medium whitespace-nowrap`}>
-                                      {tool.lastChecked ? formatDateDisplay(tool.lastChecked) : '-'}
-                                    </td>
+                                    {visibleColumns.lastChecked && (
+                                      <td className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-slate-700 font-medium whitespace-nowrap`}>
+                                        {tool.lastChecked ? formatDateDisplay(tool.lastChecked) : '-'}
+                                      </td>
+                                    )}
+                                    {/* Tanggal Terdaftar */}
+                                    {visibleColumns.createdAt && (
+                                      <td className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-slate-600 font-medium whitespace-nowrap`}>
+                                        {tool.createdAt ? formatDateDisplay(tool.createdAt) : '-'}
+                                      </td>
+                                    )}
+                                    {/* Catatan */}
+                                    {visibleColumns.notes && (
+                                      <td className={`${DENSITY_CONFIG[tableDensity].td} text-xs text-slate-600 max-w-[200px] truncate`} title={tool.notes || ''}>
+                                        {tool.notes || '-'}
+                                      </td>
+                                    )}
                                     {/* Sticky Aksi */}
                                     <td className={`${DENSITY_CONFIG[tableDensity].td} sm:sticky sm:right-0 z-10 text-right border-l border-slate-200 shadow-[-4px_0_8px_-3px_rgba(0,0,0,0.06)] ${selectedToolIds.includes(tool._id) ? '!bg-blue-50 group-hover:!bg-blue-100/80' : 'bg-white group-hover:bg-slate-50'}`}>
                                       <div className="flex items-center justify-end gap-1">
