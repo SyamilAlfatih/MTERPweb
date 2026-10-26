@@ -116,12 +116,46 @@ export default function Tools() {
   const [groupBy, setGroupBy] = useState<GroupByOption>('none');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<'card' | 'table'>(() => {
-    const saved = localStorage.getItem('tools_view_mode');
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return 'card';
+    }
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('tools_view_mode') : null;
     if (saved === 'card' || saved === 'table') return saved;
-    return typeof window !== 'undefined' && window.innerWidth < 768 ? 'card' : 'table';
+    return 'table';
   });
   const [tableDensity, setTableDensity] = useState<'compact' | 'normal' | 'comfortable'>('normal');
   const [showChartOnMobile, setShowChartOnMobile] = useState(false);
+
+  // Automatically default to Card view whenever viewport is or switches to mobile (<768px)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const mql = window.matchMedia('(max-width: 767px)');
+    
+    // Initial check: if on mobile view, ensure card mode
+    if (mql.matches) {
+      setViewMode('card');
+    }
+
+    const handleMediaChange = (e: MediaQueryListEvent) => {
+      if (e.matches) {
+        setViewMode('card');
+      } else {
+        const saved = localStorage.getItem('tools_view_mode');
+        setViewMode((saved as 'card' | 'table') || 'table');
+      }
+    };
+
+    mql.addEventListener('change', handleMediaChange);
+    return () => mql.removeEventListener('change', handleMediaChange);
+  }, []);
+
+  const handleSetViewMode = (mode: 'card' | 'table') => {
+    setViewMode(mode);
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+      localStorage.setItem('tools_view_mode', mode);
+    }
+  };
 
   // Navigation tab
   const [activeTab, setActiveTab] = useState<'inventory' | 'my_tools' | 'map'>('inventory');
@@ -873,7 +907,7 @@ export default function Tools() {
           <div className="flex items-center justify-between sm:justify-end gap-2 max-sm:w-full">
             <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-xl border border-border-light">
               <button
-                onClick={() => { setViewMode('table'); localStorage.setItem('tools_view_mode', 'table'); }}
+                onClick={() => handleSetViewMode('table')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-lg text-xs font-bold transition-all ${
                   viewMode === 'table'
                     ? 'bg-bg-white text-primary shadow-xs'
@@ -884,7 +918,7 @@ export default function Tools() {
                 <span>Tabel</span>
               </button>
               <button
-                onClick={() => { setViewMode('card'); localStorage.setItem('tools_view_mode', 'card'); }}
+                onClick={() => handleSetViewMode('card')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-lg text-xs font-bold transition-all ${
                   viewMode === 'card'
                     ? 'bg-bg-white text-primary shadow-xs'
@@ -999,9 +1033,21 @@ export default function Tools() {
             />
           ) : (
             viewMode === 'table' ? (
-              <div className="bg-bg-white rounded-xl border border-border-light overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table role="grid" aria-rowcount={filteredTools.length} className="w-full border-collapse text-left">
+              <div className="w-full max-w-full bg-bg-white rounded-xl border border-border-light overflow-hidden shadow-sm">
+                {/* Mobile Table Notice with Quick Switcher */}
+                <div className="sm:hidden px-3.5 py-2 bg-slate-100 dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between border-b border-border-light">
+                  <span className="text-[11px]">Tabel lebar • Geser horizontal</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSetViewMode('card')}
+                    className="text-primary font-bold hover:underline cursor-pointer flex items-center gap-1 active:scale-95 text-xs"
+                  >
+                    <LayoutGrid size={13} />
+                    <span>Tampilan Kartu</span>
+                  </button>
+                </div>
+                <div className="overflow-x-auto max-w-full w-full touch-pan-x">
+                  <table role="grid" aria-rowcount={filteredTools.length} className="w-full border-collapse text-left min-w-[720px] sm:min-w-full">
                     <thead>
                       <tr role="row" className="bg-slate-50/80 border-b border-border-light text-text-muted uppercase tracking-wider font-semibold">
                         <th role="columnheader" className={`${DENSITY_CONFIG[tableDensity].th} sm:sticky sm:left-0 z-20 bg-slate-50 w-12 text-center border-r border-border-light`}>#</th>
