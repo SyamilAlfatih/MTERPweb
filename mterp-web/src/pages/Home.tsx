@@ -35,6 +35,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useIsActiveTab } from '../contexts/TabsContext';
 import { Badge } from '../components/shared';
 import { formatDate as formatWIBDate } from '../utils/date';
 
@@ -413,16 +414,22 @@ export default function Home() {
   const [todayAttendance, setTodayAttendance] = useState<TodayAttendanceRecord | null>(null);
   const [loadingAttendance, setLoadingAttendance] = useState(true);
 
+  const isActiveTab = useIsActiveTab();
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<'all' | CardCategory>('all');
   const [isCustomizing, setIsCustomizing] = useState(false);
 
-  // Live real-time clock ticker
+  // Live real-time clock ticker only when this tab is active and document is visible
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    if (!isActiveTab) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        setCurrentTime(new Date());
+      }
+    }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isActiveTab]);
 
   const userRole = user?.role?.toLowerCase() || 'worker';
   const storageKey = `home_visible_cards_${userRole}`;

@@ -13,6 +13,7 @@ import { PhotoView } from 'react-photo-view';
 import api, { deleteAttendanceSession } from '../api/api';
 import { Card, Button, Alert, Input, CostInput } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
+import { useIsActiveTab } from '../contexts/TabsContext';
 import { useImageCompression } from '../utils/useImageCompression';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
 import { getImageUrl } from '../utils/image';
@@ -202,11 +203,18 @@ export default function GroupAttendance() {
   const [recentRecords, setRecentRecords] = useState<AttendanceRecord[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
 
-  // ── Live Clock Tick ──
+  const isActiveTab = useIsActiveTab();
+
+  // ── Live Clock Tick only when this tab is active and document is visible ──
   useEffect(() => {
-    const interval = setInterval(() => setLiveTime(new Date()), 1000);
+    if (!isActiveTab) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        setLiveTime(new Date());
+      }
+    }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isActiveTab]);
 
   // ── Working Hours Check ──
   const currentHour = liveTime.getHours();

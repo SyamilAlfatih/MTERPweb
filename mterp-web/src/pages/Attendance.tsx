@@ -9,6 +9,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import api from '../api/api';
 import { Card, Button, Input, Alert, CostInput } from '../components/shared';
 import { useAuth } from '../contexts/AuthContext';
+import { useIsActiveTab } from '../contexts/TabsContext';
 import { PhotoView } from 'react-photo-view';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
 import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttendanceBanner';
@@ -59,12 +60,18 @@ export default function Attendance() {
   const [loadingRecent, setLoadingRecent] = useState(true);
 
   const isSupervisor = user?.role && ['owner', 'president_director', 'operational_director', 'director', 'supervisor', 'asset_admin'].includes(user.role);
+  const isActiveTab = useIsActiveTab();
 
-  // Live clock tick
+  // Live clock tick only when this tab is active and document is visible
   useEffect(() => {
-    const interval = setInterval(() => setLiveTime(new Date()), 1000);
+    if (!isActiveTab) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        setLiveTime(new Date());
+      }
+    }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isActiveTab]);
 
   useEffect(() => {
     fetchTodayAttendance();

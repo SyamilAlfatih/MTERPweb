@@ -21,10 +21,17 @@ export const GlobalNearDeadlineWidget: React.FC = () => {
   }, [isAuthenticated, user]);
 
   useEffect(() => {
-    fetchTasks();
+    let isMounted = true;
+    void (async () => {
+      if (isMounted) await fetchTasks();
+    })();
 
-    // Poll every 90 seconds in background
-    const interval = setInterval(fetchTasks, 90000);
+    // Poll every 90 seconds only when document is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchTasks();
+      }
+    }, 90000);
 
     // Refresh when user returns to window tab
     const handleVisibility = () => {
@@ -39,6 +46,7 @@ export const GlobalNearDeadlineWidget: React.FC = () => {
     window.addEventListener('task:refresh', handleTaskUpdated);
 
     return () => {
+      isMounted = false;
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('task:refresh', handleTaskUpdated);

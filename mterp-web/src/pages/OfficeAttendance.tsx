@@ -41,6 +41,7 @@ import { useTranslation } from 'react-i18next';
 import { PhotoView } from 'react-photo-view';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useIsActiveTab } from '../contexts/TabsContext';
 import { Card, Button, Input, Badge, Alert } from '../components/shared';
 import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wibDate } from '../utils/date';
 import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttendanceBanner';
@@ -269,11 +270,18 @@ export default function OfficeAttendance() {
     message: '',
   });
 
-  // Ticking Live Clock
+  const isActiveTab = useIsActiveTab();
+
+  // Ticking Live Clock only when this tab is active and document is visible
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    if (!isActiveTab) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        setCurrentTime(new Date());
+      }
+    }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isActiveTab]);
 
   // Update default location when workType changes
   useEffect(() => {
