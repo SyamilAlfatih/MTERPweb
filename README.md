@@ -246,8 +246,12 @@ $$\text{Net Salary} = (\text{Present Days} \times \text{Daily Wage}) + \text{Ove
 ---
 
 ### 3.8 Tool & Plant Asset Tracking with Condition Photos
-* **Asset Tracking & Status:** Construction machinery, power tools, and survey instruments are tracked by serial numbers, brand, and condition (*Baik*, *Rusak*, *Perbaikan*).
-* **Project Dispatch & Return Workflow:** Tools are checked out to specific projects. When tools are returned to the central warehouse, supervisors must capture inspection photos to document physical condition and assess damages against project budgets.
+* **Asset Tracking & Status:** Construction machinery, power tools, and survey instruments are tracked by serial numbers, brand, and condition (*Baik*, *Rusak*, *Maintenance*).
+* **Custody & Movement Engine (8 Movement Actions):** Supports *Check-Out*, *Return*, *Hand-Over*, *Transfer Antar Gudang*, *Relokasi Bin*, *Kirim Servis*, *Selesai Servis*, and *Ubah Status Fisik*.
+* **Anti-Fraud Geotagged Watermark Camera:** Real-time HTML5 camera capture burns GPS coordinates, timestamp, operator name, warehouse, and tool info directly into photographic evidence via client-side canvas rendering.
+* **Spatial Intelligence & GIS Mapping:** Leaflet-powered warehouse and geofence visualizer with OpenStreetMap and Esri Satellite layer toggles.
+* **Bulk Operations & Excel Integration:** Interactive Excel (`.xlsx`) bulk importer with validation staging, batch condition/location updates, and floating bulk action bar.
+* 📖 **Full Manual & Field Walkthrough:** See [TOOLS_FEATURE_TUTORIAL.md](file:///c:/Users/CorSec/Documents/personal/MTERPweb/TOOLS_FEATURE_TUTORIAL.md) for the complete end-to-end user and technical guide.
 
 ---
 
