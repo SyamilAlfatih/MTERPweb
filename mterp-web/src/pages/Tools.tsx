@@ -4,7 +4,8 @@ import {
   Calendar, Edit3, Trash2, X, ChevronDown, ChevronUp, ChevronRight, AlertTriangle,
   CheckCircle2, Settings, Archive, Camera, UserX, Warehouse as WarehouseIcon,
   LayoutGrid, List, FileSpreadsheet, Download, UploadCloud, Layers, Filter, Check,
-  History, Compass, ShieldCheck, ArrowRightLeft, Building2, PieChart as PieChartIcon
+  History, Compass, ShieldCheck, ArrowRightLeft, Building2, PieChart as PieChartIcon,
+  RefreshCw, Database
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -33,6 +34,7 @@ import ToolMovementModal, { MovementAction } from '../components/tools/ToolMovem
 import ToolMovementsDrawer from '../components/tools/ToolMovementsDrawer';
 import WarehouseManagementModal from '../components/tools/WarehouseManagementModal';
 import ToolsMapView from '../components/tools/ToolsMapView';
+import CaptureWatermarkModal from '../components/tools/CaptureWatermarkModal';
 
 const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
 
@@ -80,6 +82,7 @@ const EMPTY_FORM = {
   lokasi: 'Warehouse',
   warehouseId: '',
   binRef: '',
+  notes: '',
 };
 
 const DENSITY_CONFIG = {
@@ -188,6 +191,13 @@ export default function Tools() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [isAddToolCameraOpen, setIsAddToolCameraOpen] = useState(false);
+  const [capturedGpsInfo, setCapturedGpsInfo] = useState<{
+    lat: number | null;
+    lng: number | null;
+    accuracy: number | null;
+    isManualGpsOverride: boolean;
+  } | null>(null);
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -436,10 +446,14 @@ export default function Tools() {
       ...EMPTY_FORM,
       warehouseId: defaultWh ? defaultWh._id : '',
       lokasi: defaultWh ? defaultWh.name : 'Warehouse',
+      notes: '',
     });
     setPhoto(null);
     setPhotoPreview(null);
+    setCapturedGpsInfo(null);
     setShowAddModal(true);
+    // Automatically trigger watermark camera on Add Tool button press
+    setIsAddToolCameraOpen(true);
   };
 
   const openEditModal = (tool: Tool) => {
@@ -459,9 +473,12 @@ export default function Tools() {
       lokasi: tool.lokasi || '',
       warehouseId: whId,
       binRef: tool.binRef || '',
+      notes: tool.notes || '',
     });
     setPhoto(null);
     setPhotoPreview(tool.photo ? getImageUrl(tool.photo) : null);
+    setCapturedGpsInfo(null);
+    setIsAddToolCameraOpen(false);
     setShowAddModal(true);
   };
 
@@ -470,13 +487,17 @@ export default function Tools() {
     if (file) {
       setPhoto(file);
       setPhotoPreview(URL.createObjectURL(file));
+      setCapturedGpsInfo(null);
     }
   };
 
   const handleSave = async () => {
-    if (!formData.nama.trim()) return;
+    if (!formData.nama.trim()) {
+      alert(t('tools.messages.nameRequired', 'Nama alat / mesin wajib diisi'));
+      return;
+    }
     if (!editingTool && !photo) {
-      alert(t('tools.messages.photoRequired'));
+      alert(t('tools.messages.photoRequired', 'Bukti foto fisik alat wajib dilampirkan'));
       return;
     }
     
@@ -484,29 +505,41 @@ export default function Tools() {
     try {
       const data = new FormData();
       Object.entries(formData).forEach(([key, value]) => {
-        data.append(key, value.toString());
+        if (value !== undefined && value !== null) {
+          data.append(key, value.toString());
+        }
       });
       if (photo) {
         data.append('photo', photo);
+      }
+      if (capturedGpsInfo) {
+        if (capturedGpsInfo.lat !== null) data.append('lat', capturedGpsInfo.lat.toString());
+        if (capturedGpsInfo.lng !== null) data.append('lng', capturedGpsInfo.lng.toString());
+        if (capturedGpsInfo.accuracy !== null) data.append('accuracy', capturedGpsInfo.accuracy.toString());
+        data.append('isManualGpsOverride', capturedGpsInfo.isManualGpsOverride ? 'true' : 'false');
       }
 
       if (editingTool) {
         await api.put(`/tools/${editingTool._id}`, data, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
+        setToastMessage({ type: 'success', text: 'Data inventaris alat berhasil diperbarui' });
       } else {
         await api.post('/tools', data, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
+        setToastMessage({ type: 'success', text: 'Alat baru berhasil didaftarkan ke inventaris' });
       }
       setShowAddModal(false);
       setEditingTool(null);
       setFormData(EMPTY_FORM);
       setPhoto(null);
       setPhotoPreview(null);
+      setCapturedGpsInfo(null);
+      setIsAddToolCameraOpen(false);
       await fetchData();
     } catch (err: any) {
-      alert(err.response?.data?.msg || t('tools.messages.saveFailed'));
+      alert(err.response?.data?.msg || t('tools.messages.saveFailed', 'Gagal menyimpan alat'));
     } finally {
       setSubmitting(false);
     }
@@ -1812,43 +1845,120 @@ export default function Tools() {
     )}
 
     {/* Add/Edit Modal */}
+      {/* Add / Edit Tool Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center p-4 z-[1000] backdrop-blur-[4px]" onClick={() => { setShowAddModal(false); setEditingTool(null); }}>
+        <div 
+          className="fixed inset-0 z-[1050] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-[fade-in_0.2s_ease_both]" 
+          onClick={() => { setShowAddModal(false); setEditingTool(null); setIsAddToolCameraOpen(false); }}
+        >
           <div 
             ref={toolModalRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-tool-title"
-            className="bg-bg-white rounded-xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto shadow-xl" 
+            className="relative w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]" 
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-5 border-b border-border-light">
-              <h2 id="modal-tool-title" className="m-0 font-bold text-lg text-text-primary">{editingTool ? t('tools.modal.editTitle') : t('tools.modal.addTitle')}</h2>
-              <button className="p-2 border-none bg-transparent cursor-pointer text-text-muted rounded-md flex hover:bg-bg-secondary hover:text-text-primary" onClick={() => { setShowAddModal(false); setEditingTool(null); }}>
-                <X size={24} />
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 bg-slate-50 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 flex items-center justify-center font-bold">
+                  <Wrench size={20} />
+                </div>
+                <div>
+                  <h3 id="modal-tool-title" className="text-base font-bold text-slate-900 dark:text-white">
+                    {editingTool ? t('tools.modal.editTitle', 'Edit Informasi Alat / Mesin') : t('tools.modal.addTitle', 'Registrasi Alat / Mesin Baru')}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {editingTool 
+                      ? `Perbarui parameter inventaris "${editingTool.nama}"` 
+                      : 'Pendaftaran fisik inventaris aset proyek & gudang MTERP'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" 
+                onClick={() => { setShowAddModal(false); setEditingTool(null); setIsAddToolCameraOpen(false); }}
+              >
+                <X size={18} />
               </button>
             </div>
 
-            <div className="p-5">
-              {/* Photo Upload Area */}
-              <div className="flex flex-col items-center mb-6">
-                <div 
-                  className="relative w-32 h-32 rounded-xl border-2 border-dashed border-border-light overflow-hidden flex items-center justify-center cursor-pointer hover:border-primary transition-colors"
-                  onClick={() => document.getElementById('tool-photo-input')?.click()}
-                >
-                  {photoPreview ? (
-                    <PhotoView src={photoPreview}>
-                      <img src={photoPreview} alt="Preview" className="w-full h-full object-cover cursor-pointer" />
-                    </PhotoView>
-                  ) : (
-                    <div className="flex flex-col items-center text-text-muted">
-                      <Camera size={28} />
-                      <span className="text-[10px] font-bold uppercase mt-1">Upload Photo</span>
+            {/* Scrollable Form Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* Photo Evidence Section (Mandatory Watermark Camera) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Bukti Foto Fisik & Watermark GPS {!editingTool && <span className="text-rose-500">* (Wajib)</span>}
+                </label>
+
+                {photoPreview ? (
+                  <div className="relative p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-emerald-500/40 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <PhotoView src={photoPreview}>
+                        <img 
+                          src={photoPreview} 
+                          alt="Tool Preview" 
+                          className="w-16 h-16 rounded-lg object-cover border border-slate-300 dark:border-slate-700 shadow-xs cursor-pointer hover:opacity-90 transition-opacity" 
+                        />
+                      </PhotoView>
+                      <div className="text-xs">
+                        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
+                          <ShieldCheck size={14} />
+                          <span>Foto & Watermark Siap</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+                          {capturedGpsInfo?.lat != null
+                            ? `GPS: ${capturedGpsInfo.lat.toFixed(5)}, ${capturedGpsInfo.lng?.toFixed(5)}`
+                            : photo
+                            ? `${(photo.size / 1024).toFixed(0)} KB • Foto Terlampir`
+                            : 'Foto tersimpan'}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
-                {!editingTool && !photo && (
-                  <span className="text-[10px] text-danger font-bold uppercase mt-1">* Required</span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddToolCameraOpen(true)}
+                        className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-xs font-bold text-slate-800 dark:text-white transition-all cursor-pointer"
+                        title="Ambil foto ulang menggunakan kamera watermark"
+                      >
+                        <RefreshCw size={13} />
+                        <span>Foto Ulang</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => document.getElementById('tool-photo-input')?.click()}
+                        className="p-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                        title="Pilih file lain dari perangkat"
+                      >
+                        <UploadCloud size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddToolCameraOpen(true)}
+                      className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 rounded-xl border-2 border-dashed border-cyan-500/60 hover:border-cyan-500 bg-cyan-500/5 hover:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-bold text-xs transition-all shadow-xs cursor-pointer"
+                    >
+                      <Camera size={18} />
+                      <span>Nyalakan Kamera & Ambil Foto Bukti Watermark</span>
+                    </button>
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1">
+                      <span className="text-rose-500 font-semibold">* Registrasi alat baru mewajibkan bukti fisik foto</span>
+                      <button
+                        type="button"
+                        onClick={() => document.getElementById('tool-photo-input')?.click()}
+                        className="text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer font-medium flex items-center gap-1"
+                      >
+                        <UploadCloud size={12} />
+                        <span>Pilih dari Galeri / File</span>
+                      </button>
+                    </div>
+                  </div>
                 )}
                 <input 
                   id="tool-photo-input"
@@ -1859,30 +1969,45 @@ export default function Tools() {
                 />
               </div>
 
-              <div className="flex flex-col gap-2 mb-4">
-                <label className="text-sm font-semibold text-text-primary">{t('tools.modal.name')}</label>
+              {/* Tool Name */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  {t('tools.modal.name', 'Nama Alat / Mesin')} <span className="text-rose-500">*</span>
+                </label>
                 <input
-                  className="w-full p-3 px-4 border border-border rounded-md text-base text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
+                  className="w-full py-2 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   value={formData.nama}
                   onChange={e => setFormData(p => ({ ...p, nama: e.target.value }))}
-                  placeholder={t('tools.modal.namePlaceholder')}
+                  placeholder="Contoh: Total Station Leica TS07 / Bar Bender 32mm"
                 />
               </div>
 
-              <div className="flex gap-3 max-sm:flex-col mb-4">
-                <div className="flex flex-col gap-2 flex-1">
-                  <label className="text-sm font-semibold text-text-primary">{t('tools.modal.category')}</label>
+              {/* Category & Warehouse */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                    {t('tools.modal.category', 'Kategori')}
+                  </label>
                   <input
-                    className="w-full p-3 px-4 border border-border rounded-md text-base text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
+                    className="w-full py-2 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                     value={formData.kategori}
                     onChange={e => setFormData(p => ({ ...p, kategori: e.target.value }))}
-                    placeholder={t('tools.modal.categoryPlaceholder')}
+                    placeholder="Contoh: Surveying / Power Tools"
+                    list="category-suggestions"
                   />
+                  <datalist id="category-suggestions">
+                    {categories.map(c => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
                 </div>
-                <div className="flex flex-col gap-2 flex-1">
-                  <label className="text-sm font-semibold text-text-primary">Fasilitas Gudang</label>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                    Fasilitas Gudang Penyimpanan
+                  </label>
                   <select
-                    className="w-full p-3 px-4 border border-border rounded-md text-sm text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 cursor-pointer"
+                    className="w-full py-2 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer"
                     value={formData.warehouseId}
                     onChange={(e) => {
                       const whId = e.target.value;
@@ -1904,85 +2029,164 @@ export default function Tools() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 mb-4">
-                <label className="text-sm font-semibold text-text-primary">Posisi Rak / Bin Penyimpanan (Opsional)</label>
+              {/* Bin / Shelf Reference */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Posisi Rak / Bin Penyimpanan (Opsional)
+                </label>
                 <input
-                  className="w-full p-3 px-4 border border-border rounded-md text-sm text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
+                  className="w-full py-2 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   value={formData.binRef}
                   onChange={e => setFormData(p => ({ ...p, binRef: e.target.value }))}
                   placeholder="Contoh: Zona A / Rak 1 / B-02"
                 />
               </div>
 
-              <div className="flex gap-3 max-sm:flex-col mb-4">
-                <div className="flex flex-col gap-2 flex-1">
-                  <label className="text-sm font-semibold text-text-primary">{t('tools.modal.stock')}</label>
+              {/* Stock & Unit */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                    {t('tools.modal.stock', 'Stok')} <span className="text-rose-500">*</span>
+                  </label>
                   <input
-                    className="w-full p-3 px-4 border border-border rounded-md text-base text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
+                    className="w-full py-2 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
                     type="number"
-                    min="0"
+                    min="1"
                     value={formData.stok}
-                    onChange={e => setFormData(p => ({ ...p, stok: Number(e.target.value) }))}
+                    onChange={e => setFormData(p => ({ ...p, stok: Math.max(1, parseInt(e.target.value) || 1) }))}
                   />
                 </div>
-                <div className="flex flex-col gap-2 flex-1">
-                  <label className="text-sm font-semibold text-text-primary">{t('tools.modal.unit')}</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                    {t('tools.modal.unit', 'Satuan')}
+                  </label>
                   <input
-                    className="w-full p-3 px-4 border border-border rounded-md text-base text-text-primary bg-bg-white transition-all duration-150 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 placeholder:text-text-muted"
+                    className="w-full py-2 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                     value={formData.satuan}
                     onChange={e => setFormData(p => ({ ...p, satuan: e.target.value }))}
-                    placeholder={t('tools.modal.unitPlaceholder')}
+                    placeholder="unit / set / pcs"
                   />
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 mb-4">
-                <label className="text-sm font-semibold text-text-primary">{t('tools.modal.condition')}</label>
-                <div className="flex gap-2 max-sm:flex-col">
+              {/* Condition */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  {t('tools.modal.condition', 'Kondisi Fisik Alat')}
+                </label>
+                <div className="grid grid-cols-3 gap-2">
                   {(['Baik', 'Maintenance', 'Rusak'] as const).map(k => {
                     const cfg = CONDITION_CONFIG[k];
                     const isActive = formData.kondisi === k;
                     const Icon = cfg.icon;
                     const labelMapping: Record<string, string> = {
-                      'Good': t('tools.condition.good'),
-                      'Service': t('tools.condition.service'),
-                      'Damaged': t('tools.condition.damaged')
+                      'Good': t('tools.condition.good', 'Baik (Siap)'),
+                      'Service': t('tools.condition.service', 'Perbaikan'),
+                      'Damaged': t('tools.condition.damaged', 'Rusak')
                     };
-                    const translatedLabel = labelMapping[cfg.label];
                     return (
                       <button
                         key={k}
-                        className={`flex-1 flex items-center justify-center gap-[6px] p-3 border-[1.5px] border-border rounded-md bg-bg-white text-text-secondary text-sm font-semibold cursor-pointer transition-all duration-150 hover:border-text-muted ${isActive ? '!font-bold' : ''}`}
+                        type="button"
+                        className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                          isActive
+                            ? 'shadow-xs ring-2 ring-cyan-500/30'
+                            : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
                         style={isActive ? { backgroundColor: cfg.bg, color: cfg.color, borderColor: cfg.color } : {}}
                         onClick={() => setFormData(p => ({ ...p, kondisi: k }))}
-                        type="button"
                       >
                         <Icon size={14} />
-                        {translatedLabel}
+                        <span>{labelMapping[cfg.label]}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
+
+              {/* Notes / Serial Number */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Catatan / Nomor Seri / Spesifikasi (Opsional)
+                </label>
+                <textarea
+                  rows={2}
+                  className="w-full py-2 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  value={formData.notes || ''}
+                  onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))}
+                  placeholder="Contoh: SN: LK-2026-908, masa kalibrasi hingga Desember 2026, baterai cadangan 2 unit..."
+                />
+              </div>
+
+              {/* Storage Optimization Policy Rule */}
+              <div className="p-3 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-start gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+                <Database size={16} className="text-cyan-500 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold text-slate-800 dark:text-white">
+                    Kebijakan Audit Fisik Terverifikasi (Verifiable Physical Evidence):
+                  </span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Watermark otomatis membubuhkan koordinat GPS, timestamp WIB, dan identitas petugas langsung pada canvas gambar untuk validitas audit aset konstruksi.
+                  </p>
+                </div>
+              </div>
             </div>
 
-            <div className="flex justify-end gap-3 p-5 border-t border-border-light">
-              <Button
-                title={t('tools.actions.cancel')}
-                onClick={() => { setShowAddModal(false); setEditingTool(null); }}
-                variant="outline"
-              />
-              <Button
-                title={editingTool ? t('tools.actions.saveChanges') : t('tools.actions.add')}
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 px-5 py-3.5 bg-slate-50 dark:bg-slate-950/80 border-t border-slate-200 dark:border-slate-800 shrink-0">
+              <button
+                type="button"
+                onClick={() => { setShowAddModal(false); setEditingTool(null); setIsAddToolCameraOpen(false); }}
+                disabled={submitting}
+                className="py-2 px-4 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white text-xs font-semibold cursor-pointer"
+              >
+                {t('tools.actions.cancel', 'Batal')}
+              </button>
+              <button
+                type="button"
                 onClick={handleSave}
-                loading={submitting}
-                variant="primary"
-                disabled={!formData.nama.trim() || (!editingTool && !photo)}
-              />
+                disabled={submitting || !formData.nama.trim() || (!editingTool && !photo)}
+                className="flex items-center gap-2 py-2.5 px-5 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-lg shadow-cyan-600/25 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {submitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={16} />
+                    <span>{editingTool ? t('tools.actions.saveChanges', 'Simpan Perubahan') : t('tools.actions.add', 'Simpan Alat')}</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Add Tool Watermark Camera Modal */}
+      <CaptureWatermarkModal
+        isOpen={isAddToolCameraOpen}
+        onClose={() => setIsAddToolCameraOpen(false)}
+        toolName={formData.nama || 'Registrasi Alat Baru'}
+        actionLabel="REGISTRASI BARU"
+        locationName={
+          formData.lokasi ||
+          (warehouses.find(w => w._id === formData.warehouseId)?.name || 'Head Office PT Mega Tama Enerco')
+        }
+        onPhotoCaptured={(capturedData) => {
+          setPhoto(capturedData.file);
+          setPhotoPreview(capturedData.previewUrl);
+          setCapturedGpsInfo({
+            lat: capturedData.lat,
+            lng: capturedData.lng,
+            accuracy: capturedData.accuracy,
+            isManualGpsOverride: capturedData.isManualGpsOverride,
+          });
+          setIsAddToolCameraOpen(false);
+        }}
+      />
 
       {/* Export to Excel Modal */}
       {showExportModal && (

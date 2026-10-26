@@ -202,11 +202,13 @@ export default function CaptureWatermarkModal({
     // Tool Name & Action
     ctx.fillStyle = '#E2E8F0';
     ctx.font = `bold ${fontSizeBody + 1}px "Segoe UI", Arial, sans-serif`;
-    ctx.fillText(`ALAT: ${toolName.toUpperCase()}`, paddingX, currentY);
+    const displayTool = (toolName && toolName.trim()) ? toolName.trim().toUpperCase() : 'REGISTRASI ALAT BARU';
+    ctx.fillText(`ALAT: ${displayTool}`, paddingX, currentY);
 
     // Action Tag on right
     ctx.fillStyle = '#F59E0B'; // Amber
-    const actionText = `AKSI: ${actionLabel.toUpperCase()}`;
+    const displayAction = (actionLabel && actionLabel.trim()) ? actionLabel.trim().toUpperCase() : 'PENDAFTARAN';
+    const actionText = `AKSI: ${displayAction}`;
     const actionTextWidth = ctx.measureText(actionText).width;
     ctx.fillText(actionText, width - paddingX - actionTextWidth, currentY);
 

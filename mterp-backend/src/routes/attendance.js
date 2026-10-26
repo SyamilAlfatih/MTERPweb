@@ -287,7 +287,10 @@ router.get('/', auth, async (req, res) => {
 // GET /api/attendance/today - Get today's attendance for current user
 router.get('/today', auth, async (req, res) => {
   try {
-    const todayRange = wibDayRange();
+    const todayRange = wibDayRange(nowWIB()) || wibDayRange();
+    if (!todayRange) {
+      return res.json(null);
+    }
     
     let attendance = await Attendance.findOne({
       userId: req.user._id,
@@ -729,7 +732,10 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
 // GET /api/attendance/office-today - Get today's office and management staff presence overview
 router.get('/office-today', auth, async (req, res) => {
   try {
-    const todayRange = wibDayRange();
+    const todayRange = wibDayRange(nowWIB()) || wibDayRange();
+    if (!todayRange) {
+      return res.json({ staff: [], summary: { total: 0, present: 0, checkedOut: 0, absent: 0 } });
+    }
 
     // Find all users who are office/management
     const officeUsers = await User.find({
@@ -1527,7 +1533,10 @@ router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) =
   try {
     const { wageType, projectId, lat, lng } = req.body;
     
-    const todayRange = wibDayRange();
+    const todayRange = wibDayRange(nowWIB()) || wibDayRange();
+    if (!todayRange) {
+      return res.status(500).json({ msg: 'Gagal mendeteksi tanggal sistem' });
+    }
     const today = todayRange.start;
     
     let attendance = await Attendance.findOne({

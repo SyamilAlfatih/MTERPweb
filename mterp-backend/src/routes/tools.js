@@ -1263,8 +1263,12 @@ router.post('/', auth, authorize('owner', 'director', 'asset_admin'), uploadLimi
         condition: tool.kondisi,
         evidence: {
           photo: tool.photo || null,
+          lat: req.body.lat ? Number(req.body.lat) : null,
+          lng: req.body.lng ? Number(req.body.lng) : null,
+          accuracy: req.body.accuracy ? Number(req.body.accuracy) : null,
+          isManualGpsOverride: req.body.isManualGpsOverride === 'true' || req.body.isManualGpsOverride === true,
           serverTime: nowWIB(),
-          notes: 'Pendaftaran inventaris alat baru',
+          notes: req.body.notes ? `Pendaftaran inventaris: ${req.body.notes}` : 'Pendaftaran inventaris alat baru',
           photoPurged: false,
         },
       });

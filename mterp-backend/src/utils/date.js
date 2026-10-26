@@ -22,6 +22,9 @@ function parseWIBDate(dateStr) {
  * @returns {{start: Date, end: Date}|null}
  */
 function wibDayRange(dateInput) {
+  if (dateInput === undefined) {
+    dateInput = nowWIB();
+  }
   if (!dateInput) return null;
   
   let dateStr = '';
