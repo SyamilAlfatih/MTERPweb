@@ -160,5 +160,9 @@ attendanceSchema.index({ userId: 1, date: 1 }, { unique: true });
 attendanceSchema.index({ userId: 1, date: -1 });
 // Spatial 2dsphere index for GeoJSON proximity & geofencing queries
 attendanceSchema.index({ 'checkIn.geoPoint': '2dsphere' }, { sparse: true });
+// Compound indexes for dashboard and payroll lookups
+attendanceSchema.index({ date: 1, projectId: 1 });
+attendanceSchema.index({ paymentStatus: 1, projectId: 1 });
+attendanceSchema.index({ status: 1, date: 1 });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);

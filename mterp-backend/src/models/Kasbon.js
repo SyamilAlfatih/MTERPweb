@@ -30,4 +30,8 @@ const kasbonSchema = new mongoose.Schema({
   },
 });
 
+// Indexes for kasbon approvals, user lookups, and status filtering
+kasbonSchema.index({ userId: 1, status: 1 });
+kasbonSchema.index({ status: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Kasbon', kasbonSchema);

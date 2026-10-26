@@ -43,6 +43,9 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
         const reqQuery = { status: 'Pending' };
         if (projectId) reqQuery.projectId = projectId;
 
+        const thirtyDaysAgo = new Date(todayStart);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 35);
+
         const [
             allProjects,
             tasks,
@@ -50,7 +53,7 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             weeklyRecords,
             monthlyWageRecords,
             totalWorkers,
-            unpaidRecords,
+            unpaidAgg,
             pendingRequests
         ] = await Promise.all([
             Project.find().select('_id nama status progress totalBudget workItems startDate endDate').sort({ createdAt: -1 }).lean(),
@@ -59,7 +62,17 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             Attendance.find(weeklyAttendanceQuery).select('date status dailyRate overtimePay paymentStatus').lean(),
             Attendance.find(wageQuery).select('dailyRate overtimePay paymentStatus').lean(),
             User.countDocuments({ isVerified: true }),
-            Attendance.find(unpaidQuery).select('dailyRate overtimePay').lean(),
+            Attendance.aggregate([
+                { $match: unpaidQuery },
+                {
+                    $group: {
+                        _id: null,
+                        total: {
+                            $sum: { $add: [{ $ifNull: ['$dailyRate', 0] }, { $ifNull: ['$overtimePay', 0] }] }
+                        }
+                    }
+                }
+            ]),
             Request.countDocuments(reqQuery)
         ]);
 
@@ -67,11 +80,14 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
         const projects = projectId ? allProjects.filter(p => p._id.toString() === projectId) : allProjects;
         const projectIds = projects.map(p => p._id);
 
+        const reportsQuery = {
+            projectId: projectId && projects.length === 1 ? projectId : { $in: projectIds },
+            date: { $gte: thirtyDaysAgo }
+        };
+
         const [allSupplies, reports] = await Promise.all([
             Supply.find({ projectId: { $in: projectIds } }).select('actualCost').lean(),
-            projectId && projects.length === 1 
-                ? DailyReport.find({ projectId }).sort({ date: 1 }).select('date progressPercent').limit(30).lean()
-                : DailyReport.find({ projectId: { $in: projectIds } }).sort({ date: 1 }).select('date progressPercent').lean()
+            DailyReport.find(reportsQuery).sort({ date: 1 }).select('date progressPercent').lean()
         ]);
 
         // Status breakdown
@@ -161,7 +177,7 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
             }
         });
 
-        const totalUnpaid = unpaidRecords.reduce((s, r) => s + (r.dailyRate || 0) + (r.overtimePay || 0), 0);
+        const totalUnpaid = unpaidAgg[0]?.total || 0;
 
         // Progress timeline
         let progressTimeline = [];

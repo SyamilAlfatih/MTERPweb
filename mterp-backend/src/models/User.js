@@ -148,4 +148,9 @@ userSchema.methods.toJSON = function () {
   return user;
 };
 
+// Indexes for common queries (Auth, Users list, Role queries)
+userSchema.index({ role: 1 });
+userSchema.index({ isVerified: 1 });
+userSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('User', userSchema);

@@ -33,4 +33,7 @@ const apiKeySchema = new mongoose.Schema({
   },
 });
 
+apiKeySchema.index({ keyHash: 1, isActive: 1 });
+apiKeySchema.index({ keyPrefix: 1 });
+
 module.exports = mongoose.model('ApiKey', apiKeySchema);

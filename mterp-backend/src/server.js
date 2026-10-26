@@ -1,8 +1,10 @@
 process.env.TZ = 'Asia/Jakarta';
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const http = require('http');
 const express = require('express');
+const compression = require('compression');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const { Server } = require('socket.io');
@@ -92,6 +94,8 @@ const isAllowedOrigin = (origin) => {
   return false;
 };
 
+app.use(compression());
+
 app.use(cors({
   origin: (origin, callback) => {
     if (isAllowedOrigin(origin)) {
@@ -102,8 +106,8 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // API Routes
 app.use('/api/auth', authLimiter, authRoutes);
@@ -172,15 +176,19 @@ mongoose.connect(MONGODB_URI)
     console.log('✅ Connected to MongoDB');
     console.log(`   Database: ${mongoose.connection.name}`);
 
-    // Audit & synchronize project progress across all projects (Single Source of Truth)
-    const { syncAllProjectsProgress } = require('./utils/projectProgress');
-    syncAllProjectsProgress()
-      .then(synced => {
-        if (synced && synced.length > 0) {
-          console.log(`📊 Synchronized progress for ${synced.length} projects`);
-        }
-      })
-      .catch(err => console.error('⚠️ Project progress sync warning:', err.message));
+    // Audit & synchronize project progress asynchronously in background if not disabled
+    if (process.env.SYNC_ON_BOOT !== 'false') {
+      setTimeout(() => {
+        const { syncAllProjectsProgress } = require('./utils/projectProgress');
+        syncAllProjectsProgress()
+          .then(synced => {
+            if (synced && synced.length > 0) {
+              console.log(`📊 Synchronized progress for ${synced.length} projects`);
+            }
+          })
+          .catch(err => console.error('⚠️ Project progress sync warning:', err.message));
+      }, 3000);
+    }
 
     // Socket.io setup
     const io = new Server(server, {

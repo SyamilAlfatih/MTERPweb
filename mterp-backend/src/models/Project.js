@@ -146,4 +146,10 @@ projectSchema.pre('findOneAndUpdate', function (next) {
   next();
 });
 
+// Indexes for common queries (Dashboard, Project List, Role filtering)
+projectSchema.index({ status: 1, createdAt: -1 });
+projectSchema.index({ createdBy: 1 });
+projectSchema.index({ assignedTo: 1 });
+projectSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('Project', projectSchema);
