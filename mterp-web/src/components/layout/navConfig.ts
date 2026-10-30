@@ -15,6 +15,7 @@ import {
   User,
   UserCog,
   ShieldCheck,
+  HardHat,
 } from 'lucide-react';
 
 export interface NavItemConfig {
@@ -94,6 +95,13 @@ export const NAV_GROUPS: NavGroupConfig[] = [
         icon: Wrench,
         route: '/tools',
         roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin'],
+      },
+      {
+        id: 'ppe-usages',
+        label: 'Alat Pelindung Diri (APD)',
+        icon: HardHat,
+        route: '/ppe-usages',
+        roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'admin_project', 'asset_admin', 'foreman', 'worker', 'tukang', 'helper'],
       },
       {
         id: 'materials',

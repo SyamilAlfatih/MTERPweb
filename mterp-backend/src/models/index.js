@@ -25,6 +25,8 @@ const ProcurementConfig = require('./ProcurementConfig');
 const SPKLConfig = require('./SPKLConfig');
 const Warehouse = require('./Warehouse');
 const ToolMovement = require('./ToolMovement');
+const PPEUsage = require('./PPEUsage');
+const PPEItem = require('./PPEItem');
 
 module.exports = {
   User,
@@ -54,6 +56,6 @@ module.exports = {
   SPKLConfig,
   Warehouse,
   ToolMovement,
+  PPEUsage,
+  PPEItem,
 };
-
-

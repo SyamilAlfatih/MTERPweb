@@ -10,3 +10,5 @@ ERP_SYSTEM_UI_UX_AUDIT_REPORT.md
 ERP_UI_UX_REMEDIATION_PLAN.md
 SPKL.pdf
 SPKL_OVERTIME_REVAMP_PLAN.md
+mterp-backend/data/pekerja-export.csv
+mterp-backend/tests/e2e/*.png

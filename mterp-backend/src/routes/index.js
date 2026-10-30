@@ -16,6 +16,8 @@ const localPurchaseRoutes = require('./localPurchases');
 const spklRoutes = require('./spkl');
 const approvalConfigRoutes = require('./approvalConfig');
 const warehouseRoutes = require('./warehouses');
+const ppeUsageRoutes = require('./ppeUsage');
+const ppeItemRoutes = require('./ppeItems');
 
 module.exports = {
   authRoutes,
@@ -36,6 +38,6 @@ module.exports = {
   spklRoutes,
   approvalConfigRoutes,
   warehouseRoutes,
+  ppeUsageRoutes,
+  ppeItemRoutes,
 };
-
-
