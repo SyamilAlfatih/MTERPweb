@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Upload, Clock, DollarSign, AlertCircle, Check, LogOut, FileText,
   Building, CalendarOff, MapPin, Timer, Calendar, ChevronRight,
-  Shield, TrendingUp, Loader, Users, Camera,
+  Shield, TrendingUp, Loader, Users, Camera, X,
 } from 'lucide-react';
 import { useTranslation, Trans } from 'react-i18next';
 import api from '../api/api';
@@ -30,6 +30,8 @@ export default function Attendance() {
 
   // Core state
   const [todayRecord, setTodayRecord] = useState<AttendanceRecord | null>(null);
+  const [checkInPhoto, setCheckInPhoto] = useState<File | null>(null);
+  const [checkInPhotoPreview, setCheckInPhotoPreview] = useState<string | null>(null);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -138,10 +140,27 @@ export default function Attendance() {
       setAlertData({ visible: true, type: 'error', title: t('attendance.messages.projectRequiredTitle'), message: t('attendance.messages.projectRequired') });
       return;
     }
+    if (!checkInPhoto) {
+      setAlertData({
+        visible: true,
+        type: 'error',
+        title: 'Foto Kehadiran Wajib',
+        message: 'Foto selfie kehadiran wajib diambil atau diunggah sebelum melakukan presensi masuk.',
+      });
+      return;
+    }
     setLoading(true);
     const selectedProj = projects.find(p => p._id === selectedProjectId);
 
     if (!navigator.onLine) {
+      let photoBase64: string | undefined;
+      if (checkInPhoto) {
+        try {
+          photoBase64 = await fileToBase64(checkInPhoto);
+        } catch (e) {
+          console.warn('Failed to convert checkInPhoto to base64', e);
+        }
+      }
       const localUuid = `off_in_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const nowIso = new Date().toISOString();
       await queueOfflineAttendance({
@@ -152,12 +171,13 @@ export default function Attendance() {
         projectId: selectedProjectId,
         projectName: selectedProj?.nama || 'Proyek',
         recordedAt: nowIso,
+        photoBase64,
       });
 
       const optimistic: AttendanceRecord = {
         _id: localUuid,
         date: nowIso,
-        checkIn: { time: nowIso },
+        checkIn: { time: nowIso, photo: checkInPhotoPreview || undefined },
         wageType: 'daily',
         status: 'Present',
         projectId: selectedProj ? { _id: selectedProj._id, nama: selectedProj.nama } : undefined,
@@ -165,6 +185,8 @@ export default function Attendance() {
       };
       setTodayRecord(optimistic);
       if (user?._id) cacheTodayAttendance(user._id, optimistic);
+      setCheckInPhoto(null);
+      setCheckInPhotoPreview(null);
 
       setAlertData({
         visible: true,
@@ -177,13 +199,29 @@ export default function Attendance() {
     }
 
     try {
-      await api.post('/attendance/checkin', { projectId: selectedProjectId });
+      const formData = new FormData();
+      formData.append('projectId', selectedProjectId);
+      formData.append('photo', checkInPhoto);
+
+      await api.post('/attendance/checkin', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       setAlertData({ visible: true, type: 'success', title: t('attendance.messages.checkInSuccessTitle'), message: t('attendance.messages.checkInSuccess', { time: formatWIBTime(new Date()) }) });
+      setCheckInPhoto(null);
+      setCheckInPhotoPreview(null);
       await fetchTodayAttendance();
       await fetchRecentHistory();
     } catch (err: any) {
       if (!err.response) {
         // Network error: fallback to offline queue
+        let photoBase64: string | undefined;
+        if (checkInPhoto) {
+          try {
+            photoBase64 = await fileToBase64(checkInPhoto);
+          } catch (e) {
+            console.warn('Failed to convert checkInPhoto to base64', e);
+          }
+        }
         const localUuid = `off_in_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const nowIso = new Date().toISOString();
         await queueOfflineAttendance({
@@ -194,12 +232,13 @@ export default function Attendance() {
           projectId: selectedProjectId,
           projectName: selectedProj?.nama || 'Proyek',
           recordedAt: nowIso,
+          photoBase64,
         });
 
         const optimistic: AttendanceRecord = {
           _id: localUuid,
           date: nowIso,
-          checkIn: { time: nowIso },
+          checkIn: { time: nowIso, photo: checkInPhotoPreview || undefined },
           wageType: 'daily',
           status: 'Present',
           projectId: selectedProj ? { _id: selectedProj._id, nama: selectedProj.nama } : undefined,
@@ -207,6 +246,8 @@ export default function Attendance() {
         };
         setTodayRecord(optimistic);
         if (user?._id) cacheTodayAttendance(user._id, optimistic);
+        setCheckInPhoto(null);
+        setCheckInPhotoPreview(null);
 
         setAlertData({
           visible: true,
@@ -677,10 +718,67 @@ export default function Attendance() {
             )}
           </div>
 
+          {/* Photo Selfie Check-In (Wajib) */}
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                <Camera size={14} className="text-emerald-600" />
+                <span>Foto Selfie Kehadiran (Wajib)</span>
+              </span>
+              {checkInPhotoPreview && (
+                <button
+                  type="button"
+                  className="text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer bg-transparent border-none p-0"
+                  onClick={() => {
+                    setCheckInPhoto(null);
+                    setCheckInPhotoPreview(null);
+                  }}
+                >
+                  <X size={14} />
+                  <span>Hapus</span>
+                </button>
+              )}
+            </div>
+
+            {checkInPhotoPreview ? (
+              <div className="relative w-[180px] h-[180px] rounded-xl overflow-hidden mx-auto border-2 border-emerald-500/50 shadow-md">
+                <PhotoView src={checkInPhotoPreview}>
+                  <img src={checkInPhotoPreview} alt="Selfie Check-in" className="w-full h-full object-cover cursor-pointer hover:opacity-95" />
+                </PhotoView>
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/75 backdrop-blur-xs text-white text-[11px] font-bold rounded-full pointer-events-none flex items-center gap-1">
+                  <Check size={12} className="text-emerald-400" /> Foto Siap
+                </div>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center gap-2.5 w-full max-w-[280px] h-[180px] border-2 border-dashed border-emerald-500/40 hover:border-emerald-600 rounded-2xl cursor-pointer transition-all duration-150 mx-auto bg-emerald-50/40 dark:bg-emerald-950/20 hover:bg-emerald-100/50 group">
+                <div className="w-12 h-12 rounded-full bg-white dark:bg-slate-800 shadow-xs border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-emerald-600 group-hover:scale-105 transition-transform">
+                  <Camera size={24} />
+                </div>
+                <div className="text-center px-3">
+                  <span className="text-xs text-text-primary font-bold block">Ambil / Unggah Foto Selfie</span>
+                  <span className="text-[11px] text-text-muted mt-0.5 block">Wajib sebagai bukti kehadiran presensi</span>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="user"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setCheckInPhoto(file);
+                      setCheckInPhotoPreview(URL.createObjectURL(file));
+                    }
+                  }}
+                  style={{ display: 'none' }}
+                />
+              </label>
+            )}
+          </div>
+
           <button
-            className={`w-full flex items-center justify-center gap-2 p-4 border-none rounded-lg text-base font-bold cursor-pointer transition-all duration-150 text-white bg-gradient-to-br from-emerald-600 to-emerald-500 shadow-[0_4px_14px_rgba(5,150,105,0.35)] hover:not(:disabled):-translate-y-[1px] hover:not(:disabled):shadow-[0_6px_20px_rgba(5,150,105,0.45)] ${checkInDisabled || loading ? 'opacity-50 cursor-not-allowed hover:-translate-y-0 hover:shadow-none' : ''}`}
+            className={`w-full flex items-center justify-center gap-2 p-4 border-none rounded-lg text-base font-bold cursor-pointer transition-all duration-150 text-white bg-gradient-to-br from-emerald-600 to-emerald-500 shadow-[0_4px_14px_rgba(5,150,105,0.35)] hover:not(:disabled):-translate-y-[1px] hover:not(:disabled):shadow-[0_6px_20px_rgba(5,150,105,0.45)] ${checkInDisabled || loading || !checkInPhoto || !selectedProjectId ? 'opacity-50 cursor-not-allowed hover:-translate-y-0 hover:shadow-none' : ''}`}
             onClick={handleCheckIn}
-            disabled={loading || checkInDisabled}
+            disabled={loading || checkInDisabled || !selectedProjectId || !checkInPhoto}
           >
             {loading ? (
               <Loader size={22} className="dashboard-spinner" />
@@ -696,6 +794,13 @@ export default function Attendance() {
             <p className="flex items-center justify-center gap-1 mt-3 text-xs text-red-600 font-medium">
               <AlertCircle size={14} />
               {t('attendance.actions.checkInWarning')}
+            </p>
+          )}
+
+          {!checkInPhoto && !checkInDisabled && (
+            <p className="flex items-center justify-center gap-1 mt-3 text-xs text-amber-600 dark:text-amber-400 font-medium text-center">
+              <AlertCircle size={14} className="shrink-0" />
+              <span>Foto selfie kehadiran wajib diambil atau diunggah sebelum check-in.</span>
             </p>
           )}
 

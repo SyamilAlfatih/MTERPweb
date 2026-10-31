@@ -532,6 +532,15 @@ export default function OfficeAttendance() {
 
   // Check In Handler
   const handleCheckIn = async () => {
+    if (!selfiePhoto) {
+      setAlertData({
+        visible: true,
+        type: 'error',
+        title: 'Foto Kehadiran Wajib',
+        message: 'Foto selfie kehadiran wajib diambil melalui kamera atau diunggah sebelum melakukan check-in.',
+      });
+      return;
+    }
     setLoadingAction(true);
     const resolvedLocation = workType === 'WFO'
       ? HEAD_OFFICE.name
@@ -1714,10 +1723,16 @@ export default function OfficeAttendance() {
                   size="large"
                   onClick={handleCheckIn}
                   loading={loadingAction}
-                  disabled={loadingAction}
+                  disabled={loadingAction || !selfiePhoto}
                   icon={Check}
                   className="w-full !rounded-2xl !py-3.5 font-black text-sm shadow-md"
                 />
+                {!selfiePhoto && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium text-center flex items-center justify-center gap-1.5 mt-2">
+                    <AlertCircle size={14} className="shrink-0" />
+                    <span>Foto selfie kehadiran wajib diambil atau diunggah untuk mengaktifkan tombol check-in.</span>
+                  </p>
+                )}
               </Card>
             )}
 

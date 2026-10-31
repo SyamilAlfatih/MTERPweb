@@ -1341,9 +1341,21 @@ export default function GroupAttendance() {
       setAlertData({ visible: true, type: 'error', title: 'Pilih Proyek', message: 'Silakan pilih lokasi proyek untuk check-in.' });
       return;
     }
+    if (!selfPhoto) {
+      setAlertData({ visible: true, type: 'error', title: 'Foto Kehadiran Wajib', message: 'Foto selfie kehadiran wajib diambil atau diunggah sebelum melakukan check-in.' });
+      return;
+    }
     setSelfSubmitting(true);
 
     if (!navigator.onLine) {
+      let photoBase64: string | undefined;
+      if (selfPhoto) {
+        try {
+          photoBase64 = await fileToBase64(selfPhoto);
+        } catch (e) {
+          console.warn('Failed to convert selfPhoto to base64', e);
+        }
+      }
       const localUuid = `off_self_in_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const nowIso = new Date().toISOString();
       const proj = projects.find(p => p._id === selfProjectId);
@@ -1355,11 +1367,12 @@ export default function GroupAttendance() {
         projectId: selfProjectId,
         projectName: proj?.nama || 'Proyek',
         recordedAt: nowIso,
+        photoBase64,
       });
       const opt = {
         _id: localUuid,
         date: nowIso,
-        checkIn: { time: nowIso },
+        checkIn: { time: nowIso, photo: selfPhotoPreview || undefined },
         wageType: 'daily',
         status: 'Present',
         projectId: proj ? { _id: proj._id, nama: proj.nama } : undefined,
@@ -1367,6 +1380,8 @@ export default function GroupAttendance() {
       };
       setSelfRecord(opt as any);
       if (user?._id) cacheTodayAttendance(user._id, opt);
+      setSelfPhoto(null);
+      setSelfPhotoPreview(null);
       setAlertData({
         visible: true,
         type: 'success',
@@ -1378,17 +1393,35 @@ export default function GroupAttendance() {
     }
 
     try {
-      await api.post('/attendance/checkin', { projectId: selfProjectId });
+      const formData = new FormData();
+      formData.append('projectId', selfProjectId);
+      if (selfPhoto) {
+        formData.append('photo', selfPhoto);
+      }
+
+      await api.post('/attendance/checkin', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       setAlertData({
         visible: true,
         type: 'success',
         title: 'Check-In Berhasil!',
         message: `Check-in berhasil tercatat pada ${formatWIBTime(new Date())} WIB.`,
       });
+      setSelfPhoto(null);
+      setSelfPhotoPreview(null);
       await fetchTodaySelfAttendance();
       await fetchRecentHistory();
     } catch (err: any) {
       if (!err.response) {
+        let photoBase64: string | undefined;
+        if (selfPhoto) {
+          try {
+            photoBase64 = await fileToBase64(selfPhoto);
+          } catch (e) {
+            console.warn('Failed to convert selfPhoto to base64', e);
+          }
+        }
         const localUuid = `off_self_in_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const nowIso = new Date().toISOString();
         const proj = projects.find(p => p._id === selfProjectId);
@@ -1400,11 +1433,12 @@ export default function GroupAttendance() {
           projectId: selfProjectId,
           projectName: proj?.nama || 'Proyek',
           recordedAt: nowIso,
+          photoBase64,
         });
         const opt = {
           _id: localUuid,
           date: nowIso,
-          checkIn: { time: nowIso },
+          checkIn: { time: nowIso, photo: selfPhotoPreview || undefined },
           wageType: 'daily',
           status: 'Present',
           projectId: proj ? { _id: proj._id, nama: proj.nama } : undefined,
@@ -1412,6 +1446,8 @@ export default function GroupAttendance() {
         };
         setSelfRecord(opt as any);
         if (user?._id) cacheTodayAttendance(user._id, opt);
+        setSelfPhoto(null);
+        setSelfPhotoPreview(null);
         setAlertData({
           visible: true,
           type: 'success',
@@ -1482,7 +1518,9 @@ export default function GroupAttendance() {
 
     try {
       const formData = new FormData();
-      formData.append('photo', selfPhoto);
+      if (selfPhoto) {
+        formData.append('photo', selfPhoto);
+      }
       await api.put('/attendance/checkout', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -3562,9 +3600,45 @@ export default function GroupAttendance() {
                       ))}
                     </select>
 
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider block">
+                        Foto Selfie Kehadiran (Wajib):
+                      </label>
+                      {selfPhotoPreview ? (
+                        <div className="relative rounded-xl overflow-hidden border border-border-light max-h-[140px]">
+                          <img src={selfPhotoPreview} alt="Selfie preview" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => { setSelfPhoto(null); setSelfPhotoPreview(null); }}
+                            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center text-xs"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-border-light hover:border-emerald-500 hover:bg-emerald-50/50 cursor-pointer transition-colors">
+                          <Camera size={16} className="text-emerald-600" />
+                          <span className="text-xs font-medium text-text-muted">Ambil / Unggah Foto Selfie</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="user"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setSelfPhoto(file);
+                                setSelfPhotoPreview(URL.createObjectURL(file));
+                              }
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+
                     <button
                       onClick={handleSelfCheckIn}
-                      disabled={selfSubmitting || !selfProjectId}
+                      disabled={selfSubmitting || !selfProjectId || !selfPhoto}
                       className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
                     >
                       {selfSubmitting ? (
@@ -3576,6 +3650,13 @@ export default function GroupAttendance() {
                         </>
                       )}
                     </button>
+
+                    {!selfPhoto && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium text-center flex items-center justify-center gap-1 mt-1">
+                        <AlertCircle size={12} className="shrink-0" />
+                        <span>Foto selfie kehadiran wajib diambil atau diunggah sebelum check-in.</span>
+                      </p>
+                    )}
                   </div>
                 )}
 

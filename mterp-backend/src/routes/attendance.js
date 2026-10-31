@@ -477,6 +477,9 @@ router.post('/checkin', auth, uploadLimiter, upload.single('photo'), async (req,
     }
 
     const checkInPhoto = req.file ? req.file.path : (req.body.photoUrl || undefined);
+    if (!checkInPhoto) {
+      return res.status(400).json({ msg: 'Foto bukti kehadiran wajib dilampirkan. Silakan ambil atau unggah foto selfie kehadiran.' });
+    }
     
     const determinedWorkType = workType || (isOfficeUser ? 'WFO' : 'Project');
     const resolvedOfficeInput = (officeLocation && !isDummyOfficeLoc(officeLocation)) ? officeLocation : '';
@@ -1555,9 +1558,14 @@ router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) =
       'overtime': 1,
     };
     
+    const checkInPhoto = req.file ? req.file.path : (req.body.photoUrl || undefined);
+    if (!checkInPhoto) {
+      return res.status(400).json({ msg: 'Foto bukti kehadiran wajib dilampirkan. Silakan ambil atau unggah foto selfie kehadiran.' });
+    }
+
     const checkInData = {
       time: nowWIB(),
-      photo: req.file ? req.file.path : undefined,
+      photo: checkInPhoto,
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
     };
     
