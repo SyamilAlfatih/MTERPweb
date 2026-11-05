@@ -5,7 +5,6 @@ const ExcelJS = require('exceljs');
 const { Tool, ToolMovement, Warehouse } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
-const { uploadLimiter } = require('../middleware/rateLimiter');
 const { nowWIB } = require('../utils/date');
 
 // Helper to safely delete physical photo files from disk (Storage optimization rule)
@@ -969,7 +968,7 @@ router.get('/:id/movements', auth, async (req, res) => {
 
 // POST /api/tools/movement - Move tool (check-out, return, hand-over, transfer, relocation, etc.)
 // Enforces GPS / manual override, live watermark photo, and automatic storage purging of previous photos
-router.post('/movement', auth, uploadLimiter, upload.single('photo'), async (req, res) => {
+router.post('/movement', auth, upload.single('photo'), async (req, res) => {
   try {
     const {
       toolId,
@@ -1211,7 +1210,7 @@ router.post('/movement', auth, uploadLimiter, upload.single('photo'), async (req
 });
 
 // POST /api/tools - Create tool
-router.post('/', auth, authorize('owner', 'director', 'asset_admin'), uploadLimiter, upload.single('photo'), async (req, res) => {
+router.post('/', auth, authorize('owner', 'director', 'asset_admin'), upload.single('photo'), async (req, res) => {
   try {
     const { nama, kategori, stok, satuan, kondisi, lokasi, qrCode, projectId, warehouseId, binRef, notes } = req.body;
     
@@ -1290,7 +1289,7 @@ router.post('/', auth, authorize('owner', 'director', 'asset_admin'), uploadLimi
 });
 
 // PUT /api/tools/:id - Update tool
-router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), uploadLimiter, upload.single('photo'), async (req, res) => {
+router.put('/:id', auth, authorize('owner', 'director', 'asset_admin'), upload.single('photo'), async (req, res) => {
   try {
     const allowedFields = ['nama', 'kategori', 'stok', 'satuan', 'kondisi', 'lokasi', 'qrCode', 'notes', 'warehouseId', 'binRef'];
     const updateData = { updatedAt: nowWIB() };
@@ -1389,7 +1388,7 @@ router.put('/:id/unassign', auth, authorize('owner', 'director', 'asset_admin', 
 });
 
 // PUT /api/tools/:id/return - Return tool to warehouse
-router.put('/:id/return', auth, authorize('owner', 'director', 'asset_admin', 'supervisor'), uploadLimiter, upload.single('photo'), async (req, res) => {
+router.put('/:id/return', auth, authorize('owner', 'director', 'asset_admin', 'supervisor'), upload.single('photo'), async (req, res) => {
   try {
     const { kondisi } = req.body;
     const updateData = {

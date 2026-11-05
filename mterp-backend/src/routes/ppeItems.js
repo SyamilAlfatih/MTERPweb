@@ -4,7 +4,6 @@ const path = require('path');
 const { PPEItem, Project, Warehouse } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
-const { uploadLimiter } = require('../middleware/rateLimiter');
 const { PPE_REGULATION_REPOSITORY } = require('../data/ppeRegulationRepository');
 
 // Helper to safely delete physical photo files from disk (Storage optimization rule)
@@ -165,7 +164,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // POST /api/ppe-items - Add new PPE item to master catalog
-router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) => {
+router.post('/', auth, upload.single('photo'), async (req, res) => {
   try {
     let {
       code,
@@ -328,7 +327,7 @@ router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) =
 });
 
 // PUT /api/ppe-items/:id - Update PPE item and customized SOP
-router.put('/:id', auth, uploadLimiter, upload.single('photo'), async (req, res) => {
+router.put('/:id', auth, upload.single('photo'), async (req, res) => {
   try {
     const { id } = req.params;
     const item = await PPEItem.findById(id);

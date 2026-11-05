@@ -6,7 +6,6 @@ const ExcelJS = require('exceljs');
 const { PPEUsage, PPEItem, User, Project } = require('../models');
 const { auth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
-const { uploadLimiter } = require('../middleware/rateLimiter');
 const { PPE_REGULATION_REPOSITORY } = require('../data/ppeRegulationRepository');
 
 // Helper to safely delete physical photo files from disk (Storage optimization rule)
@@ -733,7 +732,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // POST /api/ppe-usages - Record new PPE usage with photo watermark rules
-router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) => {
+router.post('/', auth, upload.single('photo'), async (req, res) => {
   try {
     let {
       workerId,
@@ -912,7 +911,7 @@ router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) =
 });
 
 // PUT /api/ppe-usages/:id/return - Mark PPE usage returned with return photo evidence
-router.put('/:id/return', auth, uploadLimiter, upload.single('photo'), async (req, res) => {
+router.put('/:id/return', auth, upload.single('photo'), async (req, res) => {
   try {
     const { id } = req.params;
     const {
