@@ -11,6 +11,7 @@ import { initOfflineSyncListeners } from './services/syncEngine';
 import { initAttendanceSyncListeners } from './services/attendanceSyncEngine';
 import AppLayout from './components/layout/AppLayout';
 import { ErrorBoundary } from './components/shared';
+import { AppUpdateEnforcer } from './components/shared/AppUpdateEnforcer';
 
 // ─── Eager (entry-point pages — always needed immediately) ────────────────────
 import Login from './pages/Login';
@@ -63,6 +64,7 @@ function App() {
                 <BrowserRouter>
                   <TabsProvider>
                     <AuthRedirectHandler />
+                    <AppUpdateEnforcer />
                     <ErrorBoundary>
                       <Suspense fallback={<PageLoader />}>
                         <Routes>

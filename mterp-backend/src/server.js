@@ -43,6 +43,7 @@ const {
 } = require('./routes');
 const updatesRoutes = require('./routes/updates');
 const dashboardRoutes = require('./routes/dashboard');
+const versionRoutes = require('./routes/version');
 const notificationRoutes = require('./routes/notifications');
 const { setIO } = require('./utils/notify');
 
@@ -60,7 +61,7 @@ app.use('/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
   res.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Content-Type, Content-Disposition');
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
-  
+
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
   }
@@ -150,6 +151,7 @@ app.use('/api/ppe-usages', ppeUsageRoutes);
 app.use('/api/ppe', ppeUsageRoutes);
 app.use('/api/ppe-items', ppeItemRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
+app.use('/api/version', versionRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

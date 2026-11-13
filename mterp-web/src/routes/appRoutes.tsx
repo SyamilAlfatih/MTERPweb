@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Megaphone,
   ScrollText,
+  GitCommit,
 } from 'lucide-react';
 import { lazyWithRetry } from '../utils/lazyWithRetry';
 
@@ -55,6 +56,7 @@ export const OvertimeSPKL     = lazyWithRetry(() => import('../pages/OvertimeSPK
 export const ApprovalConfig   = lazyWithRetry(() => import('../pages/ApprovalConfig'), 'ApprovalConfig');
 export const PPEUsages        = lazyWithRetry(() => import('../pages/PPEUsages'), 'PPEUsages');
 export const AuditLogs        = lazyWithRetry(() => import('../pages/AuditLogs'), 'AuditLogs');
+export const AppVersioning    = lazyWithRetry(() => import('../pages/AppVersioning'), 'AppVersioning');
 
 export interface RouteMeta {
   path: string;
@@ -101,6 +103,8 @@ export const ROUTE_METADATA: RouteMeta[] = [
   { path: '/ppe-usages', defaultTitle: 'Alat Pelindung Diri (APD)', icon: ShieldCheck },
   { path: '/ppe', defaultTitle: 'Alat Pelindung Diri (APD)', icon: ShieldCheck },
   { path: '/audit-logs', defaultTitle: 'Audit Logs', icon: ScrollText },
+  { path: '/versioning', defaultTitle: 'Versi & Pembaruan', icon: GitCommit },
+  { path: '/app-updates', defaultTitle: 'Versi & Pembaruan', icon: GitCommit },
 ];
 
 /**
@@ -176,6 +180,8 @@ export function renderProtectedRoutes() {
       <Route path="/ppe" element={<PPEUsages />} />
       <Route path="/apd" element={<PPEUsages />} />
       <Route path="/audit-logs" element={<AuditLogs />} />
+      <Route path="/versioning" element={<AppVersioning />} />
+      <Route path="/app-updates" element={<AppVersioning />} />
       <Route path="*" element={<Navigate to="/home" replace />} />
     </>
   );

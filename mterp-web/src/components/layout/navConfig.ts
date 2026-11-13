@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   HardHat,
   ScrollText,
+  GitCommit,
 } from 'lucide-react';
 
 export interface NavItemConfig {
@@ -216,6 +217,13 @@ export const NAV_GROUPS: NavGroupConfig[] = [
         icon: ScrollText,
         route: '/audit-logs',
         roles: ['owner', 'director', 'president_director', 'operational_director'],
+      },
+      {
+        id: 'versioning',
+        label: 'Versi & Pembaruan',
+        icon: GitCommit,
+        route: '/versioning',
+        roles: ['owner', 'president_director', 'operational_director', 'director', 'site_manager', 'supervisor', 'foreman', 'admin_project', 'asset_admin', 'worker', 'tukang', 'helper'],
       },
     ],
   },

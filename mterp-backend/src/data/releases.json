@@ -1,0 +1,88 @@
+{
+  "curatedCommits": {
+    "cc3f9b5": {
+      "humanTitle": "Verifikasi Wajah Otomatis pada Foto Selfie Absensi",
+      "humanDescription": "Mendeteksi wajah secara langsung di perangkat saat karyawan mengambil foto selfie absensi. Foto kosong atau tanpa wajah akan ditolak otomatis dan diminta mengambil ulang.",
+      "highlights": [
+        "Deteksi wajah real-time di browser sebelum check-in/check-out dikirim",
+        "Penolakan otomatis untuk foto gelap, kosong, atau tanpa wajah",
+        "Panduan visual langsung agar posisi wajah terlihat jelas"
+      ]
+    },
+    "c3d3663": {
+      "humanTitle": "Pencarian, Filter, dan Paginasi Lebih Cepat di Halaman SPKL",
+      "humanDescription": "Halaman Surat Perintah Kerja Lembur (SPKL) kini jauh lebih responsif untuk data besar dengan pencarian ter-debounce, filter cepat, pengurutan kolom, dan paginasi server.",
+      "highlights": [
+        "Pencarian instan tanpa membebani server pada setiap ketikan",
+        "Filter status, proyek, dan rentang tanggal lebih rapi",
+        "Paginasi & pengurutan data lembur lebih ringan"
+      ]
+    },
+    "3362453": {
+      "humanTitle": "Audit Logs Sistem & Perlindungan Data Sensitif",
+      "humanDescription": "Menambahkan pencatatan aktivitas sistem (Audit Logs) yang tidak dapat diubah, lengkap dengan penyamaran otomatis data sensitif seperti password dan token.",
+      "highlights": [
+        "Halaman khusus Audit Logs untuk Owner & Direksi",
+        "Redaksi otomatis password, OTP, token, dan API key sebelum disimpan",
+        "Pelacakan aksi pengguna, waktu, dan endpoint secara transparan"
+      ]
+    },
+    "5e769a5": {
+      "humanTitle": "Upload Foto Tanpa Batas untuk Modul Alat & APD",
+      "humanDescription": "Menghapus batasan jumlah upload dan rate-limit pada pengunggahan foto dokumentasi alat dan Alat Pelindung Diri (APD).",
+      "highlights": [
+        "Bisa mengunggah banyak foto dokumentasi sekaligus tanpa terblokir",
+        "Proses unggah dokumentasi lapangan lebih lancar"
+      ]
+    },
+    "03da26b": {
+      "humanTitle": "Wajib Foto Kehadiran di Semua Alur Absensi",
+      "humanDescription": "Memastikan setiap proses absensi (individu, grup, maupun kantor) menyertakan bukti foto kehadiran.",
+      "highlights": [
+        "Validasi foto wajib saat check-in dan check-out",
+        "Konsistensi bukti kehadiran di seluruh jenis absensi"
+      ]
+    },
+    "abe1e52": {
+      "humanTitle": "Sistem Manajemen APD (Alat Pelindung Diri) & Gudang Terdaftar",
+      "humanDescription": "Pembaruan besar modul K3/APD dengan inventaris master, pelacakan pemakaian dinamis, integrasi gudang terdaftar, dan aturan foto.",
+      "highlights": [
+        "Pelacakan distribusi dan pengembalian APD pekerja",
+        "Master item APD terhubung dengan gudang terdaftar",
+        "Repositori regulasi K3 dan validasi foto serah-terima"
+      ]
+    },
+    "2533594": {
+      "humanTitle": "Finalisasi Bukti Pembayaran & Realisasi Payroll",
+      "humanDescription": "Menambahkan fitur finalisasi bukti transfer slip gaji, metrik realisasi pembayaran, dan penyelesaian tagihan minggu sebelumnya.",
+      "highlights": [
+        "Unggah dan kunci bukti pembayaran gaji",
+        "Ringkasan realisasi pembayaran dan pelunasan minggu lalu"
+      ]
+    },
+    "a3ab527": {
+      "humanTitle": "Tampilan Baru Dashboard Eksekutif",
+      "humanDescription": "Modernisasi dashboard dengan tata letak bento grid, analitik real-time, dan feed aktivitas tenaga kerja lapangan.",
+      "highlights": [
+        "Kartu ringkasan proyek dan tenaga kerja lebih informatif",
+        "Pembaruan data analitik secara real-time"
+      ]
+    },
+    "457e72c": {
+      "humanTitle": "Kustomisasi Kolom Tabel Inventaris Alat",
+      "humanDescription": "Pengguna kini dapat memilih kolom mana saja yang ingin ditampilkan pada tabel daftar alat.",
+      "highlights": [
+        "Tampilkan atau sembunyikan kolom tabel sesuai kebutuhan"
+      ]
+    },
+    "53e4aea": {
+      "humanTitle": "Kamera Watermark Otomatis saat Tambah Alat",
+      "humanDescription": "Membuka kamera watermark secara otomatis saat menambah alat baru dan memperbaiki filter rentang tanggal absensi hari ini.",
+      "highlights": [
+        "Pengambilan foto alat langsung dengan watermark lokasi & waktu",
+        "Perbaikan akurasi data absensi hari ini"
+      ]
+    }
+  }
+}
+
