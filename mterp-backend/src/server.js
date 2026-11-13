@@ -15,6 +15,7 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { authLimiter } = require('./middleware/rateLimiter');
+const { auditMiddleware } = require('./middleware/auditLogger');
 
 // Import routes
 const {
@@ -38,6 +39,7 @@ const {
   warehouseRoutes,
   ppeUsageRoutes,
   ppeItemRoutes,
+  auditLogRoutes,
 } = require('./routes');
 const updatesRoutes = require('./routes/updates');
 const dashboardRoutes = require('./routes/dashboard');
@@ -118,6 +120,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(auditMiddleware);
 
 // API Routes
 app.use('/api/auth', authLimiter, authRoutes);
@@ -146,6 +149,7 @@ app.use('/api/warehouses', warehouseRoutes);
 app.use('/api/ppe-usages', ppeUsageRoutes);
 app.use('/api/ppe', ppeUsageRoutes);
 app.use('/api/ppe-items', ppeItemRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

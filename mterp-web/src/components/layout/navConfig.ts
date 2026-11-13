@@ -16,6 +16,7 @@ import {
   UserCog,
   ShieldCheck,
   HardHat,
+  ScrollText,
 } from 'lucide-react';
 
 export interface NavItemConfig {
@@ -208,6 +209,13 @@ export const NAV_GROUPS: NavGroupConfig[] = [
         icon: UserCog,
         route: '/project-assign',
         roles: ['owner', 'director', 'supervisor', 'asset_admin', 'admin_project'],
+      },
+      {
+        id: 'audit-logs',
+        label: 'Audit Logs',
+        icon: ScrollText,
+        route: '/audit-logs',
+        roles: ['owner', 'director', 'president_director', 'operational_director'],
       },
     ],
   },

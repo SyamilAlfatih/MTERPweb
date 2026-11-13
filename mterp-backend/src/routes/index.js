@@ -18,6 +18,7 @@ const approvalConfigRoutes = require('./approvalConfig');
 const warehouseRoutes = require('./warehouses');
 const ppeUsageRoutes = require('./ppeUsage');
 const ppeItemRoutes = require('./ppeItems');
+const auditLogRoutes = require('./auditLogs');
 
 module.exports = {
   authRoutes,
@@ -40,4 +41,5 @@ module.exports = {
   warehouseRoutes,
   ppeUsageRoutes,
   ppeItemRoutes,
+  auditLogRoutes,
 };

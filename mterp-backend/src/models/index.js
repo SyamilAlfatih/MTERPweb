@@ -27,6 +27,7 @@ const Warehouse = require('./Warehouse');
 const ToolMovement = require('./ToolMovement');
 const PPEUsage = require('./PPEUsage');
 const PPEItem = require('./PPEItem');
+const AuditLog = require('./AuditLog');
 
 module.exports = {
   User,
@@ -58,4 +59,5 @@ module.exports = {
   ToolMovement,
   PPEUsage,
   PPEItem,
+  AuditLog,
 };

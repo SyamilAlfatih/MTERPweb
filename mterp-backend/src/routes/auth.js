@@ -132,22 +132,34 @@ router.post('/login', async (req, res) => {
     });
 
     if (!user) {
+      res.locals.auditActorUsername = username || '';
+      res.locals.auditSummary = `Login gagal: akun "${username || '-'}" tidak ditemukan`;
       return res.status(401).json({ msg: 'Invalid credentials' });
     }
 
     // Check password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      res.locals.auditActor = user;
+      res.locals.auditEntityId = user._id.toString();
+      res.locals.auditSummary = `Login gagal: password salah untuk ${user.username}`;
       return res.status(401).json({ msg: 'Invalid credentials' });
     }
 
     // Check if email is verified
     if (!user.isVerified) {
+      res.locals.auditActor = user;
+      res.locals.auditEntityId = user._id.toString();
+      res.locals.auditSummary = `Login gagal: akun ${user.username} belum diverifikasi`;
       return res.status(401).json({ msg: 'Please verify your email first' });
     }
 
     // Generate token
     const token = generateToken(user._id, user.role);
+
+    res.locals.auditActor = user;
+    res.locals.auditEntityId = user._id.toString();
+    res.locals.auditSummary = `Login berhasil: ${user.fullName} (${user.role})`;
 
     res.json({
       ...user.toJSON(),
