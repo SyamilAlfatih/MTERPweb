@@ -48,6 +48,7 @@ import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttenda
 import { useImageCompression } from '../utils/useImageCompression';
 import { AttendanceRecord } from '../types';
 import { useAttendanceOfflineSync } from '../hooks/useAttendanceOfflineSync';
+import { verifySelfieHasFace } from '../utils/faceDetection';
 
 type WorkType = 'WFO' | 'WFH' | 'Dinas';
 type ActiveTab = 'presence' | 'team';
@@ -210,6 +211,7 @@ export default function OfficeAttendance() {
   // Camera / Selfie
   const [selfiePhoto, setSelfiePhoto] = useState<File | null>(null);
   const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
+  const [verifyingFace, setVerifyingFace] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -371,33 +373,53 @@ export default function OfficeAttendance() {
       canvas.toBlob(async (blob) => {
         if (!blob) return;
         const file = new File([blob], `selfie_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        let candidate = file;
         try {
-          const compressed = await compress(file);
-          setSelfiePhoto(compressed);
-          setSelfiePreview(URL.createObjectURL(compressed));
+          candidate = await compress(file);
         } catch {
-          setSelfiePhoto(file);
-          setSelfiePreview(URL.createObjectURL(file));
+          candidate = file;
         }
-        stopCameraStream();
+        await validateAndAcceptSelfie(candidate);
       }, 'image/jpeg', 0.85);
     } catch (err) {
       console.error('Snapshot capture error:', err);
     }
   };
 
+  const validateAndAcceptSelfie = async (candidate: File) => {
+    setVerifyingFace(true);
+    try {
+      const result = await verifySelfieHasFace(candidate);
+      if (!result.valid) {
+        setSelfiePhoto(null);
+        setSelfiePreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setAlertData({
+          visible: true,
+          type: 'error',
+          title: 'Verifikasi Wajah Gagal',
+          message: result.message,
+        });
+        return;
+      }
+      setSelfiePhoto(candidate);
+      setSelfiePreview(URL.createObjectURL(candidate));
+      stopCameraStream();
+    } finally {
+      setVerifyingFace(false);
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    let candidate = file;
     try {
-      const compressed = await compress(file);
-      setSelfiePhoto(compressed);
-      setSelfiePreview(URL.createObjectURL(compressed));
+      candidate = await compress(file);
     } catch {
-      setSelfiePhoto(file);
-      setSelfiePreview(URL.createObjectURL(file));
+      candidate = file;
     }
-    stopCameraStream();
+    await validateAndAcceptSelfie(candidate);
   };
 
   const removePhoto = () => {

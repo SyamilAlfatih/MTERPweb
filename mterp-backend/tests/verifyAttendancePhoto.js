@@ -113,15 +113,46 @@ async function runTests() {
     failed = true;
   }
 
+  // Test 4: POST /api/attendance/checkin with a solid-black/blank image must return 400
+  console.log('\n--- Test 4: Blank/Solid-black selfie upload must return 400 Bad Request ---');
+  try {
+    const sharp = require('sharp');
+    const blankBuffer = await sharp({
+      create: { width: 120, height: 120, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    })
+      .jpeg()
+      .toBuffer();
+
+    const form = new FormData();
+    form.append('projectId', new mongoose.Types.ObjectId().toString());
+    form.append('clientTime', '2026-10-31T09:00:00.000+07:00');
+    form.append('photo', new Blob([blankBuffer], { type: 'image/jpeg' }), 'blank.jpg');
+
+    const res = await fetch(`${baseUrl}/checkin`, {
+      method: 'POST',
+      body: form,
+    });
+    const data = await res.json();
+    console.log(`Status: ${res.status}, Body:`, data);
+    if (res.status === 400 && data.msg && data.msg.includes('wajah terlihat jelas')) {
+      console.log('✅ Test 4 PASSED: Rejected solid-black/blank selfie image.');
+    } else {
+      console.error('❌ Test 4 FAILED: Expected 400 blank selfie rejection');
+      failed = true;
+    }
+  } catch (err) {
+    console.error('❌ Test 4 ERROR:', err);
+    failed = true;
+  }
+
   await new Promise(resolve => server.close(resolve));
   await mongoose.disconnect();
 
   if (failed) {
     console.error('\n❌ SOME TESTS FAILED');
-    process.exit(1);
+    process.exitCode = 1;
   } else {
     console.log('\n🎉 ALL MANDATORY PHOTO VALIDATION TESTS PASSED 100%!');
-    process.exit(0);
   }
 }
 

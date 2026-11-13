@@ -15,6 +15,7 @@ import { formatDate as formatWIBDate, formatTime as formatWIBTime, todayWIB, wib
 import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttendanceBanner';
 import { useAttendanceOfflineSync } from '../hooks/useAttendanceOfflineSync';
 import { AttendanceRecord } from '../types';
+import { verifySelfieHasFace } from '../utils/faceDetection';
 
 export default function Attendance() {
   const { t } = useTranslation();
@@ -34,6 +35,7 @@ export default function Attendance() {
   const [checkInPhotoPreview, setCheckInPhotoPreview] = useState<string | null>(null);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [verifyingFace, setVerifyingFace] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchingToday, setFetchingToday] = useState(true);
   const [alertData, setAlertData] = useState<{ visible: boolean; type: 'success' | 'error'; title: string; message: string }>({
@@ -125,9 +127,50 @@ export default function Attendance() {
     }
   };
 
+  const validateAndSetSelfie = async (
+    file: File,
+    target: 'checkin' | 'checkout',
+    inputEl?: HTMLInputElement | null
+  ) => {
+    setVerifyingFace(true);
+    try {
+      const result = await verifySelfieHasFace(file);
+      if (!result.valid) {
+        if (target === 'checkin') {
+          setCheckInPhoto(null);
+          setCheckInPhotoPreview(null);
+        } else {
+          setPhoto(null);
+          setPhotoPreview(null);
+        }
+        if (inputEl) inputEl.value = '';
+        setAlertData({
+          visible: true,
+          type: 'error',
+          title: 'Verifikasi Wajah Gagal',
+          message: result.message,
+        });
+        return;
+      }
+
+      const previewUrl = URL.createObjectURL(file);
+      if (target === 'checkin') {
+        setCheckInPhoto(file);
+        setCheckInPhotoPreview(previewUrl);
+      } else {
+        setPhoto(file);
+        setPhotoPreview(previewUrl);
+      }
+    } finally {
+      setVerifyingFace(false);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) { setPhoto(file); setPhotoPreview(URL.createObjectURL(file)); }
+    if (file) {
+      void validateAndSetSelfie(file, 'checkout', e.target);
+    }
   };
 
   const handlePermitFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -755,18 +798,20 @@ export default function Attendance() {
                   <Camera size={24} />
                 </div>
                 <div className="text-center px-3">
-                  <span className="text-xs text-text-primary font-bold block">Ambil / Unggah Foto Selfie</span>
-                  <span className="text-[11px] text-text-muted mt-0.5 block">Wajib sebagai bukti kehadiran presensi</span>
+                  <span className="text-xs text-text-primary font-bold block">
+                    {verifyingFace ? 'Memverifikasi wajah...' : 'Ambil / Unggah Foto Selfie'}
+                  </span>
+                  <span className="text-[11px] text-text-muted mt-0.5 block">Wajib menampilkan wajah dengan jelas</span>
                 </div>
                 <input
                   type="file"
                   accept="image/*"
                   capture="user"
+                  disabled={verifyingFace}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      setCheckInPhoto(file);
-                      setCheckInPhotoPreview(URL.createObjectURL(file));
+                      void validateAndSetSelfie(file, 'checkin', e.target);
                     }
                   }}
                   style={{ display: 'none' }}

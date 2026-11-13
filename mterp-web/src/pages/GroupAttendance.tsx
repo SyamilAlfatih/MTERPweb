@@ -21,6 +21,7 @@ import { AttendanceRecord } from '../types';
 import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttendanceBanner';
 import { useAttendanceOfflineSync } from '../hooks/useAttendanceOfflineSync';
 import { attendanceOfflineDb } from '../services/attendanceOfflineDb';
+import { verifySelfieHasFace } from '../utils/faceDetection';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -184,6 +185,7 @@ export default function GroupAttendance() {
   const [selfProjectId, setSelfProjectId] = useState('');
   const [selfPhoto, setSelfPhoto] = useState<File | null>(null);
   const [selfPhotoPreview, setSelfPhotoPreview] = useState<string | null>(null);
+  const [selfVerifyingFace, setSelfVerifyingFace] = useState(false);
   const [selfSubmitting, setSelfSubmitting] = useState(false);
 
   // ── Kasbon Modal (moved from deprecated Attendance.tsx) ──
@@ -1335,6 +1337,29 @@ export default function GroupAttendance() {
   };
 
   // ── Supervisor Self-Attendance Handlers ──
+
+  const handleSelfPhotoSelect = async (file: File, inputEl?: HTMLInputElement | null) => {
+    setSelfVerifyingFace(true);
+    try {
+      const result = await verifySelfieHasFace(file);
+      if (!result.valid) {
+        setSelfPhoto(null);
+        setSelfPhotoPreview(null);
+        if (inputEl) inputEl.value = '';
+        setAlertData({
+          visible: true,
+          type: 'error',
+          title: 'Verifikasi Wajah Gagal',
+          message: result.message,
+        });
+        return;
+      }
+      setSelfPhoto(file);
+      setSelfPhotoPreview(URL.createObjectURL(file));
+    } finally {
+      setSelfVerifyingFace(false);
+    }
+  };
 
   const handleSelfCheckIn = async () => {
     if (!selfProjectId) {
@@ -3618,16 +3643,18 @@ export default function GroupAttendance() {
                       ) : (
                         <label className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-border-light hover:border-emerald-500 hover:bg-emerald-50/50 cursor-pointer transition-colors">
                           <Camera size={16} className="text-emerald-600" />
-                          <span className="text-xs font-medium text-text-muted">Ambil / Unggah Foto Selfie</span>
+                          <span className="text-xs font-medium text-text-muted">
+                            {selfVerifyingFace ? 'Memverifikasi wajah...' : 'Ambil / Unggah Foto Selfie'}
+                          </span>
                           <input
                             type="file"
                             accept="image/*"
                             capture="user"
+                            disabled={selfVerifyingFace}
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) {
-                                setSelfPhoto(file);
-                                setSelfPhotoPreview(URL.createObjectURL(file));
+                                void handleSelfPhotoSelect(file, e.target);
                               }
                             }}
                             className="hidden"
@@ -3680,16 +3707,18 @@ export default function GroupAttendance() {
                     ) : (
                       <label className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-border-light hover:border-red-400 hover:bg-red-50/50 cursor-pointer transition-colors">
                         <Upload size={16} className="text-text-muted" />
-                        <span className="text-xs font-medium text-text-muted">Ambil Foto Selfie Pulang</span>
+                        <span className="text-xs font-medium text-text-muted">
+                          {selfVerifyingFace ? 'Memverifikasi wajah...' : 'Ambil Foto Selfie Pulang'}
+                        </span>
                         <input
                           type="file"
                           accept="image/*"
                           capture="user"
+                          disabled={selfVerifyingFace}
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              setSelfPhoto(file);
-                              setSelfPhotoPreview(URL.createObjectURL(file));
+                              void handleSelfPhotoSelect(file, e.target);
                             }
                           }}
                           className="hidden"

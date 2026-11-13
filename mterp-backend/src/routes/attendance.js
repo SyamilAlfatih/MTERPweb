@@ -1,5 +1,7 @@
 const express = require('express');
+const fs = require('fs');
 const mongoose = require('mongoose');
+const sharp = require('sharp');
 const { Attendance, User, Project, AttendanceSession } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -18,6 +20,33 @@ const OFFICE_ROLES = [
   'asset_admin',
   'device_admin'
 ];
+
+/**
+ * Rejects blank, solid-color, pitch-black, or washed-out selfie uploads using Sharp pixel stats.
+ */
+async function validateNonBlankImage(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return { valid: true };
+  try {
+    const stats = await sharp(filePath).stats();
+    const rgb = stats.channels.slice(0, 3);
+    const maxStdev = Math.max(...rgb.map((c) => c.stdev || 0));
+    const avgMean = rgb.reduce((sum, c) => sum + (c.mean || 0), 0) / Math.max(1, rgb.length);
+
+    if (maxStdev < 8 || avgMean < 10 || avgMean > 250) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (_) {}
+      return {
+        valid: false,
+        msg: 'Foto selfie kosong, terlalu gelap, atau polos. Silakan ambil foto selfie dengan wajah terlihat jelas.',
+      };
+    }
+    return { valid: true };
+  } catch (err) {
+    console.warn('[AttendancePhotoGuard] Could not inspect image stats:', err.message);
+    return { valid: true };
+  }
+}
 
 /**
  * Checks whether an attendance record or user belongs to Office & Management
@@ -480,6 +509,12 @@ router.post('/checkin', auth, uploadLimiter, upload.single('photo'), async (req,
     if (!checkInPhoto) {
       return res.status(400).json({ msg: 'Foto bukti kehadiran wajib dilampirkan. Silakan ambil atau unggah foto selfie kehadiran.' });
     }
+    if (req.file) {
+      const imgCheck = await validateNonBlankImage(req.file.path);
+      if (!imgCheck.valid) {
+        return res.status(400).json({ msg: imgCheck.msg });
+      }
+    }
     
     const determinedWorkType = workType || (isOfficeUser ? 'WFO' : 'Project');
     const resolvedOfficeInput = (officeLocation && !isDummyOfficeLoc(officeLocation)) ? officeLocation : '';
@@ -653,6 +688,12 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
     const isOffice = OFFICE_ROLES.includes(req.user.role) || attendance.category === 'office';
     if (!req.file && !isOffice) {
       return res.status(400).json({ msg: 'Selfie photo is required for check-out' });
+    }
+    if (req.file) {
+      const imgCheck = await validateNonBlankImage(req.file.path);
+      if (!imgCheck.valid) {
+        return res.status(400).json({ msg: imgCheck.msg });
+      }
     }
     
     let checkOutGeoPoint = undefined;
@@ -1561,6 +1602,12 @@ router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) =
     const checkInPhoto = req.file ? req.file.path : (req.body.photoUrl || undefined);
     if (!checkInPhoto) {
       return res.status(400).json({ msg: 'Foto bukti kehadiran wajib dilampirkan. Silakan ambil atau unggah foto selfie kehadiran.' });
+    }
+    if (req.file) {
+      const imgCheck = await validateNonBlankImage(req.file.path);
+      if (!imgCheck.valid) {
+        return res.status(400).json({ msg: imgCheck.msg });
+      }
     }
 
     const checkInData = {
