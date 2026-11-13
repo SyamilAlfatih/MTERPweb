@@ -183,6 +183,9 @@ const spklSchema = new mongoose.Schema({
 
 spklSchema.index({ workerId: 1, overtimeDate: 1 });
 spklSchema.index({ projectId: 1, overtimeDate: 1 });
+spklSchema.index({ workflowStatus: 1, overtimeDate: -1, createdAt: -1 });
+spklSchema.index({ projectId: 1, workflowStatus: 1, overtimeDate: -1 });
+spklSchema.index({ 'workerSnapshot.fullName': 1 });
 
 module.exports = mongoose.model('SPKL', spklSchema);
 

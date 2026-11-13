@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileText, Plus, Users, CheckCircle2, Clock, Download,
   AlertCircle, Filter, Search, Calendar, ArrowRight,
-  ChevronRight, Trash2, Edit3, ShieldCheck, Eye, Printer,
+  ChevronRight, ChevronLeft, Trash2, Edit3, ShieldCheck, Eye, Printer,
   RefreshCw, Check, X, Building, ArrowLeft, Layers, UserCheck,
   AlertTriangle, Briefcase, Award, ChevronDown, CheckSquare,
   Sparkles, HelpCircle, FileCheck, Lock, Unlock,
   EyeOff, ChevronUp, SlidersHorizontal, HardHat,
-  Hammer, Wrench, Zap, CheckCheck, RotateCcw, XCircle, Info
+  Hammer, Wrench, Zap, CheckCheck, RotateCcw, XCircle, Info,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import api from '../api/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -114,6 +115,117 @@ const SHIFT_PRESETS = [
 ];
 
 const BREAK_PRESETS = [0, 15, 30, 45, 60];
+const PAGE_SIZE_OPTIONS = [15, 25, 50, 100];
+
+function getWibDatePresetRange(preset: 'all' | 'today' | 'week' | 'month' | 'custom'): { startDate: string; endDate: string } | null {
+  if (preset === 'all' || preset === 'custom') return null;
+  const endStr = todayWIB();
+  const [y, m, d] = endStr.split('-').map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d));
+  if (preset === 'today') {
+    return { startDate: endStr, endDate: endStr };
+  }
+  if (preset === 'week') {
+    base.setUTCDate(base.getUTCDate() - 6);
+    return { startDate: base.toISOString().slice(0, 10), endDate: endStr };
+  }
+  if (preset === 'month') {
+    const monthStart = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-01`;
+    return { startDate: monthStart, endDate: endStr };
+  }
+  return null;
+}
+
+interface PaginationBarProps {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  onPageChange: (nextPage: number) => void;
+  onLimitChange: (nextLimit: number) => void;
+}
+
+function PaginationBar({ page, limit, total, totalPages, onPageChange, onLimitChange }: PaginationBarProps) {
+  if (total === 0) return null;
+
+  const startItem = (page - 1) * limit + 1;
+  const endItem = Math.min(total, page * limit);
+
+  const pageNumbers: (number | 'ellipsis')[] = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pageNumbers.push(i);
+  } else {
+    pageNumbers.push(1);
+    if (page > 3) pageNumbers.push('ellipsis');
+    const start = Math.max(2, page - 1);
+    const end = Math.min(totalPages - 1, page + 1);
+    for (let i = start; i <= end; i++) pageNumbers.push(i);
+    if (page < totalPages - 2) pageNumbers.push('ellipsis');
+    pageNumbers.push(totalPages);
+  }
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-border-light text-xs text-text-secondary">
+      <div className="flex flex-wrap items-center gap-3">
+        <span>
+          Menampilkan <strong>{startItem}–{endItem}</strong> dari <strong>{total.toLocaleString('id-ID')}</strong> dokumen
+        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-text-muted">Per halaman:</span>
+          <select
+            value={limit}
+            onChange={(e) => onLimitChange(Number(e.target.value))}
+            aria-label="Jumlah per halaman"
+            className="px-2 py-1 text-xs rounded-lg border border-border-light bg-bg-white text-text-primary font-semibold"
+          >
+            {PAGE_SIZE_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 flex-wrap">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="px-2.5 py-1.5 rounded-lg border border-border-light bg-bg-white hover:bg-bg-secondary disabled:opacity-40 flex items-center gap-1 font-semibold cursor-pointer disabled:cursor-not-allowed"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" /> Prev
+        </button>
+
+        {pageNumbers.map((num, idx) =>
+          num === 'ellipsis' ? (
+            <span key={`el-${idx}`} className="px-1.5 text-text-muted">...</span>
+          ) : (
+            <button
+              key={num}
+              type="button"
+              onClick={() => onPageChange(num)}
+              className={`min-w-[32px] px-2 py-1.5 rounded-lg border text-xs font-bold transition-colors cursor-pointer ${
+                num === page
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                  : 'bg-bg-white text-text-secondary border-border-light hover:bg-bg-secondary'
+              }`}
+            >
+              {num}
+            </button>
+          )
+        )}
+
+        <button
+          type="button"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+          className="px-2.5 py-1.5 rounded-lg border border-border-light bg-bg-white hover:bg-bg-secondary disabled:opacity-40 flex items-center gap-1 font-semibold cursor-pointer disabled:cursor-not-allowed"
+        >
+          Next <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function OvertimeSPKL() {
   const { user } = useAuth();
@@ -136,10 +248,22 @@ export default function OvertimeSPKL() {
   const [summary, setSummary] = useState<any>({ total: 0, pendingSupervisor: 0, pendingPm: 0, pendingFinance: 0, verified: 0 });
   const [listLoading, setListLoading] = useState(false);
   const [filterProject, setFilterProject] = useState('');
+  const [filterWorker, setFilterWorker] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [filterDatePreset, setFilterDatePreset] = useState<'all' | 'today' | 'week'>('all');
+  const [filterRateScheme, setFilterRateScheme] = useState('all');
+  const [filterDatePreset, setFilterDatePreset] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'overtimeDate' | 'spklNumber' | 'effectiveHours' | 'totalOvertimePay' | 'workflowStatus'>('overtimeDate');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [selectedRecordForDetail, setSelectedRecordForDetail] = useState<any | null>(null);
+  const listAbortRef = useRef<AbortController | null>(null);
 
   // Form State: Shared / Individual Fields
   const [selectedWorkerId, setSelectedWorkerId] = useState('');
@@ -180,9 +304,16 @@ export default function OvertimeSPKL() {
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [bulkGlobalEndTime, setBulkGlobalEndTime] = useState('21:00');
 
-  // Approval Queue State
+  // Approval Queue State (Server-side)
   const [approvalTierFilter, setApprovalTierFilter] = useState<'all' | 'supervisor' | 'pm' | 'finance'>('all');
+  const [approvalQueueRecords, setApprovalQueueRecords] = useState<any[]>([]);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [approvalPage, setApprovalPage] = useState(1);
+  const [approvalLimit, setApprovalLimit] = useState(25);
+  const [approvalTotal, setApprovalTotal] = useState(0);
+  const [approvalTotalPages, setApprovalTotalPages] = useState(1);
   const [selectedApprovalIds, setSelectedApprovalIds] = useState<string[]>([]);
+  const approvalAbortRef = useRef<AbortController | null>(null);
 
   // Passphrase Modal State
   const [passphraseModal, setPassphraseModal] = useState<PassphraseModalState>({
@@ -445,35 +576,154 @@ export default function OvertimeSPKL() {
     }
   }, [selectedProjectId, selectedWorkerId, assignedSupervisorId, assignedPmId, assignedFinanceId]);
 
-  // ── Fetch Records ─────────────────────────────────────────────────────────
-  const fetchRecords = useCallback(async () => {
-    setListLoading(true);
-    try {
-      const params: any = {};
-      if (filterProject) params.projectId = filterProject;
-      if (filterStatus !== 'all') params.status = filterStatus;
-      if (searchQuery) params.search = searchQuery;
+  // Debounce search input (350ms) to avoid API storms per keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-      const [resList, resSum] = await Promise.all([
-        api.get('/spkl', { params }),
-        api.get('/spkl/summary'),
-      ]);
-      setRecords(resList.data?.records || []);
+  // ── Fetch Summary KPIs ───────────────────────────────────────────────────
+  const fetchSummary = useCallback(async () => {
+    try {
+      const resSum = await api.get('/spkl/summary');
       setSummary(resSum.data || {});
     } catch (err) {
-      console.error('Failed to load SPKL records', err);
+      console.error('Failed to load SPKL summary', err);
+    }
+  }, []);
+
+  // ── Fetch Registry Records (Paginated, Sorted & Filtered) ────────────────
+  const fetchRegistryRecords = useCallback(async () => {
+    if (listAbortRef.current) listAbortRef.current.abort();
+    const controller = new AbortController();
+    listAbortRef.current = controller;
+
+    setListLoading(true);
+    try {
+      const params: Record<string, any> = {
+        page,
+        limit,
+        sortBy,
+        sortOrder,
+      };
+      if (filterProject) params.projectId = filterProject;
+      if (filterWorker) params.workerId = filterWorker;
+      if (filterStatus !== 'all') params.status = filterStatus;
+      if (filterRateScheme !== 'all') params.rateScheme = filterRateScheme;
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+
+      if (filterDatePreset === 'custom') {
+        if (filterStartDate) params.startDate = filterStartDate;
+        if (filterEndDate) params.endDate = filterEndDate;
+      } else {
+        const presetRange = getWibDatePresetRange(filterDatePreset);
+        if (presetRange) {
+          params.startDate = presetRange.startDate;
+          params.endDate = presetRange.endDate;
+        }
+      }
+
+      const resList = await api.get('/spkl', { params, signal: controller.signal });
+      setRecords(resList.data?.records || []);
+      setTotalRecords(resList.data?.total || 0);
+      setTotalPages(resList.data?.totalPages || 1);
+    } catch (err: any) {
+      if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+        console.error('Failed to load SPKL records', err);
+      }
     } finally {
       setListLoading(false);
     }
-  }, [filterProject, filterStatus, searchQuery]);
+  }, [
+    page,
+    limit,
+    sortBy,
+    sortOrder,
+    filterProject,
+    filterWorker,
+    filterStatus,
+    filterRateScheme,
+    filterDatePreset,
+    filterStartDate,
+    filterEndDate,
+    debouncedSearch,
+  ]);
+
+  // ── Fetch Server-Side Approval Queue ─────────────────────────────────────
+  const fetchApprovalQueue = useCallback(async () => {
+    if (approvalAbortRef.current) approvalAbortRef.current.abort();
+    const controller = new AbortController();
+    approvalAbortRef.current = controller;
+
+    setApprovalLoading(true);
+    try {
+      const params: Record<string, any> = {
+        page: approvalPage,
+        limit: approvalLimit,
+        approvalTier: approvalTierFilter === 'all' ? 'pending' : approvalTierFilter,
+        sortBy: 'overtimeDate',
+        sortOrder: 'desc',
+      };
+      if (filterProject) params.projectId = filterProject;
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+
+      const res = await api.get('/spkl', { params, signal: controller.signal });
+      setApprovalQueueRecords(res.data?.records || []);
+      setApprovalTotal(res.data?.total || 0);
+      setApprovalTotalPages(res.data?.totalPages || 1);
+    } catch (err: any) {
+      if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+        console.error('Failed to load SPKL approval queue', err);
+      }
+    } finally {
+      setApprovalLoading(false);
+    }
+  }, [approvalPage, approvalLimit, approvalTierFilter, filterProject, debouncedSearch]);
+
+  // Unified refresh helper for mutations & Refresh button
+  const fetchRecords = useCallback(async () => {
+    await Promise.all([fetchSummary(), fetchRegistryRecords(), fetchApprovalQueue()]);
+  }, [fetchSummary, fetchRegistryRecords, fetchApprovalQueue]);
 
   useEffect(() => {
     fetchMasterData();
-  }, [fetchMasterData]);
+    fetchSummary();
+  }, [fetchMasterData, fetchSummary]);
 
   useEffect(() => {
-    fetchRecords();
-  }, [fetchRecords]);
+    fetchRegistryRecords();
+  }, [fetchRegistryRecords]);
+
+  useEffect(() => {
+    if (activeTab === 'approvals') {
+      fetchApprovalQueue();
+    }
+  }, [activeTab, fetchApprovalQueue]);
+
+  const handleSortToggle = (field: 'overtimeDate' | 'spklNumber' | 'effectiveHours' | 'totalOvertimePay' | 'workflowStatus') => {
+    if (sortBy === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortOrder('desc');
+    }
+    setPage(1);
+  };
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setDebouncedSearch('');
+    setFilterProject('');
+    setFilterWorker('');
+    setFilterStatus('all');
+    setFilterRateScheme('all');
+    setFilterDatePreset('all');
+    setFilterStartDate('');
+    setFilterEndDate('');
+    setPage(1);
+  };
 
   // Handle Project Selection
   const handleProjectSelect = (projId: string) => {
@@ -996,17 +1246,8 @@ export default function OvertimeSPKL() {
     });
   }, [workersList, bulkRoleFilter, bulkWorkerSearch]);
 
-  // Filtered Records for Approval Tab
-  const approvalRecords = useMemo(() => {
-    return records.filter(r => {
-      if (r.workflowStatus === 'finance_verified') return false;
-      if (approvalTierFilter === 'all') return true;
-      if (approvalTierFilter === 'supervisor') return r.workflowStatus === 'submitted';
-      if (approvalTierFilter === 'pm') return r.workflowStatus === 'supervisor_verified';
-      if (approvalTierFilter === 'finance') return r.workflowStatus === 'pm_approved';
-      return true;
-    });
-  }, [records, approvalTierFilter]);
+  // Server-filtered Records for Approval Tab
+  const approvalRecords = approvalQueueRecords;
 
   const selectableApprovalRecords = useMemo(() => {
     return approvalRecords.filter(r => canActOnRecord(r));
@@ -1148,70 +1389,186 @@ export default function OvertimeSPKL() {
       {activeTab === 'list' && (
         <Card className="p-4 sm:p-6 space-y-4 shadow-sm border border-border-light rounded-2xl">
           {/* Action & Filter Toolbar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-border-light">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-center gap-2.5 w-full md:w-auto">
-              <div className="relative w-full sm:col-span-2 lg:w-64">
-                <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Cari No. SPKL, Pekerja, NIK..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2.5 text-xs border border-border-light rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 bg-bg-white min-h-[44px]"
-                />
-                {searchQuery && (
+          <div className="space-y-3 pb-4 border-b border-border-light">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-center gap-2.5 w-full md:w-auto">
+                <div className="relative w-full sm:col-span-2 lg:w-64">
+                  <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Cari No. SPKL, Pekerja, NIK, Lokasi..."
+                    value={searchQuery}
+                    onChange={e => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-full pl-9 pr-8 py-2.5 text-xs border border-border-light rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 bg-bg-white min-h-[44px]"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setPage(1);
+                      }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <select
+                  value={filterProject}
+                  onChange={e => {
+                    setFilterProject(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Filter Proyek"
+                  className="w-full lg:w-auto px-3 py-2.5 text-xs border border-border-light rounded-xl outline-none bg-bg-white focus:border-blue-500 font-medium min-h-[44px]"
+                >
+                  <option value="">Semua Proyek Lapangan</option>
+                  {projects.map((p: any) => (
+                    <option key={p._id} value={p._id}>{p.nama}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={filterWorker}
+                  onChange={e => {
+                    setFilterWorker(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Filter Pekerja"
+                  className="w-full lg:w-auto px-3 py-2.5 text-xs border border-border-light rounded-xl outline-none bg-bg-white focus:border-blue-500 font-medium min-h-[44px]"
+                >
+                  <option value="">Semua Pekerja</option>
+                  {workersList.map((w: any) => (
+                    <option key={w._id} value={w._id}>{w.fullName}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={filterStatus}
+                  onChange={e => {
+                    setFilterStatus(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Filter Status"
+                  className="w-full lg:w-auto px-3 py-2.5 text-xs border border-border-light rounded-xl outline-none bg-bg-white focus:border-blue-500 font-bold text-text-primary min-h-[44px]"
+                >
+                  <option value="all">Semua Status Otorisasi</option>
+                  <option value="submitted">Diajukan (Pending SPV)</option>
+                  <option value="supervisor_verified">Verif SPV (Pending PM)</option>
+                  <option value="pm_approved">Approved PM (Pending Finance)</option>
+                  <option value="finance_verified">Final Finance (Synced)</option>
+                  <option value="draft">Draft</option>
+                  <option value="rejected">Ditolak / Revisi</option>
+                </select>
+
+                <select
+                  value={filterRateScheme}
+                  onChange={e => {
+                    setFilterRateScheme(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Filter Skema Tarif"
+                  className="w-full lg:w-auto px-3 py-2.5 text-xs border border-border-light rounded-xl outline-none bg-bg-white focus:border-blue-500 font-medium min-h-[44px]"
+                >
+                  <option value="all">Semua Skema Tarif</option>
+                  <option value="flat_1.0">Flat 1.0x</option>
+                  <option value="tiered_1.5_2.0">Kepmenaker 1.5x / 2.0x</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={fetchRecords}
+                  className="flex-1 md:flex-initial min-h-[44px] px-3 py-2 text-xs font-semibold rounded-xl border border-border-light bg-bg-white hover:bg-bg-secondary text-text-secondary flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Segarkan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('create')}
+                  className="flex-1 md:flex-initial min-h-[44px] px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Buat Formulir Baru
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Date Presets & Custom WIB Range */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-bold text-text-muted flex items-center gap-1 mr-1">
+                  <Calendar className="w-3.5 h-3.5" /> Periode:
+                </span>
+                {(
+                  [
+                    { key: 'all', label: 'Semua' },
+                    { key: 'today', label: 'Hari Ini' },
+                    { key: 'week', label: '7 Hari' },
+                    { key: 'month', label: 'Bulan Ini' },
+                    { key: 'custom', label: 'Kustom' },
+                  ] as const
+                ).map((preset) => (
                   <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    key={preset.key}
+                    type="button"
+                    onClick={() => {
+                      setFilterDatePreset(preset.key);
+                      setPage(1);
+                    }}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                      filterDatePreset === preset.key
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
                   >
-                    <X className="w-3.5 h-3.5" />
+                    {preset.label}
                   </button>
+                ))}
+
+                {filterDatePreset === 'custom' && (
+                  <div className="flex flex-wrap items-center gap-1.5 ml-1">
+                    <input
+                      type="date"
+                      value={filterStartDate}
+                      onChange={e => {
+                        setFilterStartDate(e.target.value);
+                        setPage(1);
+                      }}
+                      aria-label="Tanggal Mulai"
+                      className="px-2.5 py-1 text-xs border border-border-light rounded-lg bg-bg-white"
+                    />
+                    <span className="text-xs text-text-muted">s/d</span>
+                    <input
+                      type="date"
+                      value={filterEndDate}
+                      onChange={e => {
+                        setFilterEndDate(e.target.value);
+                        setPage(1);
+                      }}
+                      aria-label="Tanggal Akhir"
+                      className="px-2.5 py-1 text-xs border border-border-light rounded-lg bg-bg-white"
+                    />
+                  </div>
                 )}
               </div>
 
-              <select
-                value={filterProject}
-                onChange={e => setFilterProject(e.target.value)}
-                className="w-full lg:w-auto px-3 py-2.5 text-xs border border-border-light rounded-xl outline-none bg-bg-white focus:border-blue-500 font-medium min-h-[44px]"
-              >
-                <option value="">Semua Proyek Lapangan</option>
-                {projects.map((p: any) => (
-                  <option key={p._id} value={p._id}>{p.nama}</option>
-                ))}
-              </select>
-
-              <select
-                value={filterStatus}
-                onChange={e => setFilterStatus(e.target.value)}
-                className="w-full lg:w-auto px-3 py-2.5 text-xs border border-border-light rounded-xl outline-none bg-bg-white focus:border-blue-500 font-bold text-text-primary min-h-[44px]"
-              >
-                <option value="all">Semua Status Otorisasi</option>
-                <option value="submitted">Diajukan (Pending SPV)</option>
-                <option value="supervisor_verified">Verif SPV (Pending PM)</option>
-                <option value="pm_approved">Approved PM (Pending Finance)</option>
-                <option value="finance_verified">Final Finance (Synced)</option>
-                <option value="draft">Draft</option>
-                <option value="rejected">Ditolak / Revisi</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2 w-full md:w-auto">
-              <button
-                type="button"
-                onClick={fetchRecords}
-                className="flex-1 md:flex-initial min-h-[44px] px-3 py-2 text-xs font-semibold rounded-xl border border-border-light bg-bg-white hover:bg-bg-secondary text-text-secondary flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Segarkan
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('create')}
-                className="flex-1 md:flex-initial min-h-[44px] px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Buat Formulir Baru
-              </button>
+              {(searchQuery || filterProject || filterWorker || filterStatus !== 'all' || filterRateScheme !== 'all' || filterDatePreset !== 'all') && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 flex items-center gap-1 cursor-pointer"
+                >
+                  <X className="w-3 h-3" /> Reset Filter
+                </button>
+              )}
             </div>
           </div>
 
@@ -1317,13 +1674,45 @@ export default function OvertimeSPKL() {
                 <table className="w-full text-left text-xs border-collapse min-w-[750px]">
                   <thead>
                     <tr className="bg-slate-50/80 text-text-secondary uppercase text-[10px] font-extrabold tracking-wider border-b border-border-light">
-                      <th className="p-3">No. Dokumen SPKL</th>
-                      <th className="p-3">Tanggal Lembur</th>
+                      <th
+                        onClick={() => handleSortToggle('spklNumber')}
+                        className="p-3 cursor-pointer hover:text-blue-700 select-none"
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          No. Dokumen SPKL
+                          {sortBy === 'spklNumber' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                        </span>
+                      </th>
+                      <th
+                        onClick={() => handleSortToggle('overtimeDate')}
+                        className="p-3 cursor-pointer hover:text-blue-700 select-none"
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          Tanggal Lembur
+                          {sortBy === 'overtimeDate' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                        </span>
+                      </th>
                       <th className="p-3">Pekerja</th>
                       <th className="p-3">Lokasi / Proyek</th>
                       <th className="p-3 text-center">Jadwal Lembur</th>
-                      <th className="p-3 text-center">Output Jam Lembur</th>
-                      <th className="p-3 text-center">Status Alur 4-Tier</th>
+                      <th
+                        onClick={() => handleSortToggle('effectiveHours')}
+                        className="p-3 text-center cursor-pointer hover:text-blue-700 select-none"
+                      >
+                        <span className="inline-flex items-center justify-center gap-1">
+                          Output Jam Lembur
+                          {sortBy === 'effectiveHours' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                        </span>
+                      </th>
+                      <th
+                        onClick={() => handleSortToggle('workflowStatus')}
+                        className="p-3 text-center cursor-pointer hover:text-blue-700 select-none"
+                      >
+                        <span className="inline-flex items-center justify-center gap-1">
+                          Status Alur 4-Tier
+                          {sortBy === 'workflowStatus' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                        </span>
+                      </th>
                       <th className="p-3 text-right">Aksi</th>
                     </tr>
                   </thead>
@@ -1386,6 +1775,18 @@ export default function OvertimeSPKL() {
                   </tbody>
                 </table>
               </div>
+
+              <PaginationBar
+                page={page}
+                limit={limit}
+                total={totalRecords}
+                totalPages={totalPages}
+                onPageChange={(nextPage) => setPage(nextPage)}
+                onLimitChange={(nextLimit) => {
+                  setLimit(nextLimit);
+                  setPage(1);
+                }}
+              />
             </div>
           )}
         </Card>
@@ -2914,15 +3315,15 @@ export default function OvertimeSPKL() {
           {/* Sub-Tier Filter Tabs */}
           <div className="grid grid-cols-2 lg:flex lg:flex-wrap gap-2 text-xs font-bold">
             <button
-              onClick={() => setApprovalTierFilter('all')}
+              onClick={() => { setApprovalTierFilter('all'); setApprovalPage(1); }}
               className={`px-3 py-2 rounded-xl transition-colors cursor-pointer text-center ${
                 approvalTierFilter === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              Semua Pending ({records.filter(r => r.workflowStatus !== 'finance_verified').length})
+              Semua Pending ({(summary.pendingSupervisor || 0) + (summary.pendingPm || 0) + (summary.pendingFinance || 0)})
             </button>
             <button
-              onClick={() => setApprovalTierFilter('supervisor')}
+              onClick={() => { setApprovalTierFilter('supervisor'); setApprovalPage(1); }}
               className={`px-3 py-2 rounded-xl transition-colors cursor-pointer text-center ${
                 approvalTierFilter === 'supervisor' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
               }`}
@@ -2930,7 +3331,7 @@ export default function OvertimeSPKL() {
               Tahap 1: SPV ({summary.pendingSupervisor || 0})
             </button>
             <button
-              onClick={() => setApprovalTierFilter('pm')}
+              onClick={() => { setApprovalTierFilter('pm'); setApprovalPage(1); }}
               className={`px-3 py-2 rounded-xl transition-colors cursor-pointer text-center ${
                 approvalTierFilter === 'pm' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-800 hover:bg-blue-100'
               }`}
@@ -2938,7 +3339,7 @@ export default function OvertimeSPKL() {
               Tahap 2: PM ({summary.pendingPm || 0})
             </button>
             <button
-              onClick={() => setApprovalTierFilter('finance')}
+              onClick={() => { setApprovalTierFilter('finance'); setApprovalPage(1); }}
               className={`px-3 py-2 rounded-xl transition-colors cursor-pointer text-center ${
                 approvalTierFilter === 'finance' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-800 hover:bg-purple-100'
               }`}
@@ -2948,7 +3349,12 @@ export default function OvertimeSPKL() {
           </div>
 
           {/* Pending Table / Cards */}
-          {approvalRecords.length === 0 ? (
+          {approvalLoading ? (
+            <div className="py-16 text-center text-xs text-text-muted font-bold flex flex-col items-center justify-center gap-3">
+              <div className="w-7 h-7 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              Memuat antrian otorisasi SPKL...
+            </div>
+          ) : approvalRecords.length === 0 ? (
             <div className="py-16 text-center text-xs text-text-muted space-y-2">
               <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
               <p className="m-0 font-bold text-slate-800 text-sm">Semua Dokumen SPKL Telah Diverifikasi!</p>
@@ -3270,6 +3676,18 @@ export default function OvertimeSPKL() {
                   </tbody>
                 </table>
               </div>
+
+              <PaginationBar
+                page={approvalPage}
+                limit={approvalLimit}
+                total={approvalTotal}
+                totalPages={approvalTotalPages}
+                onPageChange={(nextPage) => setApprovalPage(nextPage)}
+                onLimitChange={(nextLimit) => {
+                  setApprovalLimit(nextLimit);
+                  setApprovalPage(1);
+                }}
+              />
             </div>
           )}
         </Card>

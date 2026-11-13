@@ -7,8 +7,29 @@ const { withTransaction } = require('../utils/transaction');
 const { notify, notifyByRole } = require('../utils/notify');
 const whatsappGateway = require('../services/whatsappGateway');
 const whatsappTemplates = require('../utils/whatsappTemplates');
+const { parseWIBDate, wibDayRange } = require('../utils/date');
 
 const router = express.Router();
+
+const ALLOWED_SORT_FIELDS = {
+  overtimeDate: 'overtimeDate',
+  spklNumber: 'spklNumber',
+  effectiveHours: 'effectiveHours',
+  totalOvertimePay: 'totalOvertimePay',
+  workflowStatus: 'workflowStatus',
+  createdAt: 'createdAt',
+};
+
+const APPROVAL_TIER_STATUS_MAP = {
+  pending: { $in: ['submitted', 'supervisor_verified', 'pm_approved'] },
+  supervisor: 'submitted',
+  pm: 'supervisor_verified',
+  finance: 'pm_approved',
+};
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 const {
   parseTimeToMinutes,
@@ -23,25 +44,28 @@ const {
 
 // ─── ROUTES ──────────────────────────────────────────────────────────────────
 
-// GET /api/spkl/summary - Quick statistics for dashboard/tabs
+// GET /api/spkl/summary - Quick statistics for dashboard/tabs (single aggregation)
 router.get('/summary', auth, async (req, res) => {
   try {
-    const [total, draft, pendingSupervisor, pendingPm, pendingFinance, verified] = await Promise.all([
-      SPKL.countDocuments(),
-      SPKL.countDocuments({ workflowStatus: 'draft' }),
-      SPKL.countDocuments({ workflowStatus: 'submitted' }),
-      SPKL.countDocuments({ workflowStatus: 'supervisor_verified' }),
-      SPKL.countDocuments({ workflowStatus: 'pm_approved' }),
-      SPKL.countDocuments({ workflowStatus: 'finance_verified' }),
+    const grouped = await SPKL.aggregate([
+      { $group: { _id: '$workflowStatus', count: { $sum: 1 } } },
     ]);
+
+    const counts = {};
+    let total = 0;
+    for (const row of grouped) {
+      counts[row._id] = row.count;
+      total += row.count;
+    }
 
     res.json({
       total,
-      draft,
-      pendingSupervisor,
-      pendingPm,
-      pendingFinance,
-      verified,
+      draft: counts.draft || 0,
+      pendingSupervisor: counts.submitted || 0,
+      pendingPm: counts.supervisor_verified || 0,
+      pendingFinance: counts.pm_approved || 0,
+      verified: counts.finance_verified || 0,
+      rejected: counts.rejected || 0,
     });
   } catch (error) {
     console.error('Error fetching SPKL summary:', error);
@@ -49,49 +73,75 @@ router.get('/summary', auth, async (req, res) => {
   }
 });
 
-// GET /api/spkl - List SPKL records with search & filters
+// GET /api/spkl - List SPKL records with search, filters, sorting & pagination
 router.get('/', auth, async (req, res) => {
   try {
     const {
-      page = 1,
-      limit = 20,
+      page: rawPage = 1,
+      limit: rawLimit = 25,
       projectId,
       workerId,
       status,
+      rateScheme,
+      approvalTier,
       startDate,
       endDate,
       batchId,
       search,
+      sortBy = 'overtimeDate',
+      sortOrder = 'desc',
     } = req.query;
+
+    const page = Math.max(1, parseInt(rawPage, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(rawLimit, 10) || 25));
 
     const query = {};
 
     if (projectId) query.projectId = projectId;
     if (workerId) query.workerId = workerId;
     if (batchId) query.batchId = batchId;
-    if (status && status !== 'all') query.workflowStatus = status;
+    if (rateScheme && rateScheme !== 'all') query.rateScheme = rateScheme;
+
+    if (approvalTier && APPROVAL_TIER_STATUS_MAP[approvalTier]) {
+      query.workflowStatus = APPROVAL_TIER_STATUS_MAP[approvalTier];
+    } else if (status && status !== 'all') {
+      query.workflowStatus = status;
+    }
 
     if (startDate || endDate) {
       query.overtimeDate = {};
-      if (startDate) query.overtimeDate.$gte = new Date(startDate);
+      if (startDate) {
+        const parsedStart = parseWIBDate(startDate);
+        if (parsedStart) query.overtimeDate.$gte = parsedStart;
+      }
       if (endDate) {
-        const e = new Date(endDate);
-        e.setHours(23, 59, 59, 999);
-        query.overtimeDate.$lte = e;
+        const endRange = wibDayRange(endDate);
+        if (endRange) query.overtimeDate.$lte = endRange.end;
+      }
+      if (Object.keys(query.overtimeDate).length === 0) {
+        delete query.overtimeDate;
       }
     }
 
-    if (search) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+    if (search && typeof search === 'string' && search.trim() !== '') {
+      const searchRegex = new RegExp(escapeRegex(search.trim()), 'i');
       query.$or = [
         { spklNumber: searchRegex },
         { 'workerSnapshot.fullName': searchRegex },
         { 'workerSnapshot.nik': searchRegex },
         { location: searchRegex },
+        { 'workItems.taskDescription': searchRegex },
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const sortField = ALLOWED_SORT_FIELDS[sortBy] || 'overtimeDate';
+    const sortDir = sortOrder === 'asc' ? 1 : -1;
+    const sortObj =
+      sortField === 'overtimeDate'
+        ? { overtimeDate: sortDir, createdAt: sortDir }
+        : { [sortField]: sortDir, createdAt: -1 };
+
+    const skip = (page - 1) * limit;
     const [records, total] = await Promise.all([
       SPKL.find(query)
         .populate('workerId', 'fullName role position profileImage dailyRate nik department')
@@ -103,9 +153,9 @@ router.get('/', auth, async (req, res) => {
         .populate('signatures.supervisor.assignedTo', 'fullName role')
         .populate('signatures.projectManager.assignedTo', 'fullName role')
         .populate('signatures.financeDirector.assignedTo', 'fullName role')
-        .sort({ overtimeDate: -1, createdAt: -1 })
+        .sort(sortObj)
         .skip(skip)
-        .limit(Number(limit))
+        .limit(limit)
         .lean(),
       SPKL.countDocuments(query),
     ]);
@@ -113,8 +163,9 @@ router.get('/', auth, async (req, res) => {
     res.json({
       records,
       total,
-      page: Number(page),
-      totalPages: Math.ceil(total / Number(limit)),
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error) {
     console.error('Error fetching SPKL records:', error);
