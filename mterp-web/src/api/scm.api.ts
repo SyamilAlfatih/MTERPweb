@@ -194,11 +194,6 @@ export const createMaterialRequest = async (data: CreateMaterialRequestDTO) => {
   return response.data;
 };
 
-export const updateMaterialRequestStatus = async (id: string, data: { status: string; rejectionReason?: string; passphrase?: string }) => {
-  const response = await api.put(`/requests/${id}`, data);
-  return response.data;
-};
-
 export const reviewMaterialRequest = async (
   id: string,
   data: { notes?: string; passphrase: string; action?: 'approve' | 'reject'; rejectionReason?: string }
@@ -207,7 +202,10 @@ export const reviewMaterialRequest = async (
   return response.data;
 };
 
-export const opsApproveMaterialRequest = async (id: string, data: { passphrase: string; notes?: string }) => {
+export const opsApproveMaterialRequest = async (
+  id: string,
+  data: { passphrase: string; notes?: string; action?: 'approve' | 'reject'; rejectionReason?: string }
+) => {
   const response = await api.put(`/requests/${id}/ops-approve`, data);
   return response.data;
 };
@@ -248,7 +246,10 @@ export const assignProcurementAuthorizers = async (
   return response.data;
 };
 
-export const financeApproveMaterialRequest = async (id: string, data: { passphrase: string; notes?: string }) => {
+export const financeApproveMaterialRequest = async (
+  id: string,
+  data: { passphrase: string; notes?: string; action?: 'approve' | 'reject'; rejectionReason?: string }
+) => {
   const response = await api.put(`/requests/${id}/finance-approve`, data);
   return response.data;
 };

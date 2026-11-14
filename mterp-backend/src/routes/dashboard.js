@@ -40,7 +40,9 @@ router.get('/', auth, authorize('owner', 'director', 'supervisor', 'asset_admin'
         if (projectId) wageQuery.projectId = projectId;
         const unpaidQuery = { paymentStatus: 'Unpaid' };
         if (projectId) unpaidQuery.projectId = projectId;
-        const reqQuery = { status: 'Pending' };
+        const reqQuery = {
+            status: { $in: ['PR_PENDING', 'PR_REVIEWED', 'PO_PENDING_FINANCE', 'Pending'] },
+        };
         if (projectId) reqQuery.projectId = projectId;
         const slipQuery = projectId ? { projectId } : {};
 

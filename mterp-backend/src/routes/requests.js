@@ -556,7 +556,7 @@ router.put('/:id/review', auth, authorize('owner', 'director', 'operational_dire
 // PUT /api/requests/:id/ops-approve - Tier 2: Approval by Operations Director
 router.put('/:id/ops-approve', auth, authorize('owner', 'president_director', 'operational_director', 'director'), async (req, res) => {
   try {
-    const { passphrase, notes } = req.body;
+    const { passphrase, notes, action, rejectionReason } = req.body;
 
     if (!passphrase || passphrase.length < 4) {
       return res.status(400).json({ msg: 'Passphrase is required (min 4 characters)' });
@@ -568,6 +568,41 @@ router.put('/:id/ops-approve', auth, authorize('owner', 'president_director', 'o
     const isMatch = await bcrypt.compare(passphrase, user.password);
     if (!isMatch) {
       return res.status(400).json({ msg: 'Incorrect passphrase' });
+    }
+
+    if (action === 'reject') {
+      const reason = (rejectionReason || notes || '').trim();
+      if (!reason) {
+        return res.status(400).json({ msg: 'Alasan penolakan wajib diisi' });
+      }
+      const reqDoc = await Request.findById(req.params.id);
+      if (!reqDoc) return res.status(404).json({ msg: 'Request not found' });
+      if (reqDoc.status !== 'PR_REVIEWED' && reqDoc.status !== 'PR_PENDING') {
+        return res.status(400).json({ msg: `Cannot reject request in status: ${reqDoc.status}` });
+      }
+      reqDoc.status = 'PR_REJECTED';
+      reqDoc.rejectionReason = reason;
+      reqDoc.opsApprovedBy = {
+        user: req.user._id,
+        approvedAt: new Date(),
+        notes: reason,
+      };
+      await reqDoc.save();
+      const populated = await populateProcurement(Request.findById(reqDoc._id));
+      res.json(populated);
+
+      if (populated.requestedBy) {
+        notifyUserWithWA(
+          populated.requestedBy._id || populated.requestedBy,
+          {
+            type: 'request_rejected',
+            title: `PR Ditolak Ops: ${populated.prNumber || 'Material'}`,
+            message: `Pengajuan ditolak oleh ${req.user.fullName}. Alasan: ${reason}`,
+            data: { requestId: populated._id },
+          }
+        ).catch(console.warn);
+      }
+      return;
     }
 
     const updated = await withTransaction(async (session) => {
@@ -928,7 +963,7 @@ router.put('/:id/compare-suppliers', auth, authorize('owner', 'director', 'opera
 // PUT /api/requests/:id/finance-approve - Financial Sign-off & Tag MUST_PURCHASE
 router.put('/:id/finance-approve', auth, authorize('owner', 'president_director', 'director'), async (req, res) => {
   try {
-    const { passphrase, notes } = req.body;
+    const { passphrase, notes, action, rejectionReason } = req.body;
 
     if (!passphrase || passphrase.length < 4) {
       return res.status(400).json({ msg: 'Passphrase is required (min 4 characters)' });
@@ -948,7 +983,37 @@ router.put('/:id/finance-approve', auth, authorize('owner', 'president_director'
     }
 
     if (request.status !== 'PO_PENDING_FINANCE') {
-      return res.status(400).json({ msg: `Cannot approve PO in status: ${request.status}` });
+      return res.status(400).json({ msg: `Cannot process PO in status: ${request.status}` });
+    }
+
+    if (action === 'reject') {
+      const reason = (rejectionReason || notes || '').trim();
+      if (!reason) {
+        return res.status(400).json({ msg: 'Alasan penolakan wajib diisi' });
+      }
+      request.status = 'PR_REJECTED';
+      request.rejectionReason = reason;
+      request.financeApprovedBy = {
+        user: req.user._id,
+        approvedAt: new Date(),
+        notes: reason,
+      };
+      await request.save();
+      const populated = await populateProcurement(Request.findById(request._id));
+      res.json(populated);
+
+      if (populated.requestedBy) {
+        notifyUserWithWA(
+          populated.requestedBy._id || populated.requestedBy,
+          {
+            type: 'request_rejected',
+            title: `PO Ditolak Finance: ${populated.prNumber || 'Material'}`,
+            message: `PO ditolak oleh ${req.user.fullName}. Alasan: ${reason}`,
+            data: { requestId: populated._id },
+          }
+        ).catch(console.warn);
+      }
+      return;
     }
 
     // Generate official PO Number
@@ -1357,55 +1422,6 @@ router.put(
     }
   }
 );
-
-// PUT /api/requests/:id - Legacy approve / reject endpoint for backward compatibility
-router.put('/:id', auth, authorize('owner', 'director', 'operational_director', 'asset_admin'), async (req, res) => {
-  try {
-    const { status, rejectionReason, passphrase } = req.body;
-
-    if (status === 'Approved') {
-      if (!passphrase || passphrase.length < 4) {
-        return res.status(400).json({ msg: 'Passphrase is required (min 4 characters)' });
-      }
-      const user = await User.findById(req.user._id);
-      if (!user) return res.status(404).json({ msg: 'User not found' });
-      const isMatch = await bcrypt.compare(passphrase, user.password);
-      if (!isMatch) return res.status(400).json({ msg: 'Incorrect passphrase' });
-    }
-
-    const request = await Request.findById(req.params.id);
-    if (!request) return res.status(404).json({ msg: 'Request not found' });
-
-    if (status === 'Approved') {
-      if (request.status === 'PO_PENDING_FINANCE') {
-        const poNumber = await generatePoNumber(request.projectId, request.selectedSupplier?.supplierName);
-        request.poNumber = poNumber;
-        request.financeApprovedBy = {
-          user: req.user._id,
-          approvedAt: new Date(),
-        };
-        request.status = 'MUST_PURCHASE';
-      } else {
-        request.status = 'PR_APPROVED';
-        request.approvedBy = req.user._id;
-        request.opsApprovedBy = { user: req.user._id, approvedAt: new Date() };
-      }
-    } else if (status === 'Rejected') {
-      request.status = 'PR_REJECTED';
-      request.rejectionReason = rejectionReason || '';
-    } else if (status) {
-      request.status = status;
-    }
-
-    await request.save();
-    const updated = await populateProcurement(Request.findById(request._id));
-
-    res.json(updated);
-  } catch (error) {
-    console.error('Legacy update request error:', error);
-    res.status(500).json({ msg: 'Server error' });
-  }
-});
 
 // DELETE /api/requests/:id - Delete request
 router.delete('/:id', auth, async (req, res) => {
