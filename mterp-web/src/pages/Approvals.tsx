@@ -576,20 +576,18 @@ export default function Approvals() {
                   setActiveTab(tab.id);
                   setCheckedUids(new Set());
                 }}
-                className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                  activeTab === tab.id
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+                className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${activeTab === tab.id
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
               >
                 {tab.id === 'history' && <History className="h-3.5 w-3.5" />}
                 <span>{tab.label}</span>
                 <span
-                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                    activeTab === tab.id
-                      ? 'bg-white/20 text-white'
-                      : 'bg-white text-slate-700'
-                  }`}
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${activeTab === tab.id
+                    ? 'bg-white/20 text-white'
+                    : 'bg-white text-slate-700'
+                    }`}
                 >
                   {tab.count}
                 </span>
@@ -611,11 +609,10 @@ export default function Approvals() {
                   key={m.id}
                   type="button"
                   onClick={() => setModuleFilter(m.id as ModuleFilter)}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
-                    moduleFilter === m.id
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${moduleFilter === m.id
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                    }`}
                 >
                   {m.label}
                 </button>
@@ -647,9 +644,8 @@ export default function Approvals() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left Queue Pane */}
         <aside
-          className={`flex w-full flex-col border-r border-slate-200 bg-white lg:w-[400px] xl:w-[440px] ${
-            mobileDetailOpen ? 'hidden lg:flex' : 'flex'
-          }`}
+          className={`flex w-full flex-col border-r border-slate-200 bg-white lg:w-[400px] xl:w-[440px] ${mobileDetailOpen ? 'hidden lg:flex' : 'flex'
+            }`}
         >
           {/* Batch Toolbar */}
           {activeTab !== 'history' && filteredItems.some((i) => i.canAct) && (
@@ -714,9 +710,8 @@ export default function Approvals() {
                       setSelectedUid(item.uid);
                       setMobileDetailOpen(true);
                     }}
-                    className={`flex cursor-pointer items-start gap-3 px-4 py-3.5 transition-colors ${
-                      isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50'
-                    }`}
+                    className={`flex cursor-pointer items-start gap-3 px-4 py-3.5 transition-colors ${isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50'
+                      }`}
                   >
                     {item.canAct && activeTab !== 'history' && (
                       <button
@@ -764,15 +759,14 @@ export default function Approvals() {
 
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <span
-                          className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${
-                            item.normalizedStatus === 'PR_REJECTED' || item.normalizedStatus === 'rejected' || item.normalizedStatus === 'Rejected'
-                              ? 'bg-red-50 text-red-700'
-                              : item.isHistory
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : item.canAct
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-slate-100 text-slate-600'
-                          }`}
+                          className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${item.normalizedStatus === 'PR_REJECTED' || item.normalizedStatus === 'rejected' || item.normalizedStatus === 'Rejected'
+                            ? 'bg-red-50 text-red-700'
+                            : item.isHistory
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : item.canAct
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
                         >
                           {item.stageLabel}
                         </span>
@@ -788,9 +782,8 @@ export default function Approvals() {
 
         {/* Right Inspector Pane */}
         <main
-          className={`flex-1 flex-col bg-slate-50 overflow-y-auto ${
-            mobileDetailOpen ? 'flex' : 'hidden lg:flex'
-          }`}
+          className={`flex-1 flex-col bg-slate-50 overflow-y-auto ${mobileDetailOpen ? 'flex' : 'hidden lg:flex'
+            }`}
         >
           {!selectedItem ? (
             <div className="flex flex-1 items-center justify-center p-8 text-center">
@@ -832,7 +825,7 @@ export default function Approvals() {
                           label={selectedItem.stageLabel}
                           variant={
                             selectedItem.normalizedStatus.includes('REJECT') ||
-                            selectedItem.normalizedStatus === 'rejected'
+                              selectedItem.normalizedStatus === 'rejected'
                               ? 'danger'
                               : selectedItem.isHistory
                                 ? 'success'
