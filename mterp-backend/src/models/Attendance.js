@@ -28,6 +28,8 @@ const attendanceSchema = new mongoose.Schema({
   checkIn: {
     time: Date,
     photo: String,
+    photoHash: { type: String, index: true },
+    photoDHash: { type: String, index: true },
     location: {
       lat: Number,
       lng: Number,
@@ -44,6 +46,8 @@ const attendanceSchema = new mongoose.Schema({
   checkOut: {
     time: Date,
     photo: String,
+    photoHash: { type: String, index: true },
+    photoDHash: { type: String, index: true },
     location: {
       lat: Number,
       lng: Number,

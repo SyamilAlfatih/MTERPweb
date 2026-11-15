@@ -413,6 +413,16 @@ export default function OfficeAttendance() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.lastModified && Date.now() - file.lastModified > 90_000) {
+      e.target.value = '';
+      setAlertData({
+        visible: true,
+        type: 'error',
+        title: 'Foto Lama Ditolak',
+        message: 'Foto dari galeri atau yang diambil lebih dari 90 detik lalu tidak diperbolehkan. Ambil foto selfie langsung.',
+      });
+      return;
+    }
     let candidate = file;
     try {
       candidate = await compress(file);
@@ -693,6 +703,15 @@ export default function OfficeAttendance() {
 
   // Check Out Handler
   const handleCheckOut = async () => {
+    if (!selfiePhoto) {
+      setAlertData({
+        visible: true,
+        type: 'error',
+        title: 'Foto Selfie Check-Out Wajib',
+        message: 'Ambil foto selfie langsung yang baru sebelum melakukan check-out. Foto lama tidak diperbolehkan.',
+      });
+      return;
+    }
     setLoadingAction(true);
     const nowIso = new Date().toISOString();
 
@@ -1552,27 +1571,31 @@ export default function OfficeAttendance() {
                     </div>
                   ) : (
                     /* Camera Action Buttons */
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2.5">
                       <button
                         type="button"
                         onClick={startCamera}
-                        className="flex items-center justify-center gap-2.5 p-4 rounded-2xl border-2 border-dashed border-border-medium hover:border-primary hover:bg-primary/5 transition-all text-text-secondary hover:text-primary font-bold text-xs sm:text-sm cursor-pointer"
+                        className="w-full flex items-center justify-center gap-2.5 p-4 rounded-2xl border-2 border-dashed border-border-medium hover:border-primary hover:bg-primary/5 transition-all text-text-secondary hover:text-primary font-bold text-xs sm:text-sm cursor-pointer"
                       >
                         <Camera size={18} className="text-primary" />
-                        <span>Buka Kamera (Webcam)</span>
+                        <span>Buka Kamera Langsung (Wajib Selfie Baru)</span>
                       </button>
 
-                      <label className="flex items-center justify-center gap-2.5 p-4 rounded-2xl border-2 border-dashed border-border-medium hover:border-primary hover:bg-primary/5 transition-all text-text-secondary hover:text-primary font-bold text-xs sm:text-sm cursor-pointer">
-                        <Upload size={18} className="text-primary" />
-                        <span>Pilih File dari Galeri</span>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileUpload}
-                          className="hidden"
-                        />
-                      </label>
+                      {typeof window !== 'undefined' &&
+                        (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window) && (
+                          <label className="w-full flex items-center justify-center gap-2 p-2.5 rounded-xl border border-border-light hover:border-primary text-text-muted hover:text-primary font-semibold text-xs cursor-pointer">
+                            <Camera size={15} />
+                            <span>Kamera Perangkat (Mobile Fallback)</span>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept="image/*"
+                              capture="user"
+                              onChange={handleFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+                        )}
                     </div>
                   )}
 
@@ -1903,25 +1926,30 @@ export default function OfficeAttendance() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-3">
+                    <div className="space-y-2">
                       <button
                         type="button"
                         onClick={startCamera}
-                        className="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-border-medium hover:border-primary text-text-secondary hover:text-primary font-bold text-xs cursor-pointer"
+                        className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl border-2 border-dashed border-border-medium hover:border-primary text-text-secondary hover:text-primary font-bold text-xs cursor-pointer"
                       >
                         <Camera size={16} />
-                        <span>Kamera (Snapshot)</span>
+                        <span>Buka Kamera Langsung (Wajib Selfie Baru)</span>
                       </button>
-                      <label className="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-border-medium hover:border-primary text-text-secondary hover:text-primary font-bold text-xs cursor-pointer">
-                        <Upload size={16} />
-                        <span>Unggah Foto</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileUpload}
-                          className="hidden"
-                        />
-                      </label>
+
+                      {typeof window !== 'undefined' &&
+                        (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window) && (
+                          <label className="w-full flex items-center justify-center gap-2 p-2.5 rounded-xl border border-border-light hover:border-primary text-text-muted hover:text-primary font-semibold text-xs cursor-pointer">
+                            <Camera size={14} />
+                            <span>Kamera Perangkat (Mobile Fallback)</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="user"
+                              onChange={handleFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+                        )}
                     </div>
                   )}
                 </div>

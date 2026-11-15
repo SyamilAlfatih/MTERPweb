@@ -8,6 +8,7 @@ const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const { wibDayRange, nowWIB } = require('../utils/date');
 const { deduplicateAttendanceRecords, calculateStandardOvertime } = require('../utils/attendanceSSOT');
+const { verifyFreshUniqueAttendancePhoto } = require('../utils/attendancePhotoGuard');
 
 const router = express.Router();
 
@@ -20,33 +21,6 @@ const OFFICE_ROLES = [
   'asset_admin',
   'device_admin'
 ];
-
-/**
- * Rejects blank, solid-color, pitch-black, or washed-out selfie uploads using Sharp pixel stats.
- */
-async function validateNonBlankImage(filePath) {
-  if (!filePath || !fs.existsSync(filePath)) return { valid: true };
-  try {
-    const stats = await sharp(filePath).stats();
-    const rgb = stats.channels.slice(0, 3);
-    const maxStdev = Math.max(...rgb.map((c) => c.stdev || 0));
-    const avgMean = rgb.reduce((sum, c) => sum + (c.mean || 0), 0) / Math.max(1, rgb.length);
-
-    if (maxStdev < 8 || avgMean < 10 || avgMean > 250) {
-      try {
-        fs.unlinkSync(filePath);
-      } catch (_) {}
-      return {
-        valid: false,
-        msg: 'Foto selfie kosong, terlalu gelap, atau polos. Silakan ambil foto selfie dengan wajah terlihat jelas.',
-      };
-    }
-    return { valid: true };
-  } catch (err) {
-    console.warn('[AttendancePhotoGuard] Could not inspect image stats:', err.message);
-    return { valid: true };
-  }
-}
 
 /**
  * Checks whether an attendance record or user belongs to Office & Management
@@ -505,16 +479,14 @@ router.post('/checkin', auth, uploadLimiter, upload.single('photo'), async (req,
       return res.status(400).json({ msg: 'Already checked in today' });
     }
 
-    const checkInPhoto = req.file ? req.file.path : (req.body.photoUrl || undefined);
-    if (!checkInPhoto) {
-      return res.status(400).json({ msg: 'Foto bukti kehadiran wajib dilampirkan. Silakan ambil atau unggah foto selfie kehadiran.' });
+    if (!req.file) {
+      return res.status(400).json({ msg: 'Foto selfie langsung wajib dilampirkan untuk check-in. Foto lama atau URL tidak diperbolehkan.' });
     }
-    if (req.file) {
-      const imgCheck = await validateNonBlankImage(req.file.path);
-      if (!imgCheck.valid) {
-        return res.status(400).json({ msg: imgCheck.msg });
-      }
+    const photoCheck = await verifyFreshUniqueAttendancePhoto(req.file.path, Attendance, req.user._id);
+    if (!photoCheck.valid) {
+      return res.status(400).json({ msg: photoCheck.msg });
     }
+    const checkInPhoto = req.file.path;
     
     const determinedWorkType = workType || (isOfficeUser ? 'WFO' : 'Project');
     const resolvedOfficeInput = (officeLocation && !isDummyOfficeLoc(officeLocation)) ? officeLocation : '';
@@ -555,6 +527,8 @@ router.post('/checkin', auth, uploadLimiter, upload.single('photo'), async (req,
       distanceToOffice,
       geofenceStatus,
       photo: checkInPhoto,
+      photoHash: photoCheck.photoHash,
+      photoDHash: photoCheck.photoDHash,
     };
     
     if (attendance) {
@@ -686,14 +660,12 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
     }
     
     const isOffice = OFFICE_ROLES.includes(req.user.role) || attendance.category === 'office';
-    if (!req.file && !isOffice) {
-      return res.status(400).json({ msg: 'Selfie photo is required for check-out' });
+    if (!req.file) {
+      return res.status(400).json({ msg: 'Foto selfie langsung wajib diambil untuk check-out. Foto lama tidak diperbolehkan.' });
     }
-    if (req.file) {
-      const imgCheck = await validateNonBlankImage(req.file.path);
-      if (!imgCheck.valid) {
-        return res.status(400).json({ msg: imgCheck.msg });
-      }
+    const photoCheck = await verifyFreshUniqueAttendancePhoto(req.file.path, Attendance, req.user._id);
+    if (!photoCheck.valid) {
+      return res.status(400).json({ msg: photoCheck.msg });
     }
     
     let checkOutGeoPoint = undefined;
@@ -724,7 +696,9 @@ router.put('/checkout', auth, uploadLimiter, upload.single('photo'), async (req,
 
     attendance.checkOut = {
       time: recordTime,
-      photo: req.file ? req.file.path : (attendance.checkOut?.photo || undefined),
+      photo: req.file.path,
+      photoHash: photoCheck.photoHash,
+      photoDHash: photoCheck.photoDHash,
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
       geoPoint: checkOutGeoPoint,
       distanceToOffice: checkOutDistance,
@@ -1599,20 +1573,20 @@ router.post('/', auth, uploadLimiter, upload.single('photo'), async (req, res) =
       'overtime': 1,
     };
     
-    const checkInPhoto = req.file ? req.file.path : (req.body.photoUrl || undefined);
-    if (!checkInPhoto) {
-      return res.status(400).json({ msg: 'Foto bukti kehadiran wajib dilampirkan. Silakan ambil atau unggah foto selfie kehadiran.' });
+    if (!req.file) {
+      return res.status(400).json({ msg: 'Foto selfie langsung wajib dilampirkan untuk check-in. Foto lama atau URL tidak diperbolehkan.' });
     }
-    if (req.file) {
-      const imgCheck = await validateNonBlankImage(req.file.path);
-      if (!imgCheck.valid) {
-        return res.status(400).json({ msg: imgCheck.msg });
-      }
+    const photoCheck = await verifyFreshUniqueAttendancePhoto(req.file.path, Attendance, req.user._id);
+    if (!photoCheck.valid) {
+      return res.status(400).json({ msg: photoCheck.msg });
     }
+    const checkInPhoto = req.file.path;
 
     const checkInData = {
       time: nowWIB(),
       photo: checkInPhoto,
+      photoHash: photoCheck.photoHash,
+      photoDHash: photoCheck.photoDHash,
       location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined,
     };
     

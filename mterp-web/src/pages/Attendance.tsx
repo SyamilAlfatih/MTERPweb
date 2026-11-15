@@ -16,6 +16,7 @@ import { OfflineAttendanceBanner } from '../components/attendance/OfflineAttenda
 import { useAttendanceOfflineSync } from '../hooks/useAttendanceOfflineSync';
 import { AttendanceRecord } from '../types';
 import { verifySelfieHasFace } from '../utils/faceDetection';
+import { LiveSelfieCapture } from '../components/attendance/LiveSelfieCapture';
 
 export default function Attendance() {
   const { t } = useTranslation();
@@ -783,41 +784,19 @@ export default function Attendance() {
               )}
             </div>
 
-            {checkInPhotoPreview ? (
-              <div className="relative w-[180px] h-[180px] rounded-xl overflow-hidden mx-auto border-2 border-emerald-500/50 shadow-md">
-                <PhotoView src={checkInPhotoPreview}>
-                  <img src={checkInPhotoPreview} alt="Selfie Check-in" className="w-full h-full object-cover cursor-pointer hover:opacity-95" />
-                </PhotoView>
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/75 backdrop-blur-xs text-white text-[11px] font-bold rounded-full pointer-events-none flex items-center gap-1">
-                  <Check size={12} className="text-emerald-400" /> Foto Siap
-                </div>
-              </div>
-            ) : (
-              <label className="flex flex-col items-center justify-center gap-2.5 w-full max-w-[280px] h-[180px] border-2 border-dashed border-emerald-500/40 hover:border-emerald-600 rounded-2xl cursor-pointer transition-all duration-150 mx-auto bg-emerald-50/40 dark:bg-emerald-950/20 hover:bg-emerald-100/50 group">
-                <div className="w-12 h-12 rounded-full bg-white dark:bg-slate-800 shadow-xs border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-emerald-600 group-hover:scale-105 transition-transform">
-                  <Camera size={24} />
-                </div>
-                <div className="text-center px-3">
-                  <span className="text-xs text-text-primary font-bold block">
-                    {verifyingFace ? 'Memverifikasi wajah...' : 'Ambil / Unggah Foto Selfie'}
-                  </span>
-                  <span className="text-[11px] text-text-muted mt-0.5 block">Wajib menampilkan wajah dengan jelas</span>
-                </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="user"
-                  disabled={verifyingFace}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      void validateAndSetSelfie(file, 'checkin', e.target);
-                    }
-                  }}
-                  style={{ display: 'none' }}
-                />
-              </label>
-            )}
+            <LiveSelfieCapture
+              previewUrl={checkInPhotoPreview}
+              title="Ambil Foto Selfie Check-In"
+              accent="emerald"
+              onCapture={(file, url) => {
+                setCheckInPhoto(file);
+                setCheckInPhotoPreview(url);
+              }}
+              onClear={() => {
+                setCheckInPhoto(null);
+                setCheckInPhotoPreview(null);
+              }}
+            />
           </div>
 
           <button
@@ -871,33 +850,19 @@ export default function Attendance() {
           </div>
 
           <div className="mb-4">
-            {photoPreview ? (
-              <div className="relative w-[180px] h-[180px] rounded-lg overflow-hidden mx-auto max-sm:w-[150px] max-sm:h-[150px]">
-                <PhotoView src={photoPreview}>
-                  <img src={photoPreview} alt="Preview" className="w-full h-full object-cover cursor-pointer" />
-                </PhotoView>
-                <button className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/70 text-white text-xs font-semibold border-none rounded-sm cursor-pointer" onClick={() => { setPhoto(null); setPhotoPreview(null); }}>
-                  {t('attendance.actions.removePhoto')}
-                </button>
-              </div>
-            ) : (
-              <label className="flex flex-col items-center justify-center gap-2.5 w-full max-w-[260px] h-[190px] border-2 border-dashed border-border-light hover:border-primary rounded-xl cursor-pointer transition-all duration-150 mx-auto bg-slate-50 hover:bg-primary-bg group">
-                <div className="w-12 h-12 rounded-full bg-white shadow-xs border border-border-light flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
-                  <Camera size={24} />
-                </div>
-                <div className="text-center px-3">
-                  <span className="text-xs text-text-primary font-bold block">{t('attendance.actions.tapToUpload')}</span>
-                  <span className="text-[11px] text-text-muted mt-0.5 block">Kamera selfie otomatis terbuka</span>
-                </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="user"
-                  onChange={handleFileChange}
-                  style={{ display: 'none' }}
-                />
-              </label>
-            )}
+            <LiveSelfieCapture
+              previewUrl={photoPreview}
+              title="Ambil Foto Selfie Check-Out"
+              accent="red"
+              onCapture={(file, url) => {
+                setPhoto(file);
+                setPhotoPreview(url);
+              }}
+              onClear={() => {
+                setPhoto(null);
+                setPhotoPreview(null);
+              }}
+            />
           </div>
 
           <button
