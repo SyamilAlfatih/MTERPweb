@@ -144,8 +144,44 @@ export function evaluateUpdateStatus(
   swWaiting = false
 ): UpdateCheckResult {
   const clientCommit = CLIENT_BUILD_INFO.commitHash;
+  const hasStaticVersion = Boolean(staticVersion && (staticVersion.commitHash || staticVersion.buildTime));
 
-  if (
+  if (hasStaticVersion && staticVersion) {
+    if (
+      staticVersion.commitHash &&
+      staticVersion.commitHash !== 'unknown' &&
+      clientCommit !== 'unknown' &&
+      staticVersion.commitHash !== clientCommit
+    ) {
+      return {
+        updateAvailable: true,
+        reason: 'commit_mismatch',
+        targetCommit: staticVersion.commitHash,
+        targetVersion: staticVersion.version || CLIENT_BUILD_INFO.version,
+        targetMessage: staticVersion.commitMessage || 'Build frontend terbaru tersedia',
+        targetDate: staticVersion.commitDate || staticVersion.buildTime || '',
+        apiVersion,
+        staticVersion,
+      };
+    }
+
+    if (
+      staticVersion.buildTime &&
+      CLIENT_BUILD_INFO.buildTime &&
+      staticVersion.buildTime !== CLIENT_BUILD_INFO.buildTime
+    ) {
+      return {
+        updateAvailable: true,
+        reason: 'build_mismatch',
+        targetCommit: staticVersion.commitHash || clientCommit,
+        targetVersion: staticVersion.version || CLIENT_BUILD_INFO.version,
+        targetMessage: staticVersion.commitMessage || 'Build aplikasi baru telah dirilis',
+        targetDate: staticVersion.buildTime,
+        apiVersion,
+        staticVersion,
+      };
+    }
+  } else if (
     apiVersion?.commitHash &&
     apiVersion.commitHash !== 'unknown' &&
     clientCommit !== 'unknown' &&
@@ -163,47 +199,12 @@ export function evaluateUpdateStatus(
     };
   }
 
-  if (
-    staticVersion?.commitHash &&
-    staticVersion.commitHash !== 'unknown' &&
-    clientCommit !== 'unknown' &&
-    staticVersion.commitHash !== clientCommit
-  ) {
-    return {
-      updateAvailable: true,
-      reason: 'commit_mismatch',
-      targetCommit: staticVersion.commitHash,
-      targetVersion: staticVersion.version || CLIENT_BUILD_INFO.version,
-      targetMessage: staticVersion.commitMessage || 'Build frontend terbaru tersedia',
-      targetDate: staticVersion.commitDate || staticVersion.buildTime || '',
-      apiVersion,
-      staticVersion,
-    };
-  }
-
-  if (
-    staticVersion?.buildTime &&
-    CLIENT_BUILD_INFO.buildTime &&
-    staticVersion.buildTime !== CLIENT_BUILD_INFO.buildTime
-  ) {
-    return {
-      updateAvailable: true,
-      reason: 'build_mismatch',
-      targetCommit: staticVersion.commitHash || clientCommit,
-      targetVersion: staticVersion.version || CLIENT_BUILD_INFO.version,
-      targetMessage: staticVersion.commitMessage || 'Build aplikasi baru telah dirilis',
-      targetDate: staticVersion.buildTime,
-      apiVersion,
-      staticVersion,
-    };
-  }
-
   if (swWaiting) {
     return {
       updateAvailable: true,
       reason: 'sw_update',
-      targetCommit: apiVersion?.commitHash || clientCommit,
-      targetVersion: apiVersion?.version || CLIENT_BUILD_INFO.version,
+      targetCommit: staticVersion?.commitHash || apiVersion?.commitHash || clientCommit,
+      targetVersion: staticVersion?.version || apiVersion?.version || CLIENT_BUILD_INFO.version,
       targetMessage: 'Service Worker baru siap diaktifkan',
       targetDate: apiVersion?.commitDate || new Date().toISOString(),
       apiVersion,
