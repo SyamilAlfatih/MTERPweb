@@ -1,4 +1,71 @@
 const AuditLog = require('../models/AuditLog');
+const User = require('../models/User');
+
+const ACTOR_CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_ACTOR_CACHE_SIZE = 500;
+const actorCache = new Map();
+
+/**
+ * Resolves full actor identity (fullName, username, role) from req.user / res.locals,
+ * querying User once (with a short-lived in-memory cache) when JWT only provides _id and role.
+ */
+async function resolveActorDetails(actor, locals = {}) {
+  const actorId = actor?._id ? String(actor._id) : null;
+  let fullName = actor?.fullName || actor?.name || locals.auditActorName || '';
+  let username = actor?.username || locals.auditActorUsername || '';
+  let role = actor?.role || locals.auditActorRole || '';
+
+  if (actorId && (!fullName || !username)) {
+    const cached = actorCache.get(actorId);
+    if (cached && Date.now() - cached.cachedAt < ACTOR_CACHE_TTL_MS) {
+      fullName = fullName || cached.fullName;
+      username = username || cached.username;
+      role = role || cached.role;
+    } else if (/^[0-9a-fA-F]{24}$/.test(actorId)) {
+      try {
+        const userDoc = await User.findById(actorId)
+          .select('fullName username role')
+          .lean();
+        if (userDoc) {
+          fullName = fullName || userDoc.fullName || userDoc.username || '';
+          username = username || userDoc.username || '';
+          role = role || userDoc.role || '';
+          if (actorCache.size >= MAX_ACTOR_CACHE_SIZE) {
+            const firstKey = actorCache.keys().next().value;
+            actorCache.delete(firstKey);
+          }
+          actorCache.set(actorId, {
+            fullName,
+            username,
+            role,
+            cachedAt: Date.now(),
+          });
+        }
+      } catch (err) {
+        console.warn('[AuditLogger] Failed to resolve actor details:', err.message);
+      }
+    }
+  }
+
+  if (!fullName) {
+    if (username) {
+      fullName = username;
+    } else if (actor?.isApiKey) {
+      fullName = 'API Key';
+    } else if (actorId) {
+      fullName = `User #${actorId.slice(-6)}`;
+    } else {
+      fullName = 'Unauthenticated';
+    }
+  }
+
+  return {
+    actorId: actor?._id || null,
+    actorName: fullName,
+    actorUsername: username,
+    actorRole: role || 'unauthenticated',
+  };
+}
 
 const SENSITIVE_KEY_PATTERN = /(password|passcode|pin|otp|token|secret|apikey|api_key|authorization|cookie|privatekey|cvv)/i;
 const OBJECT_ID_REGEX = /^[0-9a-fA-F]{24}$/;
@@ -203,6 +270,11 @@ function auditMiddleware(req, res, next) {
     if (res.locals.skipAudit) return;
 
     const actor = res.locals.auditActor || req.user || null;
+    const localsSnapshot = {
+      auditActorName: res.locals.auditActorName,
+      auditActorUsername: res.locals.auditActorUsername,
+      auditActorRole: res.locals.auditActorRole,
+    };
     const { module, action, entityId, endpoint, summary } = inferModuleAndAction(req, res);
 
     const sanitizedBody = req.body && Object.keys(req.body).length > 0 ? sanitizePayload(req.body) : null;
@@ -216,24 +288,28 @@ function auditMiddleware(req, res, next) {
       };
     }
 
-    recordAuditEvent({
-      actorId: actor?._id || null,
-      actorName: actor?.fullName || actor?.name || res.locals.auditActorName || 'System / Anonymous',
-      actorUsername: actor?.username || res.locals.auditActorUsername || '',
-      actorRole: actor?.role || 'anonymous',
-      action,
-      module,
-      entityId,
-      method: req.method,
-      endpoint,
-      statusCode: res.statusCode,
-      success: res.statusCode < 400,
-      summary,
-      changes,
-      ipAddress: getClientIp(req),
-      userAgent: (req.headers['user-agent'] || '').slice(0, 300),
-      durationMs: Date.now() - startTime,
-    });
+    const durationMs = Date.now() - startTime;
+    const ipAddress = getClientIp(req);
+    const userAgent = (req.headers['user-agent'] || '').slice(0, 300);
+
+    (async () => {
+      const resolvedActor = await resolveActorDetails(actor, localsSnapshot);
+      await recordAuditEvent({
+        ...resolvedActor,
+        action,
+        module,
+        entityId,
+        method: req.method,
+        endpoint,
+        statusCode: res.statusCode,
+        success: res.statusCode < 400,
+        summary,
+        changes,
+        ipAddress,
+        userAgent,
+        durationMs,
+      });
+    })();
   });
 
   next();

@@ -1,6 +1,6 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
-const { AuditLog } = require('../models');
+const { AuditLog, User } = require('../models');
 const { auth, authorize } = require('../middleware/auth');
 const { parseWIBDate, wibDayRange } = require('../utils/date');
 
@@ -12,10 +12,49 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+const MISSING_ACTOR_NAMES = new Set(['', '-', 'System / Anonymous', 'anonymous']);
+
+/**
+ * Resolves real User fullName/username for any audit log or aggregation row
+ * that has an actorId but was previously stored with a placeholder actorName.
+ */
+async function enrichAuditActors(items) {
+  if (!Array.isArray(items) || items.length === 0) return items;
+
+  const missingIds = [
+    ...new Set(
+      items
+        .filter((item) => item.actorId && MISSING_ACTOR_NAMES.has((item.actorName || '').trim()))
+        .map((item) => String(item.actorId))
+        .filter((id) => /^[0-9a-fA-F]{24}$/.test(id))
+    ),
+  ];
+
+  if (missingIds.length === 0) return items;
+
+  const users = await User.find({ _id: { $in: missingIds } })
+    .select('fullName username role')
+    .lean();
+  const userMap = new Map(users.map((u) => [String(u._id), u]));
+
+  return items.map((item) => {
+    const id = item.actorId ? String(item.actorId) : '';
+    const user = id ? userMap.get(id) : null;
+    if (!user) return item;
+
+    return {
+      ...item,
+      actorName: user.fullName || user.username || item.actorName,
+      actorUsername: item.actorUsername || user.username || '',
+      actorRole: item.actorRole && item.actorRole !== 'anonymous' ? item.actorRole : user.role || item.actorRole,
+    };
+  });
+}
+
 /**
  * Builds a MongoDB filter object from query parameters.
  */
-function buildAuditFilter(query) {
+async function buildAuditFilter(query) {
   const filter = {};
   const { search, module: mod, action, actorId, success, startDate, endDate } = query;
 
@@ -54,6 +93,14 @@ function buildAuditFilter(query) {
 
   if (search && typeof search === 'string' && search.trim() !== '') {
     const regex = new RegExp(escapeRegex(search.trim()), 'i');
+    const matchedUsers = await User.find({
+      $or: [{ fullName: regex }, { username: regex }],
+    })
+      .select('_id')
+      .limit(50)
+      .lean();
+    const matchedUserIds = matchedUsers.map((u) => u._id);
+
     filter.$or = [
       { actorName: regex },
       { actorUsername: regex },
@@ -61,6 +108,7 @@ function buildAuditFilter(query) {
       { endpoint: regex },
       { entityId: regex },
       { ipAddress: regex },
+      ...(matchedUserIds.length > 0 ? [{ actorId: { $in: matchedUserIds } }] : []),
     ];
   }
 
@@ -101,18 +149,22 @@ router.get('/stats', auth, authorize(...EXECUTIVE_ROLES), async (req, res) => {
         ]),
       ]);
 
+    const enrichedTopActors = await enrichAuditActors(
+      topActors.map((a) => ({
+        actorId: a._id,
+        actorName: a.actorName,
+        actorRole: a.actorRole,
+        count: a.count,
+      }))
+    );
+
     res.json({
       totalLogs,
       todayLogs,
       failedEvents,
       loginFailedEvents,
       topModules: topModules.map((m) => ({ module: m._id, count: m.count })),
-      topActors: topActors.map((a) => ({
-        actorId: a._id,
-        actorName: a.actorName,
-        actorRole: a.actorRole,
-        count: a.count,
-      })),
+      topActors: enrichedTopActors,
     });
   } catch (error) {
     console.error('Error fetching audit log stats:', error);
@@ -123,11 +175,12 @@ router.get('/stats', auth, authorize(...EXECUTIVE_ROLES), async (req, res) => {
 // GET /api/audit-logs/export/excel - Export filtered audit logs to Excel
 router.get('/export/excel', auth, authorize(...EXECUTIVE_ROLES), async (req, res) => {
   try {
-    const filter = buildAuditFilter(req.query);
-    const logs = await AuditLog.find(filter)
+    const filter = await buildAuditFilter(req.query);
+    const rawLogs = await AuditLog.find(filter)
       .sort({ createdAt: -1 })
       .limit(5000)
       .lean();
+    const logs = await enrichAuditActors(rawLogs);
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'MTERP Audit System';
@@ -214,9 +267,9 @@ router.get('/', auth, authorize(...EXECUTIVE_ROLES), async (req, res) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25));
     const skip = (page - 1) * limit;
 
-    const filter = buildAuditFilter(req.query);
+    const filter = await buildAuditFilter(req.query);
 
-    const [logs, total, distinctModules, distinctActions] = await Promise.all([
+    const [rawLogs, total, distinctModules, distinctActions] = await Promise.all([
       AuditLog.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -226,6 +279,8 @@ router.get('/', auth, authorize(...EXECUTIVE_ROLES), async (req, res) => {
       AuditLog.distinct('module'),
       AuditLog.distinct('action'),
     ]);
+
+    const logs = await enrichAuditActors(rawLogs);
 
     res.json({
       logs,

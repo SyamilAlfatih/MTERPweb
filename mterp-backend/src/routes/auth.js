@@ -63,6 +63,10 @@ router.post('/register', async (req, res) => {
 
     await user.save();
 
+    res.locals.auditActor = user;
+    res.locals.auditEntityId = user._id.toString();
+    res.locals.auditSummary = `Registrasi akun baru: ${user.fullName} (@${user.username})`;
+
     // Send OTP email (in production)
     if (process.env.EMAIL_USER) {
       transporter.sendMail({
@@ -90,12 +94,17 @@ router.post('/register', async (req, res) => {
 router.post('/verify', async (req, res) => {
   try {
     const { email, otp } = req.body;
+    res.locals.auditActorUsername = email || '';
 
     const user = await User.findOne({ email });
 
     if (!user) {
+      res.locals.auditActorName = email ? `Unknown (${email})` : 'Unknown User';
       return res.status(404).json({ msg: 'User not found' });
     }
+
+    res.locals.auditActor = user;
+    res.locals.auditEntityId = user._id.toString();
 
     if (user.isVerified) {
       return res.status(400).json({ msg: 'User already verified' });
@@ -132,6 +141,7 @@ router.post('/login', async (req, res) => {
     });
 
     if (!user) {
+      res.locals.auditActorName = username ? `Unknown (${username})` : 'Unknown User';
       res.locals.auditActorUsername = username || '';
       res.locals.auditSummary = `Login gagal: akun "${username || '-'}" tidak ditemukan`;
       return res.status(401).json({ msg: 'Invalid credentials' });

@@ -15,7 +15,7 @@ const auditLogSchema = new mongoose.Schema(
     },
     actorName: {
       type: String,
-      default: 'System / Anonymous',
+      default: 'Unauthenticated',
       trim: true,
     },
     actorUsername: {

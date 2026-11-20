@@ -80,7 +80,13 @@ const apiKeyAuth = require('./apiKeyAuth');
 const authOrApiKey = (req, res, next) => {
   if (req.header('X-API-Key') || req.header('x-api-key')) {
     return apiKeyAuth(req, res, () => {
-      req.user = { role: 'admin', isApiKey: true };
+      req.user = {
+        _id: req.apiKey?.createdBy || null,
+        role: 'admin',
+        isApiKey: true,
+        fullName: req.apiKey?.name ? `API Key: ${req.apiKey.name}` : 'API Key',
+        username: req.apiKey?.keyPrefix || 'api-key',
+      };
       next();
     });
   }

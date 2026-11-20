@@ -25,16 +25,16 @@ async function runTests() {
     throw new Error('Required seed users (owner and non-executive) not found in DB.');
   }
 
-  const ownerToken = jwt.sign({ id: ownerUser._id, role: ownerUser.role }, JWT_SECRET, { expiresIn: '1h' });
-  const workerToken = jwt.sign({ id: workerUser._id, role: workerUser.role }, JWT_SECRET, { expiresIn: '1h' });
+  const ownerToken = jwt.sign({ userId: ownerUser._id, role: ownerUser.role }, JWT_SECRET, { expiresIn: '1h' });
+  const workerToken = jwt.sign({ userId: workerUser._id, role: workerUser.role }, JWT_SECRET, { expiresIn: '1h' });
 
   const app = express();
   app.use(express.json());
   app.use(auditMiddleware);
 
-  // Test mutation endpoint with sensitive fields
+  // Test mutation endpoint where req.user only has { _id, role } (matching auth.js JWT middleware)
   app.post('/api/test-audit/action', (req, res) => {
-    req.user = ownerUser;
+    req.user = { _id: ownerUser._id.toString(), role: ownerUser.role };
     res.locals.auditSummary = 'Test sensitive payload redaction';
     res.status(201).json({ ok: true });
   });
@@ -79,7 +79,19 @@ async function runTests() {
     ) {
       throw new Error(`Sensitive fields were NOT redacted: ${JSON.stringify(payload)}`);
     }
-    console.log('✅ Test 1 PASSED: Mutation logged & sensitive fields redacted ([REDACTED]).');
+    if (
+      !latestLog.actorName ||
+      latestLog.actorName === 'System / Anonymous' ||
+      latestLog.actorName !== ownerUser.fullName ||
+      latestLog.actorUsername !== ownerUser.username
+    ) {
+      throw new Error(
+        `Actor was NOT resolved properly: got actorName="${latestLog.actorName}", actorUsername="${latestLog.actorUsername}", expected "${ownerUser.fullName}" (@${ownerUser.username})`
+      );
+    }
+    console.log(
+      `✅ Test 1 PASSED: Mutation logged with resolved actor (${latestLog.actorName} @${latestLog.actorUsername}) & sensitive fields redacted ([REDACTED]).`
+    );
 
     // 2. Non-executive RBAC check (must be 403 Forbidden)
     const workerRes = await fetch(`${baseUrl}/api/audit-logs`, {
