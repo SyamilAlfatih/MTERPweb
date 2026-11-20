@@ -222,6 +222,7 @@ function buildVersionPayload() {
   const version = process.env.APP_VERSION || readPackageVersion();
   const commitHash = execGit('rev-parse --short HEAD') || process.env.APP_COMMIT_HASH || 'unknown';
   const fullCommitHash = execGit('rev-parse HEAD') || process.env.APP_COMMIT_FULL || commitHash;
+  const frontendCommitHash = execGit('log -n 1 --format=%h -- mterp-web') || commitHash;
   const branch = execGit('rev-parse --abbrev-ref HEAD') || process.env.APP_BRANCH || 'main';
   const commitDate = execGit('log -1 --format=%cI') || process.env.APP_COMMIT_DATE || SERVER_START_TIME;
   const commitMessage = execGit('log -1 --format=%s') || process.env.APP_COMMIT_MESSAGE || 'Latest deployment';
@@ -235,6 +236,7 @@ function buildVersionPayload() {
     humanVersionLabel: shortDate ? `v${version} (${shortDate})` : `v${version}`,
     commitHash,
     fullCommitHash,
+    frontendCommitHash,
     branch,
     commitDate,
     commitMessage,
@@ -253,7 +255,7 @@ function buildVersionPayload() {
       : null,
     serverStartedAt: SERVER_START_TIME,
     checkedAt: new Date(now).toISOString(),
-    enforceUpdate: true,
+    enforceUpdate: process.env.ENFORCE_APP_UPDATE === 'true',
     releases: groupReleasesByDate(changelog),
     changelog,
   };

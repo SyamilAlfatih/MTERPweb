@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshCw, ShieldAlert, ArrowRight, Sparkles, Check, Loader2 } from 'lucide-react';
+import { RefreshCw, ArrowRight, Sparkles, Check, Loader2 } from 'lucide-react';
 import { registerSW } from 'virtual:pwa-register';
 import {
   CLIENT_BUILD_INFO,
@@ -8,7 +8,7 @@ import {
   clearAttemptedUpdateCommit,
   evaluateUpdateStatus,
   fetchVersionMetadata,
-  getAttemptedUpdateCommit,
+  isUpdateInCooldown,
 } from '../../utils/appVersion';
 
 const POLL_INTERVAL_MS = 60_000;
@@ -18,7 +18,6 @@ export const AppUpdateEnforcer: React.FC = () => {
   const [pendingUpdate, setPendingUpdate] = useState<UpdateCheckResult | null>(null);
   const [countdown, setCountdown] = useState<number>(AUTO_UPDATE_COUNTDOWN_SEC);
   const [isApplying, setIsApplying] = useState(false);
-  const [loopGuarded, setLoopGuarded] = useState(false);
   const swWaitingRef = useRef(false);
   const isCheckingRef = useRef(false);
 
@@ -30,15 +29,13 @@ export const AppUpdateEnforcer: React.FC = () => {
       const result = evaluateUpdateStatus(apiVersion, staticVersion, swWaitingRef.current);
 
       if (result.updateAvailable) {
-        const attempted = getAttemptedUpdateCommit();
-        if (attempted && attempted === result.targetCommit && !swWaitingRef.current) {
-          // We already reloaded once for this target commit; avoid an infinite reload loop
-          setLoopGuarded(true);
-          setPendingUpdate(result);
+        const targetBuildTime = result.staticVersion?.buildTime || '';
+        if (isUpdateInCooldown(result.targetCommit, targetBuildTime)) {
+          // Reload was already attempted for this build; suppress modal to prevent loops
+          setPendingUpdate(null);
         } else {
-          setLoopGuarded(false);
           setPendingUpdate((prev) => {
-            if (!prev || prev.targetCommit !== result.targetCommit) {
+            if (!prev || prev.targetCommit !== result.targetCommit || prev.staticVersion?.buildTime !== targetBuildTime) {
               setCountdown(AUTO_UPDATE_COUNTDOWN_SEC);
             }
             return result;
@@ -46,7 +43,6 @@ export const AppUpdateEnforcer: React.FC = () => {
         }
       } else {
         clearAttemptedUpdateCommit();
-        setLoopGuarded(false);
         setPendingUpdate(null);
       }
     } finally {
@@ -57,12 +53,29 @@ export const AppUpdateEnforcer: React.FC = () => {
   const handleApplyUpdate = useCallback(async () => {
     if (isApplying) return;
     setIsApplying(true);
-    await applyEnforcedUpdate(pendingUpdate?.targetCommit);
-  }, [isApplying, pendingUpdate?.targetCommit]);
+    await applyEnforcedUpdate(
+      pendingUpdate?.targetCommit,
+      pendingUpdate?.staticVersion?.buildTime
+    );
+  }, [isApplying, pendingUpdate?.targetCommit, pendingUpdate?.staticVersion?.buildTime]);
+
+  // Strip cache-busting _upd query parameter from URL after reload
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('_upd')) {
+        url.searchParams.delete('_upd');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      }
+    } catch {
+      // ignore invalid URL
+    }
+  }, []);
 
   // Register VitePWA Service Worker and listen for new SW waiting
   useEffect(() => {
     if (import.meta.env.DEV) return;
+    let swInterval: number | undefined;
     const updateSW = registerSW({
       immediate: true,
       onNeedRefresh() {
@@ -71,12 +84,13 @@ export const AppUpdateEnforcer: React.FC = () => {
       },
       onRegisteredSW(_swUrl, registration) {
         if (!registration) return;
-        setInterval(() => {
+        swInterval = window.setInterval(() => {
           void registration.update().catch(() => {});
         }, POLL_INTERVAL_MS);
       },
     });
     return () => {
+      if (swInterval !== undefined) window.clearInterval(swInterval);
       void updateSW;
     };
   }, [runCheck]);
@@ -111,7 +125,7 @@ export const AppUpdateEnforcer: React.FC = () => {
 
   // Countdown & automatic enforcement when a new commit/build is detected
   useEffect(() => {
-    if (!pendingUpdate?.updateAvailable || loopGuarded || isApplying) return;
+    if (!pendingUpdate?.updateAvailable || isApplying) return;
 
     if (countdown <= 0) {
       void handleApplyUpdate();
@@ -123,34 +137,9 @@ export const AppUpdateEnforcer: React.FC = () => {
     }, 1000);
 
     return () => window.clearTimeout(timer);
-  }, [pendingUpdate, loopGuarded, isApplying, countdown, handleApplyUpdate]);
+  }, [pendingUpdate, isApplying, countdown, handleApplyUpdate]);
 
   if (!pendingUpdate?.updateAvailable) return null;
-
-  if (loopGuarded) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[9998] max-w-sm rounded-xl border border-amber-300 bg-amber-50 p-3.5 shadow-lg text-amber-950">
-        <div className="flex items-start gap-2.5">
-          <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="flex-1 text-xs space-y-1">
-            <p className="font-semibold">Sinkronisasi Versi Tertunda</p>
-            <p className="text-amber-800">
-              Server berada pada commit <code className="font-mono font-semibold">{pendingUpdate.targetCommit}</code>,
-              sedangkan browser memuat <code className="font-mono font-semibold">{CLIENT_BUILD_INFO.commitHash}</code>.
-            </p>
-            <button
-              type="button"
-              onClick={() => void handleApplyUpdate()}
-              className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors cursor-pointer"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Muat Ulang Paksa
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div

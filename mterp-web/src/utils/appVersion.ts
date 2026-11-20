@@ -80,19 +80,52 @@ export const CLIENT_BUILD_INFO = {
 };
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-const ATTEMPTED_COMMIT_KEY = 'mterp_attempted_update_commit';
+const ATTEMPTED_UPDATE_KEY = 'mterp_attempted_update_state';
+const UPDATE_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes cooldown if reload loaded same build
 
-export function getAttemptedUpdateCommit(): string | null {
+interface AttemptedUpdateState {
+  targetCommit: string;
+  targetBuildTime: string;
+  attemptedAt: number;
+}
+
+export function getAttemptedUpdateState(): AttemptedUpdateState | null {
   try {
-    return sessionStorage.getItem(ATTEMPTED_COMMIT_KEY);
+    const raw = localStorage.getItem(ATTEMPTED_UPDATE_KEY) || sessionStorage.getItem(ATTEMPTED_UPDATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<AttemptedUpdateState>;
+    if (!parsed || typeof parsed.attemptedAt !== 'number') return null;
+    if (Date.now() - parsed.attemptedAt > UPDATE_COOLDOWN_MS) {
+      clearAttemptedUpdateCommit();
+      return null;
+    }
+    return {
+      targetCommit: parsed.targetCommit || '',
+      targetBuildTime: parsed.targetBuildTime || '',
+      attemptedAt: parsed.attemptedAt,
+    };
   } catch {
     return null;
   }
 }
 
+export function getAttemptedUpdateCommit(): string | null {
+  return getAttemptedUpdateState()?.targetCommit || null;
+}
+
+export function isUpdateInCooldown(targetCommit: string, targetBuildTime = ''): boolean {
+  const state = getAttemptedUpdateState();
+  if (!state) return false;
+  if (targetBuildTime && state.targetBuildTime) {
+    return state.targetCommit === targetCommit && state.targetBuildTime === targetBuildTime;
+  }
+  return Boolean(targetCommit && state.targetCommit === targetCommit);
+}
+
 export function clearAttemptedUpdateCommit(): void {
   try {
-    sessionStorage.removeItem(ATTEMPTED_COMMIT_KEY);
+    localStorage.removeItem(ATTEMPTED_UPDATE_KEY);
+    sessionStorage.removeItem(ATTEMPTED_UPDATE_KEY);
   } catch {
     // ignore storage restrictions
   }
@@ -129,7 +162,13 @@ export async function fetchVersionMetadata(): Promise<{
   let staticVersion: FrontendVersionJson | null = null;
   if (staticRes.status === 'fulfilled' && staticRes.value.ok) {
     try {
-      staticVersion = (await staticRes.value.json()) as FrontendVersionJson;
+      const contentType = staticRes.value.headers.get('content-type') || '';
+      if (!contentType || contentType.includes('application/json') || contentType.includes('text/plain')) {
+        const parsed = (await staticRes.value.json()) as Partial<FrontendVersionJson>;
+        if (parsed && typeof parsed.commitHash === 'string' && typeof parsed.buildTime === 'string') {
+          staticVersion = parsed as FrontendVersionJson;
+        }
+      }
     } catch {
       staticVersion = null;
     }
@@ -144,8 +183,14 @@ export function evaluateUpdateStatus(
   swWaiting = false
 ): UpdateCheckResult {
   const clientCommit = CLIENT_BUILD_INFO.commitHash;
-  const hasStaticVersion = Boolean(staticVersion && (staticVersion.commitHash || staticVersion.buildTime));
+  const hasStaticVersion = Boolean(
+    staticVersion &&
+      typeof staticVersion.commitHash === 'string' &&
+      typeof staticVersion.buildTime === 'string'
+  );
 
+  // Only compare against the deployed frontend build (/version.json) or waiting Service Worker.
+  // Backend /api/version reflects server repo HEAD and may deploy independently of the frontend CDN.
   if (hasStaticVersion && staticVersion) {
     if (
       staticVersion.commitHash &&
@@ -181,22 +226,6 @@ export function evaluateUpdateStatus(
         staticVersion,
       };
     }
-  } else if (
-    apiVersion?.commitHash &&
-    apiVersion.commitHash !== 'unknown' &&
-    clientCommit !== 'unknown' &&
-    apiVersion.commitHash !== clientCommit
-  ) {
-    return {
-      updateAvailable: true,
-      reason: 'commit_mismatch',
-      targetCommit: apiVersion.commitHash,
-      targetVersion: apiVersion.version || CLIENT_BUILD_INFO.version,
-      targetMessage: apiVersion.commitMessage || 'Pembaruan kode terbaru tersedia',
-      targetDate: apiVersion.commitDate || '',
-      apiVersion,
-      staticVersion,
-    };
   }
 
   if (swWaiting) {
@@ -224,11 +253,14 @@ export function evaluateUpdateStatus(
   };
 }
 
-export async function applyEnforcedUpdate(targetCommit?: string): Promise<void> {
+export async function applyEnforcedUpdate(targetCommit?: string, targetBuildTime?: string): Promise<void> {
   try {
-    if (targetCommit) {
-      sessionStorage.setItem(ATTEMPTED_COMMIT_KEY, targetCommit);
-    }
+    const payload: AttemptedUpdateState = {
+      targetCommit: targetCommit || '',
+      targetBuildTime: targetBuildTime || '',
+      attemptedAt: Date.now(),
+    };
+    localStorage.setItem(ATTEMPTED_UPDATE_KEY, JSON.stringify(payload));
   } catch {
     // ignore storage errors
   }

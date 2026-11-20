@@ -122,7 +122,7 @@ export default function AppVersioning() {
 
   const handleForceUpdate = async () => {
     setApplying(true);
-    await applyEnforcedUpdate(status?.targetCommit);
+    await applyEnforcedUpdate(status?.targetCommit, status?.staticVersion?.buildTime);
   };
 
   const server = status?.apiVersion;
